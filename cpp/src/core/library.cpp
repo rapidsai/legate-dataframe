@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,6 +69,15 @@ class Mapper : public legate::mapping::Mapper {
     return mappings;
   }
 
+  std::optional<std::size_t> allocation_pool_size(const legate::mapping::Task& task,
+                                                  legate::mapping::StoreTarget memory_kind)
+  {
+    // TODO: Returning nullopt prevents other parallel task launches so it would be
+    //       good to provide estimated usage for most tasks here.
+    if (memory_kind == legate::mapping::StoreTarget::ZCMEM) { return 0; }
+    return std::nullopt;
+  }
+
   legate::Scalar tunable_value(legate::TunableID tunable_id) override { return legate::Scalar{0}; }
 
  private:
@@ -81,8 +90,15 @@ legate::Library create_and_registrate_library()
   if (env == nullptr || std::string{env} == "0") {
     GlobalMemoryResource::set_as_default_mmr_resource();
   }
-  auto context = legate::Runtime::get_runtime()->find_or_create_library(
-    library_name, legate::ResourceConfig{}, std::make_unique<Mapper>());
+  // Set with_has_allocations globally since currently all tasks allocate (and libcudf may also)
+  auto options = legate::VariantOptions{}.with_has_allocations(true);
+  auto context =
+    legate::Runtime::get_runtime()->find_or_create_library(library_name,
+                                                           legate::ResourceConfig{},
+                                                           std::make_unique<Mapper>(),
+                                                           {{legate::VariantCode::CPU, options},
+                                                            {legate::VariantCode::GPU, options},
+                                                            {legate::VariantCode::OMP, options}});
   task::Registry::get_registrar().register_all_tasks(context);
   return legate::Runtime::get_runtime()->find_library(legate::dataframe::library_name);
 }
