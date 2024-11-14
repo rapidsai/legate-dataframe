@@ -68,6 +68,7 @@ requirements:
     - cudf {{ rapids_version }}  # pulls in pyarrow?
     - libcudf {{ rapids_version }}
     - librmm {{ rapids_version }}
+    - pylibcudf {{ rapids_version }}
   run:
     - python
     # cuda-version is used to constrain __cuda
