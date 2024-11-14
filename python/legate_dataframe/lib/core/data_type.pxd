@@ -4,7 +4,7 @@
 # distutils: language = c++
 # cython: language_level=3
 
-from cudf._lib.pylibcudf.types cimport data_type as cpp_cudf_type
+from pylibcudf.types cimport data_type as cpp_cudf_type
 
 
 cdef cpp_cudf_type as_data_type(data_type_like)

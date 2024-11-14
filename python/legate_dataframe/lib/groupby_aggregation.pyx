@@ -8,13 +8,13 @@
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
-from cudf._lib.pylibcudf.aggregation cimport aggregation as cudf_agg
+from pylibcudf.aggregation cimport aggregation as cudf_agg
 
 from legate_dataframe.lib.core.table cimport LogicalTable, cpp_LogicalTable
 
 from typing import Iterable, Tuple
 
-from cudf._lib.pylibcudf.libcudf.aggregation import Kind as AggregationKind
+from pylibcudf.libcudf.aggregation import Kind as AggregationKind
 
 from legate_dataframe.utils import _track_provenance
 

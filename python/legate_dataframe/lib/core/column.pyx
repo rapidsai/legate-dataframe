@@ -11,7 +11,7 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 
 from cudf._lib.column cimport Column as cudfColumn
-from cudf._lib.pylibcudf.libcudf.column.column cimport column
+from pylibcudf.libcudf.column.column cimport column
 
 from legate_dataframe.lib.core.legate_task cimport get_auto_task_handle
 from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
