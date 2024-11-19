@@ -3,6 +3,7 @@
 channels:
 - rapidsai
 - legate
+- legate/label/rc
 - legate/label/experimental
 - conda-forge
 - nvidia
@@ -17,14 +18,14 @@ dependencies:
 - cuda-sanitizer-api
 - cuda-version=12.4
 - cudf==24.08.*,>=0.0.0a0
-- cunumeric==25.01.*,>=0.0.0.dev0
 - cupy>=12.0.0
+- cupynumeric==24.11.*
 - cxx-compiler
 - cython>=3.0.0
 - dask-cuda==24.08.*
 - dask-cudf==24.08.*
 - gcc_linux-64=11.*
-- legate==25.01.*,>=0.0.0.dev0
+- legate==24.11.01
 - libcudf==24.08.*,>=0.0.0a0
 - librmm==24.08.*,>=0.0.0a0
 - make

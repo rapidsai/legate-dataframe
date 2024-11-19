@@ -20,7 +20,7 @@ cuda11_compiler:
   - nvcc
 
 legate_version:
-  - "=25.01.*,>=0.0.0.dev0"
+  - "=24.11.01"
 
 rapids_version:
   - =24.08.*

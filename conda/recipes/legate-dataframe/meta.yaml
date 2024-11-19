@@ -39,7 +39,7 @@ build:
     - {{ compiler('cuda') }}
     - cuda-python
     - cuda-cudart-dev
-    - cunumeric  # only a build dependency to help resolver
+    - cupynumeric  # only a build dependency to help resolver
 
 requirements:
   build:
@@ -58,9 +58,9 @@ requirements:
     - cuda-python >=12.0,<13.0a0,<=12.6.0
     - legate {{ legate_version }}
     # Only to ensure a nightly legate version we pick up
-    # is compatible with an existing cunumeric version.
+    # is compatible with an existing cupynumeric version.
     # (may also stabilize not using debug/sanitizer builds)
-    - cunumeric
+    - cupynumeric
     - cython>=3.0.0
     - python
     - pip
@@ -78,7 +78,7 @@ requirements:
     # Relying on run_exports from legate to pin an appropriate range of versions.
     #
     # legate uses {{ pin_subpackage(name, min_pin="x.x.x", max_pin="x.x.x") }}, which means
-    # that if legate-dataframe builds against, say, legate=24.09.0 and then a legate-core=24.09.1 is
+    # that if legate-dataframe builds against, say, legate=24.09.0 and then a legate=24.09.1 is
     # released, a new legate-dataframe would be required.
     - legate
     - numpy >=1.23,<3.0.0a0

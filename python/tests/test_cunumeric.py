@@ -5,7 +5,7 @@ import pytest
 
 from legate_dataframe import LogicalColumn
 
-num = pytest.importorskip("cunumeric")
+num = pytest.importorskip("cupynumeric")
 
 
 def test_column_round_trip():

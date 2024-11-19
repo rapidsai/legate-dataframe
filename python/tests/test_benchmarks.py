@@ -15,8 +15,8 @@ benchmarks_path = Path(os.path.realpath(__file__)).parent / ".." / "benchmarks"
 def test_join(tmp_path, monkeypatch):
     """Test examples/hello_world.py"""
 
-    # join.py imports cunumeric
-    pytest.importorskip("cunumeric")
+    # join.py imports cupynumeric
+    pytest.importorskip("cupynumeric")
 
     monkeypatch.syspath_prepend(str(benchmarks_path))
     args = SimpleNamespace()

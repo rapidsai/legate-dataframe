@@ -26,7 +26,7 @@ def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> cudf.DataF
     default_column_name
         The column name to use if no name are defined. This is useful when
         comparing `cudf.DataFrame` to legate objects that doesn't have column
-        names such as `legate_dataframe.Column` or `cunumeric.NDArray`.
+        names such as `legate_dataframe.Column` or `cupynumeric.NDArray`.
 
     Returns
     -------
@@ -70,7 +70,7 @@ def assert_frame_equal(
     default_column_name
         The column name to use if no name are defined. This is useful when
         comparing `cudf.DataFrame` to legate objects that doesn't have column
-        names such as `legate_dataframe.Column` or `cunumeric.NDArray`.
+        names such as `legate_dataframe.Column` or `cupynumeric.NDArray`.
     kwargs
         Extra keyword arguments that are passthrough as-is to
         `cudf.testing.assert_frame_equal`

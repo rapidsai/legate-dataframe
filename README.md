@@ -10,15 +10,16 @@ In the future, we plan to introduce a high-level pure Python package that implem
 You can install `legate-dataframe` packages from the [conda legate channel](https://anaconda.org/legate/)
 using
 ```bash
-conda -c legate/label/experimental -c rapidsai -c conda-forge legate-dataframe
+conda -c legate -c rapidsai -c conda-forge legate-dataframe
 ```
+To include development releases add the `legate/label/experimental` channel.
 
 ## Build
 
-Legate-dataframe uses the Legate C++ API from Legate-core and cuNumeric.
-cuNumeric is only used in Python tests and examples so it isn't strictly necessary.
+Legate-dataframe uses the Legate C++ API from Legate-core and cuPyNumeric.
+cuPyNumeric is only used in Python tests and examples so it isn't strictly necessary.
 
-The current tested versions are legate and cuNumeric 25.01 nightlies available from
+The current tested versions are legate and cuPyNumeric 24.11 release available from
 the [conda legate channel](https://anaconda.org/legate/).
 
 ### Legate-dataframe
@@ -36,20 +37,20 @@ Then we can build, install, and test the project:
 ```
 
 ## Feature Status
-| Feature                             | Status                 | Limitations
-|-------------------------------------|:----------------------:|----------------------------------|
-| Copy to/from cuDF DataFrame         | :white_check_mark:     |                                  |
-| Parquet read & write                | :white_check_mark:     |                                  |
-| CSV read & write                    | :white_check_mark:     |                                  |
-| Zero-copy to/from cuNumeric arrays  | :white_check_mark:     |                                  |
-| Hash based inner join               | :white_check_mark:     |                                  |
-| Hash based left join                | :white_check_mark:     |                                  |
-| Hash based full/outer join          | :white_check_mark:     |                                  |
-| GroupBy Aggregation                 | :white_check_mark:     | Basic aggs. like SUM and NUNIQUE |
-| Numeric data types                  | :white_check_mark:     |                                  |
-| Datetime data types                 | :white_check_mark:     |                                  |
-| String data types                   | :white_check_mark:     |                                  |
-| Null masked columns                 | :white_check_mark:     |                                  |
+| Feature                              | Status                 | Limitations
+|--------------------------------------|:----------------------:|----------------------------------|
+| Copy to/from cuDF DataFrame          | :white_check_mark:     |                                  |
+| Parquet read & write                 | :white_check_mark:     |                                  |
+| CSV read & write                     | :white_check_mark:     |                                  |
+| Zero-copy to/from cuPyNumeric arrays | :white_check_mark:     |                                  |
+| Hash based inner join                | :white_check_mark:     |                                  |
+| Hash based left join                 | :white_check_mark:     |                                  |
+| Hash based full/outer join           | :white_check_mark:     |                                  |
+| GroupBy Aggregation                  | :white_check_mark:     | Basic aggs. like SUM and NUNIQUE |
+| Numeric data types                   | :white_check_mark:     |                                  |
+| Datetime data types                  | :white_check_mark:     |                                  |
+| String data types                    | :white_check_mark:     |                                  |
+| Null masked columns                  | :white_check_mark:     |                                  |
 
 ## Example
 
@@ -57,7 +58,7 @@ Then we can build, install, and test the project:
 ```python
 import tempfile
 import cudf
-import cunumeric
+import cupynumeric
 from legate.core import get_legate_runtime
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.parquet import parquet_read, parquet_write
@@ -87,9 +88,9 @@ def main(tmpdir):
     tbl2 = parquet_read(glob_string=f"{tmpdir}/*.parquet")
 
     # LogicalColumn implements the `__legate_data_interface__` interface,
-    # which makes it possible for other Legate libraries, such as cuNumeric,
+    # which makes it possible for other Legate libraries, such as cuPyNumeric,
     # to operate on columns seamlessly.
-    ary = cunumeric.add(tbl1["a"], tbl2["b"])
+    ary = cupynumeric.add(tbl1["a"], tbl2["b"])
     assert ary.sum() == 0
     ary[:] = [4, 3, 2, 1]
 
@@ -120,7 +121,7 @@ if __name__ == "__main__":
 
 int main(int argc, char** argv)
 {
-  // First we initialize Legate and cuNumeric
+  // First we initialize Legate and cuPyNumeric
   int32_t errcode = legate::start(argc, argv);
   if (errcode != 0) {
     throw std::runtime_error("legate::start() errorcode: " + std::to_string(errcode));

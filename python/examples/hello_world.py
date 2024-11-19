@@ -4,7 +4,7 @@
 import tempfile
 
 import cudf
-import cunumeric
+import cupynumeric
 from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalColumn, LogicalTable
@@ -41,9 +41,9 @@ def main(tmpdir):
     tbl2 = parquet_read(glob_string=f"{tmpdir}/*.parquet")
 
     # LogicalColumn implements the `__legate_data_interface__` interface,
-    # which makes it possible for other Legate libraries, such as cuNumeric,
+    # which makes it possible for other Legate libraries, such as cuPyNumeric,
     # to operate on columns seamlessly.
-    ary = cunumeric.add(tbl1["a"], tbl2["b"])
+    ary = cupynumeric.add(tbl1["a"], tbl2["b"])
     assert ary.sum() == 0
     ary[:] = [4, 3, 2, 1]
 

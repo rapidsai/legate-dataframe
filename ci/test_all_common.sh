@@ -42,6 +42,7 @@ rapids-mamba-retry install \
   --name test-env \
   --channel "${RAPIDS_LOCAL_CONDA_CHANNEL}" \
   --channel legate \
+  --channel legate/label/rc \
   --channel legate/label/experimental \
   --channel rapidsai \
   --channel conda-forge \

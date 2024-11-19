@@ -84,7 +84,7 @@ def run_dask(args, *, use_gpu):
 
 @contextlib.contextmanager
 def run_legate(args):
-    import cunumeric
+    import cupynumeric
     from legate.core import get_legate_runtime
 
     from legate_dataframe import LogicalColumn, LogicalTable
@@ -97,7 +97,7 @@ def run_legate(args):
         return time.perf_counter()
 
     def create_table(args, name: str) -> LogicalTable:
-        key, data = create_key_and_data(args, module=cunumeric)
+        key, data = create_key_and_data(args, module=cupynumeric)
         return LogicalTable(
             columns=(LogicalColumn(key.astype(args.dtype)), LogicalColumn(data)),
             column_names=(f"{name}-key", f"{name}-data"),

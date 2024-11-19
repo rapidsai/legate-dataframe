@@ -13,8 +13,8 @@ examples_path = Path(os.path.realpath(__file__)).parent / ".." / "examples"
 def test_hello_world(tmp_path, monkeypatch):
     """Test examples/hello_world.py"""
 
-    # hello_world.py imports cunumeric
-    pytest.importorskip("cunumeric")
+    # hello_world.py imports cupynumeric
+    pytest.importorskip("cupynumeric")
 
     monkeypatch.syspath_prepend(str(examples_path))
     import_module("hello_world").main(tmp_path)

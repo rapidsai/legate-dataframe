@@ -39,7 +39,7 @@ def _track_provenance(func):
     All calls which directly launch tasks should be decorated.
 
     This e.g. adds Python line number to profiling results.  Similar to
-    cunumeric, we use `functools.update_wrapper` which the legate core
+    cupynumeric, we use `functools.update_wrapper` which the legate core
     version did not at the time of writing.
     """
     wrapped_func = _track_provenance_legate()(func)
