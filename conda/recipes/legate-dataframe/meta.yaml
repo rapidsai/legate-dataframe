@@ -61,11 +61,10 @@ requirements:
     # is compatible with an existing cupynumeric version.
     # (may also stabilize not using debug/sanitizer builds)
     - cupynumeric
-    - cython>=3.0.0
     - python
-    - pip
-    - scikit-build >=0.18.0
-    - setuptools >=70.0
+    - cython >=3.0.3
+    - rapids-build-backend >=0.3.0,<0.4.0.dev0
+    - scikit-build-core >=0.10.0
     - cudf {{ rapids_version }}  # pulls in pyarrow?
     - libcudf {{ rapids_version }}
     - librmm {{ rapids_version }}
