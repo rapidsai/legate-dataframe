@@ -8,7 +8,7 @@
 from libc.stdint cimport int32_t
 from libcpp.string cimport string
 
-from cudf._lib.pylibcudf.types cimport data_type
+from pylibcudf.types cimport data_type
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
 from legate_dataframe.lib.core.data_type cimport as_data_type

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import cudf
-import cudf._lib.binaryop
 import pytest
 
 from legate_dataframe import LogicalColumn

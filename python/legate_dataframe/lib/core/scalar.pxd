@@ -7,7 +7,7 @@
 from libcpp cimport bool
 from libcpp.memory cimport unique_ptr
 
-from cudf._lib.pylibcudf.libcudf.scalar.scalar cimport scalar as cudf_cpp_scalar
+from pylibcudf.libcudf.scalar.scalar cimport scalar as cudf_cpp_scalar
 
 
 cdef extern from "legate.h" nogil:
