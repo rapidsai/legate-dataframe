@@ -69,6 +69,7 @@ template <std::pair<std::unique_ptr<rmm::device_uvector<cudf::size_type>>,
             cudf::table_view const& left_keys,
             cudf::table_view const& right_keys,
             cudf::null_equality compare_nulls,
+            rmm::cuda_stream_view stream,
             rmm::device_async_resource_ref mr),
           cudf::out_of_bounds_policy oob_policy = cudf::out_of_bounds_policy::DONT_CHECK>
 std::unique_ptr<cudf::table> join_and_gather(
@@ -77,12 +78,13 @@ std::unique_ptr<cudf::table> join_and_gather(
   std::vector<cudf::size_type> const& left_on,
   std::vector<cudf::size_type> const& right_on,
   cudf::null_equality compare_nulls,
+  rmm::cuda_stream_view stream      = cudf::get_default_stream(),
   rmm::device_async_resource_ref mr = rmm::mr::get_current_device_resource())
 {
   auto left_selected  = left_input.select(left_on);
   auto right_selected = right_input.select(right_on);
   auto const [left_join_indices, right_join_indices] =
-    join_impl(left_selected, right_selected, compare_nulls, mr);
+    join_impl(left_selected, right_selected, compare_nulls, stream, mr);
 
   auto left_indices_span  = cudf::device_span<cudf::size_type const>{*left_join_indices};
   auto right_indices_span = cudf::device_span<cudf::size_type const>{*right_join_indices};
@@ -90,8 +92,8 @@ std::unique_ptr<cudf::table> join_and_gather(
   auto left_indices_col  = cudf::column_view{left_indices_span};
   auto right_indices_col = cudf::column_view{right_indices_span};
 
-  auto left_result  = cudf::gather(left_input, left_indices_col, oob_policy);
-  auto right_result = cudf::gather(right_input, right_indices_col, oob_policy);
+  auto left_result  = cudf::gather(left_input, left_indices_col, oob_policy, stream, mr);
+  auto right_result = cudf::gather(right_input, right_indices_col, oob_policy, stream, mr);
 
   return std::make_unique<cudf::table>(
     legate::dataframe::concat(left_result->release(), right_result->release()));
