@@ -89,7 +89,7 @@ test:
   # import tests at build time do not work for the CUDA packages,
   # because builds happen on machines without a GPU.  So no tests.
   commands:
-    - pip show legate-dataframe
+    - pip show legate-dataframe-cu12
 
 about:
   # home: {{ project_urls["Homepage"] }}
