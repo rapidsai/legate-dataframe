@@ -86,11 +86,11 @@ def test_scalar_input(cudf_column, op, scalar):
 
     res = binary_operation(col, scalar, op, cudf_column.dtype)
     expect = cudf_binaryop(cudf_column, cudf_scalar, op_str, cudf_column.dtype)
-    assert_frame_equal(res, cudf.Series(expect))
+    assert_frame_equal(res, expect)
 
     res = binary_operation(scalar, col, op, cudf_column.dtype)
     expect = cudf_binaryop(cudf_scalar, cudf_column, op_str, cudf_column.dtype)
-    assert_frame_equal(res, cudf.Series(expect))
+    assert_frame_equal(res, expect)
 
     with pytest.raises(ValueError, match="both inputs cannot be scalars"):
         binary_operation(scalar, scalar, op, cudf_column.dtype)

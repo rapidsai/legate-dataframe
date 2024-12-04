@@ -10,7 +10,7 @@ from pylibcudf.types cimport DataType
 from pylibcudf.types cimport data_type as cpp_cudf_type
 
 import cudf
-from cudf._lib import pylibcudf
+import pylibcudf
 from cudf._lib.types import PYLIBCUDF_TO_SUPPORTED_NUMPY_TYPES, dtype_to_pylibcudf_type
 from numpy.typing import DTypeLike
 
