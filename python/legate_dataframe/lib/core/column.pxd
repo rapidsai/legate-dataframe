@@ -8,8 +8,8 @@ from libcpp cimport bool
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 
-from cudf._lib.pylibcudf.libcudf.column.column cimport column, column_view
-from cudf._lib.pylibcudf.types cimport data_type
+from pylibcudf.libcudf.column.column cimport column, column_view
+from pylibcudf.types cimport data_type
 
 from legate_dataframe.lib.core.legate_task cimport cpp_AutoTask
 from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray

@@ -5,12 +5,12 @@
 # cython: language_level=3
 
 
-from cudf._lib.pylibcudf.types cimport DataType
-from cudf._lib.pylibcudf.types cimport data_type as cpp_cudf_type
 from cudf._lib.types cimport underlying_type_t_type_id
+from pylibcudf.types cimport DataType
+from pylibcudf.types cimport data_type as cpp_cudf_type
 
 import cudf
-from cudf._lib import pylibcudf
+import pylibcudf
 from cudf._lib.types import PYLIBCUDF_TO_SUPPORTED_NUMPY_TYPES, dtype_to_pylibcudf_type
 from numpy.typing import DTypeLike
 
