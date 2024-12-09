@@ -15,8 +15,8 @@
 import cudf
 import cupy
 import legate.core.types as lg_type
-from cudf._lib.pylibcudf.unary import UnaryOperator
 from legate.core import get_legate_runtime
+from pylibcudf.unary import UnaryOperator
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.unaryop import unary_operation

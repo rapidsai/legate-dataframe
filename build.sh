@@ -155,7 +155,7 @@ if (( NUMARGS == 0 )) || hasArg legate_dataframe; then
     cd ${REPODIR}/python/
     SKBUILD_CONFIGURE_OPTIONS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX} -DCMAKE_LIBRARY_PATH=${LIBLEGATE_DATAFRAME_BUILD_DIR} ${EXTRA_CMAKE_ARGS}" \
         SKBUILD_BUILD_OPTIONS="-j${PARALLEL_LEVEL:-1}" \
-        python -m pip install --no-build-isolation --no-deps ${VERBOSE_FLAG} .
+        python -m pip install --no-build-isolation --no-deps --config-settings rapidsai.disable-cuda=true ${VERBOSE_FLAG} .
 fi
 
 
