@@ -22,11 +22,8 @@
 
 int main(int argc, char** argv)
 {
-  // First we initialize Legate
-  int32_t errcode = legate::start(argc, argv);
-  if (errcode != 0) {
-    throw std::runtime_error("legate::start() errorcode: " + std::to_string(errcode));
-  }
+  // First we initialize Legate use either `legate` or `LEGATE_CONFIG` to customize launch
+  legate::start();
 
   // Then let's create a new logical column
   legate::dataframe::LogicalColumn col_a = legate::dataframe::sequence(10, 0);

@@ -19,24 +19,13 @@
 
 class Environment : public ::testing::Environment {
  public:
-  Environment(int argc, char** argv) : argc_(argc), argv_(argv) {}
-
-  void SetUp() override
-  {
-    const char* argv[] = {"./test", "--gpus", "2"};  // TODO: make configurable
-    int argc           = 3;
-    EXPECT_EQ(legate::start(argc, (char**)argv), 0);
-  }
+  void SetUp() override { legate::start(); }
   void TearDown() override { EXPECT_EQ(legate::finish(), 0); }
-
- private:
-  int argc_;
-  char** argv_;
 };
 
 int main(int argc, char** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
-  ::testing::AddGlobalTestEnvironment(new Environment(argc, argv));
+  ::testing::AddGlobalTestEnvironment(new Environment());
   return RUN_ALL_TESTS();
 }
