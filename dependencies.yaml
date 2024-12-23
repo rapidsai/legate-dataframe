@@ -188,7 +188,7 @@ dependencies:
       - output_types: conda
         packages:
           - &cudf_unsuffixed cudf==24.10.*,>=0.0.0a0
-          - &pylibcudf_unsuffixed pylibcudf==24.10.*,>=0.0.0a0
+          - pylibcudf==24.10.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
