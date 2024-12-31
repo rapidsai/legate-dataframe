@@ -13,7 +13,6 @@ import numbers
 import cudf
 import legate.core
 import numpy
-from cudf._lib.scalar import as_device_scalar
 
 ScalarLike = numpy.number | numbers.Number | cudf.Scalar | legate.core.Scalar
 
@@ -39,5 +38,5 @@ cdef cpp_ScalarArg cpp_scalar_arg_from_python(scalar: ScalarLike):
 
     # NOTE: Converting to a cudf scalar isn't really ideal, as we copy
     #       to the device, just to copy it back again to get a legate one.
-    cdef DeviceScalar cudf_scalar = <DeviceScalar>as_device_scalar(scalar)
+    cdef DeviceScalar cudf_scalar = <DeviceScalar>(cudf.Scalar(scalar).device_value)
     return cpp_ScalarArg(dereference(cudf_scalar.get_raw_ptr()))

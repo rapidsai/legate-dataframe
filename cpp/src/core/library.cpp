@@ -43,13 +43,6 @@ class Mapper : public legate::mapping::Mapper {
   Mapper(const Mapper& rhs)            = delete;
   Mapper& operator=(const Mapper& rhs) = delete;
 
-  legate::mapping::TaskTarget task_target(
-    const legate::mapping::Task& task,
-    const std::vector<legate::mapping::TaskTarget>& options) override
-  {
-    return *options.begin();  // Choose first priority
-  }
-
   std::vector<legate::mapping::StoreMapping> store_mappings(
     const legate::mapping::Task& task,
     const std::vector<legate::mapping::StoreTarget>& options) override
