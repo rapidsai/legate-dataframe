@@ -1,4 +1,5 @@
 cpp/build/
+python/build/
 ci/manual-ci-test.py
 Docker
 python/_skbuild

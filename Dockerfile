@@ -27,9 +27,9 @@ RUN mkdir -p /opt/legate-dataframe/conda-env-file
 COPY ./conda/environments/*.yaml /opt/legate-dataframe/conda-env-file/
 
 # To ensure we find the GPU version of legate in the docker build.
-ARG CONDA_OVERRIDE_CUDA=$CUDA_VERSION
+ARG CONDA_OVERRIDE_CUDA=12.4
 RUN /bin/bash -c '/opt/conda/bin/mamba env create --name legate-dev --file \
-  /opt/legate-dataframe/conda-env-file/all_cuda-$(cut --output-delimiter="" -d "." -f 1,2 <<< ${CUDA_VERSION})_arch-x86_64.yaml'
+  /opt/legate-dataframe/conda-env-file/all_cuda-$(cut --output-delimiter="" -d "." -f 1,2 <<< ${CONDA_OVERRIDE_CUDA})_arch-x86_64.yaml'
 
 # Build and install legate-dataframe
 WORKDIR /opt/legate-dataframe
