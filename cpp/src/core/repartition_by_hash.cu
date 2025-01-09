@@ -63,6 +63,7 @@ class ExchangedSizes {
     : _ctx(ctx), stream(ctx.tmp_stream())
   {
     assert(columns.size() == ctx.nranks - 1);
+    // Note: Size of this buffer is taken into account in the mapper:
     _all_sizes =
       legate::create_buffer<std::size_t>(ctx.nranks * ctx.nranks * 2, Memory::Kind::Z_COPY_MEM);
 
@@ -151,6 +152,7 @@ std::pair<std::vector<cudf::table_view>, std::map<int, rmm::device_buffer>> shuf
     std::size_t nbytes = sizes.metadata(peer, ctx.rank);
     if (nbytes > 0) {
       assert(peer != ctx.rank);
+      // Note: Size of this buffer is taken into account in the mapper:
       recv_metadata.insert(
         {peer, legate::create_buffer<uint8_t>(nbytes, Memory::Kind::Z_COPY_MEM)});
     }

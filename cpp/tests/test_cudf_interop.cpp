@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,8 @@ namespace {
 static const char* library_name = "test.cudf_interop";
 
 struct RoundTripTableTask : public legate::LegateTask<RoundTripTableTask> {
-  static constexpr auto TASK_ID = legate::LocalTaskID{0};
+  static constexpr auto TASK_ID             = legate::LocalTaskID{0};
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
 
   static void gpu_variant(legate::TaskContext context)
   {

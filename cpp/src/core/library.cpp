@@ -72,9 +72,40 @@ class Mapper : public legate::mapping::Mapper {
   std::optional<std::size_t> allocation_pool_size(const legate::mapping::Task& task,
                                                   legate::mapping::StoreTarget memory_kind)
   {
+    const auto task_id = static_cast<int>(task.task_id());
+
+    if (memory_kind == legate::mapping::StoreTarget::ZCMEM) {
+      switch (task_id) {
+        case legate::dataframe::task::OpCode::Join:
+          // TODO: Join is identical to GroupBy, but we would have to look at
+          // both input tables to ge the maximum column number.
+          return std::nullopt;
+        case legate::dataframe::task::OpCode::GroupByAggregation: {
+          // Aggregation use repartitioning which uses ZCMEM for NCCL.
+          // This depends on the number of columns (first scalar when storing
+          // the first table is the number of columns).
+          if (task.is_single_task()) {
+            // No need for repartitioning, so no need for ZCMEM
+            return 0;
+          }
+          auto num_cols = task.scalars().at(0).value<int32_t>();
+          auto nrank    = task.get_launch_domain().get_volume();
+
+          // Space for the exchange buffers containing size chunks:
+          size_t size_exchange_nbytes = nrank * nrank * 2 * sizeof(std::size_t);
+          // Space for column packing metadata exchange
+          size_t sizeof_serialized_column = 6 * 8;  // not public, rough upper bound
+          // num_cols * 2 for the string column child and + 1 for the number of cols
+          size_t metadata_nbytes = nrank * (num_cols * 2 + 1) * sizeof_serialized_column;
+
+          return size_exchange_nbytes + metadata_nbytes;
+        }
+        default: return 0;
+      }
+    }
+
     // TODO: Returning nullopt prevents other parallel task launches so it would be
     //       good to provide estimated usage for most tasks here.
-    if (memory_kind == legate::mapping::StoreTarget::ZCMEM) { return 0; }
     return std::nullopt;
   }
 
