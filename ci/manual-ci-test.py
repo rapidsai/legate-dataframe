@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2024 NVIDIA Corporation
+# Copyright (c) 2024-2025, NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,11 +30,7 @@ commands = {
         "--no-capture-output",
         "-n",
         "legate-dev",
-        # TODO: Should not need legate startup,
-        # see https://github.com/nv-legate/legate.core.internal/issues/1304
-        "legate",
-        "--gpus=2",
-        "cpp/build/gtests/cpp_tests",
+        "ci/run_ctests.sh",
     ],
     "py": [
         "conda",
@@ -42,13 +38,7 @@ commands = {
         "--no-capture-output",
         "-n",
         "legate-dev",
-        # TODO: Should not need legate startup,
-        # see https://github.com/nv-legate/legate.core.internal/issues/1304
-        "legate",
-        "--gpus=2",
-        "--module",
-        "pytest",
-        "python/tests",
+        "ci/run_pytests.sh",
     ],
 }
 

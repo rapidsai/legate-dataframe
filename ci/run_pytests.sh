@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2024, NVIDIA CORPORATION.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION.
 
 # [description]
 #
@@ -26,6 +26,7 @@ cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../python/tests/
 LEGATE_TEST=${LEGATE_TEST:-1} \
 legate \
     --gpus "$(nvidia-smi -L | wc -l)"\
+    --fbmem=4000 \
     --module pytest \
     . \
     -sv \
