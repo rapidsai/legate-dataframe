@@ -118,6 +118,8 @@ class ExchangedSizes {
   }
 };
 
+}  // namespace
+
 /**
  * @brief Shuffle (all-to-all exchange) packed cudf partitioned table.
  *
@@ -127,14 +129,16 @@ class ExchangedSizes {
  * that `tbl_partitioned.at(i)` should end up at rank i.
  * @param owning_table Optional table owning the data in `tbl_partitioned`.
  * This table is cleaned up early to reduce the peak memory usage.
- * @return A vector of tables (each ranks data including itself) and a mapping
- * of buffers owning the table data (for cleanup).  The caller must ensure the
- * tables are copied before the buffers are cleaned up.
+ * If passed, `tbl_partitioned` is also cleared (as the content is invalid).
+ * @return An std::pair where the first entry contains a vector of table_view
+ * with all the chunks (including the local copy). The second entry contains
+ * a unique_ptr whose contents owns all parts.
  */
-std::pair<std::vector<cudf::table_view>, std::map<int, rmm::device_buffer>> shuffle(
-  GPUTaskContext& ctx,
-  const std::vector<cudf::table_view>& tbl_partitioned,
-  std::unique_ptr<cudf::table> owning_table)
+std::pair<std::vector<cudf::table_view>,
+          std::unique_ptr<std::pair<std::map<int, rmm::device_buffer>, cudf::table>>>
+shuffle(GPUTaskContext& ctx,
+        std::vector<cudf::table_view>& tbl_partitioned,
+        std::unique_ptr<cudf::table> owning_table)
 {
   if (tbl_partitioned.size() != ctx.nranks) {
     throw std::runtime_error("internal error: partition split has wrong size.");
@@ -152,8 +156,10 @@ std::pair<std::vector<cudf::table_view>, std::map<int, rmm::device_buffer>> shuf
   // Also copy tbl_partitioned.at(ctx.rank).  This copy is unnecessary but allows
   // clearing the (possibly) much larger owning_table (if passed).
   cudf::table local_table(tbl_partitioned.at(ctx.rank), ctx.stream(), ctx.mr());
-  tbl_partitioned.clear();
-  owning_table.reset();
+  if (owning_table) {
+    tbl_partitioned.clear();
+    owning_table.reset();
+  }
 
   assert(columns.size() == ctx.nranks - 1);
   ExchangedSizes sizes(ctx, columns);
@@ -224,18 +230,25 @@ std::pair<std::vector<cudf::table_view>, std::map<int, rmm::device_buffer>> shuf
   LEGATE_CHECK_CUDA(cudaStreamSynchronize(sizes.stream));
 
   // Let's unpack and return the packed_columns received from our peers
+  // (and our own chunk so that `ret` is ordered for stable sorts)
   std::vector<cudf::table_view> ret;
-  for (auto& [peer, buf] : recv_metadata) {
+  for (int peer = 0; peer < ctx.nranks; ++peer) {
+    if (peer == ctx.rank) {
+      ret.push_back(local_table.view());
+      continue;
+    }
     uint8_t* gpu_data = nullptr;
     if (recv_gpu_data.count(peer)) {
       gpu_data = static_cast<uint8_t*>(recv_gpu_data.at(peer).data());
     }
-    ret.push_back(cudf::unpack(buf.ptr(0), gpu_data));
+    ret.push_back(cudf::unpack(recv_metadata.at(peer).ptr(0), gpu_data));
   }
-  return std::make_pair(ret, std::move(recv_gpu_data));
-}
 
-}  // namespace
+  using owner_t = std::pair<std::map<int, rmm::device_buffer>, cudf::table>;
+  return std::make_pair(
+    ret,
+    std::make_unique<owner_t>(std::make_pair(std::move(recv_gpu_data), std::move(local_table))));
+}
 
 std::unique_ptr<cudf::table> repartition_by_hash(
   GPUTaskContext& ctx,
@@ -286,10 +299,8 @@ std::unique_ptr<cudf::table> repartition_by_hash(
     tbl_partitioned = cudf::split(*partition_table, partition_offsets, ctx.stream());
   }
 
-  auto [tables, buffers] = shuffle(ctx, tbl_partitioned, std::move(partition_table));
+  auto [tables, owners] = shuffle(ctx, tbl_partitioned, std::move(partition_table));
 
-  // Let's concatenate our own partition and all the partitioned received from the shuffle.
-  tables.push_back(local_table);
   return cudf::concatenate(tables, ctx.stream(), ctx.mr());
 }
 
