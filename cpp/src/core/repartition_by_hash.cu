@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -119,18 +119,42 @@ class ExchangedSizes {
 };
 
 /**
- * @brief Shuffle (all-to-all exchange) packed cudf columns.
+ * @brief Shuffle (all-to-all exchange) packed cudf partitioned table.
  *
  *
  * @param ctx The context of the calling task
- * @param columns A mapping of tasks to their packed columns. E.g. `columns.at(i)`
- * will be send to the i'th task. NB: all tasks beside itself must have a map thus:
- * `columns.size() == ctx.nranks - 1`.
- * @return A new table containing "this nodes" unpacked columns.
+ * @param tbl_partitioned The local table partitioned into multiple tables such
+ * that `tbl_partitioned.at(i)` should end up at rank i.
+ * @param owning_table Optional table owning the data in `tbl_partitioned`.
+ * This table is cleaned up early to reduce the peak memory usage.
+ * @return A vector of tables (each ranks data including itself) and a mapping
+ * of buffers owning the table data (for cleanup).  The caller must ensure the
+ * tables are copied before the buffers are cleaned up.
  */
 std::pair<std::vector<cudf::table_view>, std::map<int, rmm::device_buffer>> shuffle(
-  GPUTaskContext& ctx, const std::map<int, cudf::packed_columns>& columns)
+  GPUTaskContext& ctx,
+  const std::vector<cudf::table_view>& tbl_partitioned,
+  std::unique_ptr<cudf::table> owning_table)
 {
+  if (tbl_partitioned.size() != ctx.nranks) {
+    throw std::runtime_error("internal error: partition split has wrong size.");
+  }
+
+  // First we pack the columns into contiguous chunks for transfer/shuffling
+  // `columns.at(i)` will be send to the i'th task.
+  // N.B. all tasks beside itself have a map so `columns.size() == ctx.nranks - 1`.
+  std::map<int, cudf::packed_columns> columns;
+  for (int i = 0; static_cast<size_t>(i) < tbl_partitioned.size(); ++i) {
+    if (i != ctx.rank) {
+      columns[i] = cudf::detail::pack(tbl_partitioned[i], ctx.stream(), ctx.mr());
+    }
+  }
+  // Also copy tbl_partitioned.at(ctx.rank).  This copy is unnecessary but allows
+  // clearing the (possibly) much larger owning_table (if passed).
+  cudf::table local_table(tbl_partitioned.at(ctx.rank), ctx.stream(), ctx.mr());
+  tbl_partitioned.clear();
+  owning_table.reset();
+
   assert(columns.size() == ctx.nranks - 1);
   ExchangedSizes sizes(ctx, columns);
 
@@ -223,8 +247,8 @@ std::unique_ptr<cudf::table> repartition_by_hash(
    *  1) Each task split their local cudf table into `ctx.nranks` partitions based on the
    *     hashing of `columns_to_hash` and assign each partition to a task.
    *  2) Each task pack (serialize) the partitions not assigned to itself.
-   *  3) All tasks exchange the sizes of their packed partitions and associated metadata.
-   *  4) All tasks shuffle (all-to-all exchange) the packed partitions.
+   *  4) All tasks shuffle (all-to-all exchange) the partitions. `shuffle` does this by first
+   *     packing each partition into a contiguous memory block for the transfer.
    *  5) Each task unpack (deserialize) and concatenate the received columns with the self-assigned
    *     partition.
    *  6) Finally, each task return a new local cudf table that contains the concatenated partitions.
@@ -261,25 +285,8 @@ std::unique_ptr<cudf::table> repartition_by_hash(
 
     tbl_partitioned = cudf::split(*partition_table, partition_offsets, ctx.stream());
   }
-  if (tbl_partitioned.size() != ctx.nranks) {
-    throw std::runtime_error("internal error: partition split has wrong size.");
-  }
 
-  // Pack and shuffle the columns
-  std::map<int, cudf::packed_columns> packed_columns;
-  for (int i = 0; static_cast<size_t>(i) < tbl_partitioned.size(); ++i) {
-    if (i != ctx.rank) {
-      packed_columns[i] = cudf::detail::pack(tbl_partitioned[i], ctx.stream(), ctx.mr());
-    }
-  }
-  // Also copy tbl_partitioned.at(ctx.rank).  This copy is unnecessary but allows
-  // clearing the (presumably) much larger partition_table.
-  cudf::table local_table(tbl_partitioned.at(ctx.rank), ctx.stream(), ctx.mr());
-  tbl_partitioned.clear();
-  partition_table.reset();
-
-  auto [tables, buffers] = shuffle(ctx, packed_columns);
-  packed_columns.clear();  // Clear packed columns to preserve memory
+  auto [tables, buffers] = shuffle(ctx, tbl_partitioned, std::move(partition_table));
 
   // Let's concatenate our own partition and all the partitioned received from the shuffle.
   tables.push_back(local_table);
