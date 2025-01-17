@@ -25,6 +25,8 @@ namespace legate::dataframe {
 
 LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
+                  const std::vector<cudf::order>& column_order,
+                  const std::vector<cudf::null_order>& null_precedence,
                   bool stable = false);
 
 }  // namespace legate::dataframe

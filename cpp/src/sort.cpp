@@ -127,7 +127,7 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   const cudf::table_view& my_sorted_tbl,
   const std::vector<cudf::size_type>& keys_idx,
   const std::vector<cudf::order>& column_order,
-  const std::vector<cudf::null_order>& null_order)
+  const std::vector<cudf::null_order>& null_precedence)
 {
   /*
    * Step 1: Extract local candidates and add rank and index information.
@@ -174,13 +174,14 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   }
   auto [split_candidates_shared, owners_split] = shuffle(ctx, exchange_tables, nullptr);
   std::vector<cudf::order> column_orderx(column_order);
-  std::vector<cudf::null_order> null_orderx(null_order);
+  std::vector<cudf::null_order> null_precedencex(null_precedence);
   column_orderx.insert(column_orderx.end(), {cudf::order::ASCENDING, cudf::order::ASCENDING});
-  null_orderx.insert(null_orderx.end(), {cudf::null_order::AFTER, cudf::null_order::AFTER});
+  null_precedencex.insert(null_precedencex.end(),
+                          {cudf::null_order::AFTER, cudf::null_order::AFTER});
 
   // Merge is stable as it includes the rank and inde in the keys:
   auto split_candidates = cudf::merge(
-    split_candidates_shared, all_keysx, column_orderx, null_orderx, ctx.stream(), ctx.mr());
+    split_candidates_shared, all_keysx, column_orderx, null_precedencex, ctx.stream(), ctx.mr());
   owners_split.reset();  // copied into split_candidates
 
   /*
@@ -211,14 +212,14 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   auto split_candidates_first_col  = cudf::lower_bound(my_sorted_tbl.select(keys_idx),
                                                       split_values_view.select(value_keysx),
                                                       column_order,
-                                                      null_order,
+                                                      null_precedence,
                                                       ctx.stream(),
                                                       ctx.mr());
   auto split_candidates_first_view = split_candidates_first_col->view();
   auto split_candidates_last_col   = cudf::upper_bound(my_sorted_tbl.select(keys_idx),
                                                      split_values_view.select(value_keysx),
                                                      column_order,
-                                                     null_order,
+                                                     null_precedence,
                                                      ctx.stream(),
                                                      ctx.mr());
   auto split_candidates_last_view  = split_candidates_last_col->view();
@@ -292,12 +293,12 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
-    const auto tbl          = argument::get_next_input<PhysicalTable>(ctx);
-    const auto keys_idx     = argument::get_next_scalar_vector<cudf::size_type>(ctx);
-    const auto column_order = argument::get_next_scalar_vector<cudf::order>(ctx);
-    const auto null_order   = argument::get_next_scalar_vector<cudf::null_order>(ctx);
-    const auto stable       = argument::get_next_scalar<bool>(ctx);
-    auto output             = argument::get_next_output<PhysicalTable>(ctx);
+    const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
+    const auto keys_idx        = argument::get_next_scalar_vector<cudf::size_type>(ctx);
+    const auto column_order    = argument::get_next_scalar_vector<cudf::order>(ctx);
+    const auto null_precedence = argument::get_next_scalar_vector<cudf::null_order>(ctx);
+    const auto stable          = argument::get_next_scalar<bool>(ctx);
+    auto output                = argument::get_next_output<PhysicalTable>(ctx);
 
     if (tbl.is_broadcasted() && ctx.rank != 1) {
       // Note: It might be nice to just sort locally and keep it broadcast.
@@ -306,25 +307,26 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     }
 
     // Create a new locally sorted table (we always need this)
-    auto cudf_tbl      = tbl.table_view();
-    auto key           = cudf_tbl.select(keys_idx);
-    auto sort_func     = stable ? cudf::stable_sort_by_key : cudf::sort_by_key;
-    auto my_sorted_tbl = sort_func(cudf_tbl, key, column_order, null_order, ctx.stream(), ctx.mr());
+    auto cudf_tbl  = tbl.table_view();
+    auto key       = cudf_tbl.select(keys_idx);
+    auto sort_func = stable ? cudf::stable_sort_by_key : cudf::sort_by_key;
+    auto my_sorted_tbl =
+      sort_func(cudf_tbl, key, column_order, null_precedence, ctx.stream(), ctx.mr());
 
     if (ctx.nranks == 1 || tbl.is_broadcasted()) {
       output.move_into(my_sorted_tbl->release());
       return;
     }
 
-    auto split_indices =
-      find_splits_for_distribution(ctx, my_sorted_tbl->view(), keys_idx, column_order, null_order);
+    auto split_indices = find_splits_for_distribution(
+      ctx, my_sorted_tbl->view(), keys_idx, column_order, null_precedence);
 
     auto partitions      = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
     auto [parts, owners] = shuffle(ctx, partitions, std::move(my_sorted_tbl));
 
     std::unique_ptr<cudf::table> result;
     if (!stable) {
-      result = cudf::merge(parts, keys_idx, column_order, null_order, ctx.stream(), ctx.mr());
+      result = cudf::merge(parts, keys_idx, column_order, null_precedence, ctx.stream(), ctx.mr());
     } else {
       // This is not good, but libcudf has no stable merge:
       // https://github.com/rapidsai/cudf/issues/16010
@@ -333,7 +335,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
       owners.reset();  // we created a copy.
       auto res_view = result->view();
       result        = sort_func(
-        res_view, res_view.select(keys_idx), column_order, null_order, ctx.stream(), ctx.mr());
+        res_view, res_view.select(keys_idx), column_order, null_precedence, ctx.stream(), ctx.mr());
     }
 
 #if DEBUG_SPLITS
@@ -352,29 +354,37 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
 
 }  // namespace task
 
-LogicalTable sort(const LogicalTable& tbl, const std::vector<std::string>& keys, bool stable)
+LogicalTable sort(const LogicalTable& tbl,
+                  const std::vector<std::string>& keys,
+                  const std::vector<cudf::order>& column_order,
+                  const std::vector<cudf::null_order>& null_precedence,
+                  bool stable)
 {
+  if (keys.size() == 0) { throw std::invalid_argument("must sort along at least one column"); }
+  if (column_order.size() != keys.size() || null_precedence.size() != keys.size()) {
+    throw std::invalid_argument("sort column order and null precedence must match number of keys");
+  }
+
   auto runtime = legate::Runtime::get_runtime();
 
   auto ret = LogicalTable::empty_like(tbl);
 
-  std::vector<cudf::size_type> keys_idx;
-  std::vector<std::underlying_type_t<cudf::order>> column_order;
-  std::vector<std::underlying_type_t<cudf::null_order>> null_order;
+  std::vector<cudf::size_type> keys_idx(keys.size());
+  std::vector<std::underlying_type_t<cudf::order>> column_order_lg(keys.size());
+  std::vector<std::underlying_type_t<cudf::null_order>> null_precedence_lg(keys.size());
+
   const auto& name_to_idx = tbl.get_column_names();
-  for (const auto& name : keys) {
-    keys_idx.push_back(name_to_idx.at(name));
-    column_order.push_back(
-      static_cast<std::underlying_type_t<cudf::order>>(cudf::order::ASCENDING));
-    null_order.push_back(
-      static_cast<std::underlying_type_t<cudf::null_order>>(cudf::null_order::AFTER));
+  for (size_t i = 0; i < keys.size(); i++) {
+    keys_idx[i]           = name_to_idx.at(keys[i]);
+    column_order_lg[i]    = static_cast<std::underlying_type_t<cudf::order>>(column_order[i]);
+    null_precedence_lg[i] = static_cast<std::underlying_type_t<cudf::order>>(null_precedence[i]);
   }
 
   legate::AutoTask task = runtime->create_task(get_library(), task::SortTask::TASK_ID);
   argument::add_next_input(task, tbl);
   argument::add_next_scalar_vector(task, keys_idx);
-  argument::add_next_scalar_vector(task, column_order);
-  argument::add_next_scalar_vector(task, null_order);
+  argument::add_next_scalar_vector(task, column_order_lg);
+  argument::add_next_scalar_vector(task, null_precedence_lg);
   argument::add_next_scalar(task, stable);
   argument::add_next_output(task, ret);
 
