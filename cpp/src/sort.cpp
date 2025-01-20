@@ -61,7 +61,7 @@ std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
                                             bool include_start)
 {
   auto nvalues_per_split = nvalues / nsplits;
-  auto nvalues_left      = nvalues - nvalues_per_split * ctx.nranks;
+  auto nvalues_left      = nvalues - nvalues_per_split * nvalues;
   if (nvalues_per_split == 0) {
     nsplits = nvalues_left;  // Only return non-empty splits
   }
@@ -81,7 +81,7 @@ std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
 
 #if DEBUG_SPLITS
   std::ostringstream splits_points_oss;
-  splits_points_oss << "Split points @" << ctx.rank << ": ";
+  splits_points_oss << "Split points @" << nvalues << ": ";
   for (auto point : split_values) {
     splits_points_oss << point << ", ";
   }
