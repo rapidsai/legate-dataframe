@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,12 @@
 #include <legate_dataframe/core/task_context.hpp>
 
 namespace legate::dataframe::task {
+
+std::pair<std::vector<cudf::table_view>,
+          std::unique_ptr<std::pair<std::map<int, rmm::device_buffer>, cudf::table>>>
+shuffle(GPUTaskContext& ctx,
+        std::vector<cudf::table_view>& tbl_partitioned,
+        std::unique_ptr<cudf::table> owning_table);
 
 /**
  * @brief Repartition the table into hash table buckets for each rank/node.

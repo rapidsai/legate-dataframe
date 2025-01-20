@@ -80,6 +80,10 @@ class Mapper : public legate::mapping::Mapper {
           // TODO: Join is identical to GroupBy, but we would have to look at
           // both input tables to ge the maximum column number.
           return std::nullopt;
+        case legate::dataframe::task::OpCode::Sort:
+          // Also similar to GroupBy, but does multiple shuffles and uses two
+          // additional helper columns
+          return std::nullopt;
         case legate::dataframe::task::OpCode::GroupByAggregation: {
           // Aggregation use repartitioning which uses ZCMEM for NCCL.
           // This depends on the number of columns (first scalar when storing
@@ -88,6 +92,7 @@ class Mapper : public legate::mapping::Mapper {
             // No need for repartitioning, so no need for ZCMEM
             return 0;
           }
+          // Note: + 2 is for sorting!  TODO: refactor into helper...
           auto num_cols = task.scalars().at(0).value<int32_t>();
           auto nrank    = task.get_launch_domain().get_volume();
 

@@ -71,7 +71,7 @@ include(cmake/Modules/ConfigureCUDA.cmake) # set other CUDA compilation flags
 # * dependencies ----------------------------------------------------------------------------------
 
 rapids_find_package(
-  legate REQUIRED Legion LegionRuntime
+  legate
   BUILD_EXPORT_SET LegateDataframe-exports
   INSTALL_EXPORT_SET LegateDataframe-exports
 )

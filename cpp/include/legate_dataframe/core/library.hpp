@@ -37,6 +37,7 @@ enum : int {
   ToTimestamps,
   ExtractTimestampComponent,
   Sequence,
+  Sort,
   GroupByAggregation
 };
 }
