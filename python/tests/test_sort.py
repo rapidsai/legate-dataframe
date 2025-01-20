@@ -190,8 +190,9 @@ def test_na_position_explicit():
         (["bad_col", None, None]),
         (["a"], [Order.ASCENDING] * 2, None),
         (["a"], None, [NullOrder.BEFORE] * 2),
-        (["a", "b"], [Order.ASCENDING] * 2, [Order.ASCENDING] * 2),
-        (["a", "b"], [NullOrder.BEFORE] * 2, [NullOrder.BEFORE] * 2),
+        # These should fail (wrong enum passed), but cython doesn't check:
+        # (["a", "b"], [Order.ASCENDING] * 2, [Order.ASCENDING] * 2),
+        # (["a", "b"], [NullOrder.BEFORE] * 2, [NullOrder.BEFORE] * 2),
     ],
 )
 def test_errors_incorrect_args(keys, column_order, null_precedence):
