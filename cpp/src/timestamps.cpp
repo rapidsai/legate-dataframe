@@ -16,9 +16,7 @@
 
 #include <string>
 
-// cudf's detail API of datetime assume that RMM has been included
-#include <rmm/mr/device/device_memory_resource.hpp>
-
+#include <cudf/datetime.hpp>
 #include <cudf/detail/datetime.hpp>
 #include <cudf/strings/convert/convert_datetime.hpp>
 
