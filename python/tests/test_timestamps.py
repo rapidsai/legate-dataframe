@@ -61,33 +61,37 @@ def test_to_timestamps(df, timestamp_type):
 @pytest.mark.parametrize(
     "field",
     [
-        DatetimeComponent.year,
-        DatetimeComponent.month,
-        DatetimeComponent.day,
-        DatetimeComponent.weekday,
-        DatetimeComponent.hour,
-        DatetimeComponent.minute,
-        DatetimeComponent.second,
-        # Cudf/pandas microsecond includes the milliseconds (so doesn't exist):
-        # DatetimeComponent.millisecond_fraction,
-        DatetimeComponent.microsecond_fraction,
-        DatetimeComponent.nanosecond_fraction,
-        DatetimeComponent.day_of_year,
+        DatetimeComponent.YEAR,
+        DatetimeComponent.MONTH,
+        DatetimeComponent.DAY,
+        DatetimeComponent.WEEKDAY,
+        DatetimeComponent.HOUR,
+        DatetimeComponent.MINUTE,
+        DatetimeComponent.SECOND,
+        DatetimeComponent.MILLISECOND,
+        DatetimeComponent.MICROSECOND,
+        DatetimeComponent.NANOSECOND,
     ],
 )
 def test_extract_timestamp_component(timestamp_type, field):
     col = cudf.Series(
         ["2010-06-19T13:15:12.1232634", "2011-06-20T13:25:11.2789543"]
     ).astype(timestamp_type)
-    expected = getattr(col.dt, field.name.removesuffix("_fraction"))
-    if field == DatetimeComponent.weekday:
+
+    if field == DatetimeComponent.MILLISECOND:
+        # millisecond are not exposed directly but included in microseconds:
+        expected = col.dt.microsecond // 1000
+        expected = expected.astype("int16")
+    elif field == DatetimeComponent.WEEKDAY:
         # cudf subtracts 1 and that seems to cast:
-        expected += 1
+        expected = col.dt.weekday + 1
         expected = expected.astype("int16")
-    elif field == DatetimeComponent.microsecond_fraction:
-        # Remove milliseconds from cudf result and cast to int16:
-        expected = expected % 1000
+    elif field == DatetimeComponent.MICROSECOND:
+        # Remove milliseconds from cudf result:
+        expected = col.dt.microsecond % 1000
         expected = expected.astype("int16")
+    else:
+        expected = getattr(col.dt, field.name.lower())
 
     lg_col = LogicalColumn.from_cudf(col._column)
     res = extract_timestamp_component(lg_col, field)

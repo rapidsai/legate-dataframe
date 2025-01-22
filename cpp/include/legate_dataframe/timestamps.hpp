@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 
 #include <string>
 
+#include <cudf/datetime.hpp>
 #include <cudf/types.hpp>
 
 #include <legate_dataframe/core/column.hpp>
@@ -79,20 +80,6 @@ LogicalColumn to_timestamps(const LogicalColumn& input,
                             cudf::data_type timestamp_type,
                             std::string format);
 
-enum class DatetimeComponent : int32_t {
-  year,
-  month,
-  day,
-  weekday,
-  hour,
-  minute,
-  second,
-  millisecond_fraction,
-  microsecond_fraction,
-  nanosecond_fraction,
-  day_of_year
-};
-
 /**
  * @brief Extracts part of a timestamp as a int16.
  *
@@ -100,6 +87,7 @@ enum class DatetimeComponent : int32_t {
  * @param component The component which to extract.
  * @return New int16 column.
  */
-LogicalColumn extract_timestamp_component(const LogicalColumn& input, DatetimeComponent component);
+LogicalColumn extract_timestamp_component(const LogicalColumn& input,
+                                          cudf::datetime::datetime_component component);
 
 }  // namespace legate::dataframe
