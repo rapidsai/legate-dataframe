@@ -11,13 +11,8 @@ else
     cd "${INSTALL_PREFIX:-${CONDA_PREFIX:-/usr}}/bin/gtests/liblegate_dataframe/"
 fi
 
-# Unless otherwise specified, use all available GPUs and set
+# Unless `LEGATE_CONFIG` is set, default to all available GPUs and set fbmem/sysmem.
 # LEGATE_TEST=1 to test broadcasting code paths (locally).
-# TODO: Set LEGATE_CONFIG instead (if undefined).  However,
-#       as of 2024-10-11 LEGATE_CONFIG seems broken:
-#       https://github.com/nv-legate/legate.core.internal/issues/1304
+LEGATE_CONFIG=${LEGATE_CONFIG:- --gpus="$(nvidia-smi -L | wc -l) --fbmem=4000 --sysmem=4000"} \
 LEGATE_TEST=${LEGATE_TEST:-1} \
-legate \
-    --gpus "$(nvidia-smi -L | wc -l)" \
-    --fbmem=4000 --sysmem=4000 \
-    ./cpp_tests --output-on-failure --no-tests=error "$@"
+legate ./cpp_tests --output-on-failure --no-tests=error "$@"

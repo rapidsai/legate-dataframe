@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,7 @@
 
 #include <string>
 
-// cudf's detail API of datetime assume that RMM has been included
-#include <rmm/mr/device/device_memory_resource.hpp>
-
-#include <cudf/detail/datetime.hpp>
+#include <cudf/datetime.hpp>
 #include <cudf/strings/convert/convert_datetime.hpp>
 
 #include <legate_dataframe/core/column.hpp>
@@ -52,52 +49,13 @@ class ExtractTimestampComponentTask
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
-    const auto component =
-      argument::get_next_scalar<std::underlying_type_t<DatetimeComponent>>(ctx);
-    const auto input = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output      = argument::get_next_output<PhysicalColumn>(ctx);
+    const auto component = argument::get_next_scalar<cudf::datetime::datetime_component>(ctx);
+    const auto input     = argument::get_next_input<PhysicalColumn>(ctx);
+    auto output          = argument::get_next_output<PhysicalColumn>(ctx);
 
     std::unique_ptr<cudf::column> ret;
-    /* unfortunately, there seems to be no templating for this in libcudf: */
-    switch (static_cast<DatetimeComponent>(component)) {
-      case DatetimeComponent::year:
-        ret = cudf::datetime::detail::extract_year(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::month:
-        ret = cudf::datetime::detail::extract_month(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::day:
-        ret = cudf::datetime::detail::extract_day(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::weekday:
-        ret = cudf::datetime::detail::extract_weekday(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::hour:
-        ret = cudf::datetime::detail::extract_hour(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::minute:
-        ret = cudf::datetime::detail::extract_minute(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::second:
-        ret = cudf::datetime::detail::extract_second(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::millisecond_fraction:
-        ret = cudf::datetime::detail::extract_millisecond_fraction(
-          input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::microsecond_fraction:
-        ret = cudf::datetime::detail::extract_microsecond_fraction(
-          input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::nanosecond_fraction:
-        ret = cudf::datetime::detail::extract_nanosecond_fraction(
-          input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      case DatetimeComponent::day_of_year:
-        ret = cudf::datetime::detail::day_of_year(input.column_view(), ctx.stream(), ctx.mr());
-        break;
-      default: throw std::runtime_error("invalid resolution to time part extraction?");
-    }
+    ret = cudf::datetime::extract_datetime_component(
+      input.column_view(), component, ctx.stream(), ctx.mr());
 
     output.move_into(std::move(ret));
   }
@@ -119,7 +77,8 @@ LogicalColumn to_timestamps(const LogicalColumn& input,
   return ret;
 }
 
-LogicalColumn extract_timestamp_component(const LogicalColumn& input, DatetimeComponent component)
+LogicalColumn extract_timestamp_component(const LogicalColumn& input,
+                                          cudf::datetime::datetime_component component)
 {
   if (!cudf::is_timestamp(input.cudf_type())) {
     throw std::invalid_argument("extract_timestamp_component() input must be timestamp");
@@ -128,8 +87,8 @@ LogicalColumn extract_timestamp_component(const LogicalColumn& input, DatetimeCo
   auto ret     = LogicalColumn::empty_like(cudf::data_type{cudf::type_id::INT16}, input.nullable());
   legate::AutoTask task =
     runtime->create_task(get_library(), task::ExtractTimestampComponentTask::TASK_ID);
-  argument::add_next_scalar(task,
-                            static_cast<std::underlying_type_t<DatetimeComponent>>(component));
+  argument::add_next_scalar(
+    task, static_cast<std::underlying_type_t<cudf::datetime::datetime_component>>(component));
   argument::add_next_input(task, input);
   argument::add_next_output(task, ret);
   runtime->submit(std::move(task));

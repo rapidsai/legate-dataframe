@@ -1,42 +1,25 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
 # cython: language_level=3
 
 
-from libc.stdint cimport int32_t
 from libcpp.string cimport string
 
+from pylibcudf.libcudf.datetime cimport datetime_component
 from pylibcudf.types cimport data_type
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
 from legate_dataframe.lib.core.data_type cimport as_data_type
 
 from numpy.typing import DTypeLike
+from pylibcudf.datetime import DatetimeComponent  # no-cython-lint
 
 from legate_dataframe.utils import _track_provenance
 
 
 cdef extern from "<legate_dataframe/timestamps.hpp>" namespace "legate::dataframe":
-    cpdef enum class DatetimeComponent(int32_t):
-        """Datetime component to extract, can be one of:
-        ``year``, ``months``, ``day``, ``weekday``, ``hour``, ``minute``,
-        ``second``, ``millisecond_fraction``, ``microsecond_fraction``,
-        ``nanosecond_fraction``, and ``day_of_year``.
-        """
-        year
-        month
-        day
-        weekday
-        hour
-        minute
-        second
-        millisecond_fraction
-        microsecond_fraction
-        nanosecond_fraction
-        day_of_year
-
     cpp_LogicalColumn cpp_to_timestamps "to_timestamps"(
         const cpp_LogicalColumn& input,
         data_type timestamp_type,
@@ -45,7 +28,7 @@ cdef extern from "<legate_dataframe/timestamps.hpp>" namespace "legate::datafram
 
     cpp_LogicalColumn cpp_extract_timestamp_component "extract_timestamp_component"(
         const cpp_LogicalColumn& input,
-        DatetimeComponent component,
+        datetime_component component,
     )
 
 
@@ -97,7 +80,7 @@ def to_timestamps(
 @_track_provenance
 def extract_timestamp_component(
     LogicalColumn col,
-    field: DatetimeComponent,
+    datetime_component component,
 ) -> LogicalColumn:
     """
     Extract part of the timestamp as int16.
@@ -106,9 +89,8 @@ def extract_timestamp_component(
     ----------
     col : LogicalColumn
         Column of timestamps
-    field
-        The field/resolution to extract.  Must be specified as a
-        ``DatetimeComponent``.
+    component
+        The component to extract.  Must be specified as a ``DatetimeComponent``.
 
     Returns
     -------
@@ -122,5 +104,5 @@ def extract_timestamp_component(
 
     """
     return LogicalColumn.from_handle(
-        cpp_extract_timestamp_component(col._handle, field)
+        cpp_extract_timestamp_component(col._handle, component)
     )
