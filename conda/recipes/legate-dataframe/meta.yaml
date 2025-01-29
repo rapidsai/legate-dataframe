@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION.
 
 {% set pyproject_data = load_file_data("python/pyproject.toml") %}
 {% set version = environ['LEGATEDATAFRAME_PACKAGE_VERSION'] %}
@@ -60,7 +60,7 @@ requirements:
     # Only to ensure a nightly legate version we pick up
     # is compatible with an existing cupynumeric version.
     # (may also stabilize not using debug/sanitizer builds)
-    - cupynumeric
+    - cupynumeric {{ cupynumeric_version }}
     - python
     - pip
     - cython >=3.0.3

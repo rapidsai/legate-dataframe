@@ -22,5 +22,10 @@ cuda11_compiler:
 legate_version:
   - "=25.01.*,>=0.0.0.dev0"
 
+# TODO: The != temporary blocklist cupynumeric versions
+# using cupynumeric, because it is fewer versions to block.
+cupynumeric_version:
+  - "=25.01.*,>=0.0.0.dev0,!=25.01.0.dev62,!=25.01.0.dev61,!=25.01.0.dev60,!=25.01.0.rc1"
+
 rapids_version:
   - =24.12.*
