@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION
+# Copyright (c) 2024-2025, NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,6 +56,18 @@ def test_read_single_rows(tmp_path):
     ddf.to_csv(filenames, index=False)
     tbl = csv_read(filenames, dtypes=df.dtypes)
     assert_frame_equal(tbl, df)
+
+
+def test_read_single_many_columns(tmp_path):
+    # Legate has a limit on number of returns which limnits the
+    # number of columns (currently).  Make sure we support 100.
+    file = tmp_path / "file.csv"
+    # Write a file with many columns (and a few rows)
+    ncols = 120
+    for i in range(5):
+        file.write_text(",".join([str(i) for i in range(ncols)]) + "\n")
+
+    csv_read(file, dtypes=["str"] * ncols)
 
 
 def test_read_many_files_per_rank(tmp_path):
