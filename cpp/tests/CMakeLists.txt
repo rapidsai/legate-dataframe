@@ -1,5 +1,5 @@
 # =============================================================================
-# Copyright (c) 2023-2024, NVIDIA CORPORATION.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License. You may obtain a copy of the License at
@@ -39,8 +39,8 @@ target_compile_options(cpp_tests PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${LDF_TEST_
 
 # Note that fmt::fmt should not be required, but seems to be for debug builds.
 target_link_libraries(
-  cpp_tests PRIVATE LegateDataframe cudf cudf::cudftestutil cudf::cudftestutil_impl
-                    GTest::gmock GTest::gtest fmt::fmt $<TARGET_NAME_IF_EXISTS:conda_env>
+  cpp_tests PRIVATE LegateDataframe cudf cudf::cudftestutil cudf::cudftestutil_impl GTest::gmock
+                    GTest::gtest fmt::fmt $<TARGET_NAME_IF_EXISTS:conda_env>
 )
 rapids_test_add(
   NAME cpp_tests

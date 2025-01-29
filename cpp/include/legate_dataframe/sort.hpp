@@ -23,6 +23,20 @@
 
 namespace legate::dataframe {
 
+/**
+ * @brief Sort a logical table.
+ *
+ * Reorder the logical table so that the keys columns are sorted lexicographic
+ * based on their column_order and null_precedence.
+ *
+ * @param tbl The table to sort
+ * @param keys The column names to sort by.
+ * @param column_order Either ASCENDING or DESCENDING for each sort key/column.
+ * @param null_recedence Either BEFORE or AFTER for each sort key/column.
+ * AFTER means that nulls are considered larger and come last after an ascending
+ * and first after a descending sort.
+ * @return The sorted LogicalTable
+ */
 LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
                   const std::vector<cudf::order>& column_order,
