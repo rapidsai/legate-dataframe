@@ -60,15 +60,16 @@ def test_read_single_rows(tmp_path):
 
 def test_read_single_many_columns(tmp_path):
     # Legate has a limit on number of returns which limnits the
-    # number of columns (currently).  Make sure we support 1250.
-    # 2500+ are OK, but requires higher `--czmem`.
+    # number of columns (currently).  Make sure we support ~1000.
+    # As of legate 25.01 increasing this further requires increasing zcmem,
+    # future versions are likely to fix both issues.
     file = tmp_path / "file.csv"
     # Write a file with many columns (and a few rows)
-    ncols = 1250
+    ncols = 1000
     for i in range(5):
         file.write_text(",".join([str(i) for i in range(ncols)]) + "\n")
 
-    csv_read(file, dtypes=["str"] * ncols)
+    csv_read(file, dtypes=["int64"] * ncols)
 
 
 def test_read_many_files_per_rank(tmp_path):
