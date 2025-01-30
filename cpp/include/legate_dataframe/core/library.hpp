@@ -24,6 +24,7 @@ namespace task {
 
 namespace OpCode {
 enum : int {
+  ApplyBooleanMask,
   CSVWrite,
   CSVRead,
   ParquetWrite,

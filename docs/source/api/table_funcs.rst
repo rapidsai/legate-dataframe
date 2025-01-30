@@ -2,6 +2,9 @@ Table functions
 ===============
 
 .. autofunction::
+    legate_dataframe.lib.stream_compaction.apply_boolean_mask
+
+.. autofunction::
     legate_dataframe.lib.groupby_aggregation.groupby_aggregation
 
 .. autofunction::
