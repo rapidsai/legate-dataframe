@@ -38,7 +38,6 @@ def apply_boolean_mask(
     Returns
     -------
         The ``LogicalTable`` containing only the rows where the boolean_mask was true.
-
     """
     return LogicalTable.from_handle(
         cpp_apply_boolean_mask(tbl._handle, boolean_mask._handle))
