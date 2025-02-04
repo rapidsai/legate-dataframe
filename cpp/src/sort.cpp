@@ -309,6 +309,9 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
 
 class SortTask : public Task<SortTask, OpCode::Sort> {
  public:
+  static constexpr auto GPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};

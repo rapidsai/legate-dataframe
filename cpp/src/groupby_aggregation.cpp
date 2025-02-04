@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,9 @@ namespace task {
 
 class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::GroupByAggregation> {
  public:
+  static constexpr auto GPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};

@@ -82,6 +82,8 @@ class ExchangedSizes {
 
     // We have to sync here before proceeding as we need the sizes to arrive in order to
     // allocate communication buffers later.
+    auto task = ctx.get_legate_context();
+    task.concurrent_task_barrier();
     CHECK_NCCL(ncclAllGather(_all_sizes.ptr(ctx.rank * stride),
                              _all_sizes.ptr(0),
                              stride,
@@ -89,6 +91,7 @@ class ExchangedSizes {
                              task_nccl(ctx),
                              stream));
     LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
+    task.concurrent_task_barrier();
   }
 
   // TODO: implement a destructor that syncs and calls _all_sizes.destroy(). Currently,
@@ -198,6 +201,8 @@ shuffle(GPUTaskContext& ctx,
   }
 
   // Perform all-to-all exchange.
+  auto task = ctx.get_legate_context();
+  task.concurrent_task_barrier();
   CHECK_NCCL(ncclGroupStart());
 
   // Exchange metadata using the temporary stream `sizes.stream`.
@@ -225,6 +230,7 @@ shuffle(GPUTaskContext& ctx,
       col.gpu_data->data(), col.gpu_data->size(), ncclInt8, peer, task_nccl(ctx), ctx.stream()));
   }
   CHECK_NCCL(ncclGroupEnd());
+  task.concurrent_task_barrier();
 
   // We sync the temporary stream `sizes.stream`, since the unpacking needs the host-side metadata.
   LEGATE_CHECK_CUDA(cudaStreamSynchronize(sizes.stream));

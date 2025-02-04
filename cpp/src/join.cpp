@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -199,6 +199,9 @@ bool is_repartition_not_needed(const GPUTaskContext& ctx,
 
 class JoinTask : public Task<JoinTask, OpCode::Join> {
  public:
+  static constexpr auto GPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
