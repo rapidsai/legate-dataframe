@@ -60,16 +60,21 @@ std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
                                             int nsplits,
                                             bool include_start)
 {
-  auto nvalues_per_split = nvalues / nsplits;
-  auto nvalues_left      = nvalues - nvalues_per_split * nvalues;
-  if (nvalues_per_split == 0) {
-    nsplits = nvalues_left;  // Only return non-empty splits
+  cudf::size_type nvalues_per_split, nvalues_left;
+  if (nvalues < nsplits) {
+    // Only return non-empty splits (we could return one point multiple times)
+    nsplits           = nvalues;
+    nvalues_per_split = (nsplits > 0);
+    nvalues_left      = 0;
+  } else {
+    nvalues_per_split = nvalues / nsplits;
+    nvalues_left      = nvalues - nvalues_per_split * nsplits;
   }
 
   std::vector<cudf::size_type> split_values;
   cudf::size_type split_offset = 0;
 
-  if (include_start) { split_values.push_back(0); }
+  if (include_start && nvalues > 0) { split_values.push_back(0); }
 
   for (cudf::size_type i = 0; i < nsplits - 1; i++) {
     split_offset += nvalues_per_split;
@@ -77,7 +82,7 @@ std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
 
     split_values.push_back(split_offset);
   }
-  assert(split_offset += nvalues_per_split == nvalues);
+  assert(split_offset + nvalues_per_split == nvalues);
 
 #if DEBUG_SPLITS
   std::ostringstream splits_points_oss;
@@ -173,13 +178,18 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
     exchange_tables.push_back(my_splits);
   }
   auto [split_candidates_shared, owners_split] = shuffle(ctx, exchange_tables, nullptr);
+  if (my_split_cols_tbl->num_rows() == 0) {
+    // All nodes need to take part in the shuffle (no data here), but the below
+    // cannot search a length 0 table, so return immediately.
+    return nullptr;
+  }
   std::vector<cudf::order> column_orderx(column_order);
   std::vector<cudf::null_order> null_precedencex(null_precedence);
   column_orderx.insert(column_orderx.end(), {cudf::order::ASCENDING, cudf::order::ASCENDING});
   null_precedencex.insert(null_precedencex.end(),
                           {cudf::null_order::AFTER, cudf::null_order::AFTER});
 
-  // Merge is stable as it includes the rank and inde in the keys:
+  // Merge is stable as it includes the rank and index in the keys:
   auto split_candidates = cudf::merge(
     split_candidates_shared, all_keysx, column_orderx, null_precedencex, ctx.stream(), ctx.mr());
   owners_split.reset();  // copied into split_candidates
@@ -230,8 +240,9 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
 
   /*
    * Copy all the above information to the host and finalize the local splits.
+   * (we may have fewer than nranks split-points here and need to pad later.)
    */
-  auto nsplitpoints = ctx.nranks - 1;
+  auto nsplitpoints = split_value_inds->size();
   std::vector<cudf::size_type> split_candidates_first(nsplitpoints);
   std::vector<cudf::size_type> split_candidates_last(nsplitpoints);
   std::vector<cudf::size_type> split_candidates_equal(nsplitpoints);
@@ -270,16 +281,24 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
       splits_host->push_back(split_candidates_equal[i]);
     }
   }
+  // In the obscure case where there is less data than ranks, pad split points.
+  for (int i = nsplitpoints; i < ctx.nranks - 1; i++) {
+    splits_host->push_back(my_sorted_tbl.num_rows());
+  }
 
 #if DEBUG_SPLITS
   std::ostringstream full_splits_oss;
   full_splits_oss << "Final local split points @" << ctx.rank
                   << " (nrows=" << my_sorted_tbl.num_rows() << "):\n";
-  for (int i = 0; i < nsplitpoints; i++) {
-    full_splits_oss << "    " << splits_host->at(i) << ", split by r";
-    full_splits_oss << split_candidates_rank[i] << ": ";
-    full_splits_oss << split_candidates_first[i] << "<" << split_candidates_last[i];
-    full_splits_oss << ", r[ind]=" << split_candidates_equal[i] << "\n";
+  for (int i = 0; i < ctx.nranks - 1; i++) {
+    full_splits_oss << "    " << splits_host->at(i);
+    if (i < nsplitpoints) {
+      full_splits_oss << ", split by r" << split_candidates_rank[i] << ": ";
+      full_splits_oss << split_candidates_first[i] << "<" << split_candidates_last[i];
+      full_splits_oss << ", r[ind]=" << split_candidates_equal[i] << "\n";
+    } else {
+      full_splits_oss << " (no further split candidates)\n";
+    }
   }
   std::cout << full_splits_oss.str() << std::endl;
 #endif
@@ -300,12 +319,6 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     const auto stable          = argument::get_next_scalar<bool>(ctx);
     auto output                = argument::get_next_output<PhysicalTable>(ctx);
 
-    if (tbl.is_broadcasted() && ctx.rank != 1) {
-      // Note: It might be nice to just sort locally and keep it broadcast.
-      output.bind_empty_data();
-      return;
-    }
-
     // Create a new locally sorted table (we always need this)
     auto cudf_tbl  = tbl.table_view();
     auto key       = cudf_tbl.select(keys_idx);
@@ -313,7 +326,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     auto my_sorted_tbl =
       sort_func(cudf_tbl, key, column_order, null_precedence, ctx.stream(), ctx.mr());
 
-    if (ctx.nranks == 1 || tbl.is_broadcasted()) {
+    if (ctx.nranks == 1) {
       output.move_into(my_sorted_tbl->release());
       return;
     }
@@ -321,7 +334,17 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     auto split_indices = find_splits_for_distribution(
       ctx, my_sorted_tbl->view(), keys_idx, column_order, null_precedence);
 
-    auto partitions      = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
+    // If the local table has zero rows we cannot split it for sharing and
+    // split_indices will be null.  Exchange the (empty) table instead.
+    std::vector<cudf::table_view> partitions;
+    if (split_indices) {
+      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
+    } else {
+      assert(my_sorted_tbl->num_rows() == 0);
+      for (int i = 0; i < ctx.nranks; i++) {
+        partitions.push_back(my_sorted_tbl->view());
+      }
+    }
     auto [parts, owners] = shuffle(ctx, partitions, std::move(my_sorted_tbl));
 
     std::unique_ptr<cudf::table> result;

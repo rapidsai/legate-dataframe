@@ -20,6 +20,7 @@ import pytest
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.sort import NullOrder, Order, sort
+from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import assert_frame_equal
 
 
@@ -69,6 +70,22 @@ def test_basic_with_extra_column(values, stable):
         df_sorted = df.sort_values(by=["a"], kind="stable")
 
     assert_frame_equal(lg_sorted, df_sorted)
+
+
+@pytest.mark.parametrize("threshold", [0, 2])
+def test_empty_chunks(threshold):
+    # The sorting code needs to be careful when some ranks have zero rows.
+    # In that case we the rank has no split points to share and the total number
+    # of split points may be fewer than the number of ranks.
+    values = cupy.arange(-100, 100)
+    # Create a mask that has very few true values in the middle:
+    df = cudf.DataFrame({"a": values, "mask": abs(values) <= threshold})
+    lg_df = LogicalTable.from_cudf(df)
+
+    lg_result = sort(apply_boolean_mask(lg_df, lg_df["mask"]), ["a"])
+    df_result = df[df["mask"]].sort_values(by=["a"])
+
+    assert_frame_equal(lg_result, df_result)
 
 
 @pytest.mark.parametrize("reversed", [True, False])
