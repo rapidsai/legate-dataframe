@@ -3,6 +3,8 @@
 
 set -e -E -u -o pipefail
 
+source rapids-date-string
+
 rapids-print-env
 
 rapids-generate-version > ./VERSION

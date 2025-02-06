@@ -18,7 +18,7 @@ env:
   CUDAARCHS: "all-major"
   # where conda-python-build puts files it creates
   RAPIDS_CONDA_BLD_OUTPUT_DIR: /tmp/conda-bld-output
-
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
 
