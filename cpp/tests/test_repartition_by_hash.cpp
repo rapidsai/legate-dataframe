@@ -38,8 +38,9 @@ namespace {
 static const char* library_name = "test.repartition_by_hash";
 
 struct CheckHash : public legate::LegateTask<CheckHash> {
-  static constexpr auto TASK_ID             = legate::LocalTaskID{0};
-  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
+  static constexpr auto TASK_ID = legate::LocalTaskID{0};
+  static constexpr auto GPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_concurrent();
 
   static void gpu_variant(legate::TaskContext context)
   {
