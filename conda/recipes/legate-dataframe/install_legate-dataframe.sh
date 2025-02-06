@@ -3,5 +3,5 @@
 
 # Unfortunately, even though it is split, this steps builds so needs all requirements
 echo "installing C++ library and wheel"
-cmake --install cpp/build --component testing
+cmake --install cpp/build
 pip install python/legate_dataframe*.whl --no-deps
