@@ -48,4 +48,4 @@ rapids-mamba-retry install \
   --channel rapidsai \
   --channel conda-forge \
   --channel nvidia \
-    "legate-dataframe=${LEGATEDATAFRAME_VERSION}"
+    "legate-dataframe=${LEGATEDATAFRAME_VERSION}" legate-df-ctests

@@ -7,16 +7,15 @@
 {% set project_urls = project_data["urls"] %}
 {% set cuda_version = '.'.join(environ['RAPIDS_CUDA_VERSION'].split('.')[:2]) %}
 {% set cuda_major = cuda_version.split('.')[0] %}
+{% set date_string = environ['RAPIDS_DATE_STRING'] %}
 
 package:
-  name: legate-dataframe
-  version: {{ version }}
+  name: legate-dataframe-split
 
 source:
   path: ../../..
 
 build:
-  string: "cuda{{ cuda_major }}_py{{ py_version }}_{{ PKG_BUILDNUM }}"
   script_env:
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
@@ -70,32 +69,60 @@ requirements:
     - libcudf {{ rapids_version }}
     - librmm {{ rapids_version }}
     - pylibcudf {{ rapids_version }}
-  run:
-    - python
-    # cuda-version is used to constrain __cuda
-    - {{ pin_compatible('cuda-version', max_pin='x', min_pin='x') }}
-    - cuda-cudart
-    - __cuda
-    # Relying on run_exports from legate to pin an appropriate range of versions.
-    #
-    # legate uses {{ pin_subpackage(name, min_pin="x.x.x", max_pin="x.x.x") }}, which means
-    # that if legate-dataframe builds against, say, legate=24.09.0 and then a legate=24.09.1 is
-    # released, a new legate-dataframe would be required.
-    - legate
-    - numpy >=1.23,<3.0.0a0
-    - rmm {{ rapids_version }}
-    - cudf {{ rapids_version }}
 
-test:
-  # import tests at build time do not work for the CUDA packages,
-  # because builds happen on machines without a GPU.  So no tests.
-  commands:
-    - pip show legate-dataframe
+
+outputs:
+  - name: legate-dataframe
+    version: {{ version }}
+    string: "cuda{{ cuda_major }}_py{{ py_version }}_{{ PKG_BUILDNUM }}"
+    script: install_legate-dataframe.sh
+    requirements:
+      build:
+        - cmake {{ cmake_version }}
+      host:
+        - cuda-version ={{ cuda_version }}
+        - python
+        - pip
+      run:
+        - python
+        # cuda-version is used to constrain __cuda
+        - {{ pin_compatible('cuda-version', max_pin='x', min_pin='x') }}
+        - cuda-cudart
+        - __cuda
+        # Relying on run_exports from legate to pin an appropriate range of versions.
+        #
+        # legate uses {{ pin_subpackage(name, min_pin="x.x.x", max_pin="x.x.x") }}, which means
+        # that if legate-dataframe builds against, say, legate=24.09.0 and then a legate=24.09.1 is
+        # released, a new legate-dataframe would be required.
+        - legate
+        - numpy >=1.23,<3.0.0a0
+        - rmm {{ rapids_version }}
+        - cudf {{ rapids_version }}
+    run_exports:
+      - {{ pin_subpackage("legate-dataframe", max_pin="x.x") }}
+    test:
+      # import tests at build time do not work for the CUDA packages,
+      # because builds happen on machines without a GPU.  So no tests.
+      commands:
+        - pip show legate-dataframe
+  - name: legate-df-ctests
+    version: {{ version }}
+    script: install_ctests.sh
+    build:
+      number: {{ GIT_DESCRIBE_NUMBER }}
+      string: cuda{{ cuda_major }}_{{ date_string }}_{{ GIT_DESCRIBE_HASH }}_{{ GIT_DESCRIBE_NUMBER }}
+    requirements:
+      build:
+        - cmake {{ cmake_version }}
+      host:
+        - {{ pin_subpackage('legate-dataframe', exact=True) }}
+      run:
+        - {{ pin_subpackage('legate-dataframe', exact=True) }}
 
 about:
-  # home: {{ project_urls["Homepage"] }}
+  home: {{ project_urls["Homepage"] }}
   dev_url: {{ project_urls["Repository"] }}
-  # doc_url: {{ project_urls["Documentation"] }}
+  doc_url: {{ project_urls["Documentation"] }}
   license: {{ project_data["license"]["text"] }}
   license_family: Apache
   license_file: LICENSE

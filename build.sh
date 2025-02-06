@@ -26,7 +26,7 @@ HELP="$0 [clean] [liblegate_dataframe] [legate_dataframe] [legate] [-v] [-g] [-n
    test                        - test all of legate-dataframe (requires valgrind and compute-sanitizer)
    -v                          - verbose build mode
    -g                          - build for debug
-   -n                          - no install step
+   -n                          - no install step, also applies to python
    --cmake-args=\\\"<args>\\\" - pass arbitrary list of CMake configuration options (escape all quotes in argument)
    -h                          - print this text
    default action (no args) is to build and install 'liblegate_dataframe' and 'legate_dataframe' targets
@@ -153,9 +153,15 @@ if (( NUMARGS == 0 )) || hasArg legate_dataframe; then
     export INSTALL_PREFIX
     echo "building legate_dataframe..."
     cd ${REPODIR}/python/
+
+    if [[ ${INSTALL_TARGET} != "" ]]; then
+        PIP_COMMAND=install
+    else
+        PIP_COMMAND=wheel
+    fi
     SKBUILD_CONFIGURE_OPTIONS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX} -DCMAKE_LIBRARY_PATH=${LIBLEGATE_DATAFRAME_BUILD_DIR} ${EXTRA_CMAKE_ARGS}" \
         SKBUILD_BUILD_OPTIONS="-j${PARALLEL_LEVEL:-1}" \
-        python -m pip install --no-build-isolation --no-deps --config-settings rapidsai.disable-cuda=true ${VERBOSE_FLAG} .
+        python -m pip ${PIP_COMMAND} --no-build-isolation --no-deps --config-settings rapidsai.disable-cuda=true ${VERBOSE_FLAG} .
 fi
 
 

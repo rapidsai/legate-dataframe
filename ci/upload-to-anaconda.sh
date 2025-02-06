@@ -18,6 +18,7 @@ else
     declare -r conda_label="experimental"
 fi
 
+export SKIP_UPLOAD_PKGS="legate-df-ctests"
 PKGS_TO_UPLOAD=$(rapids-find-anaconda-uploads.py "${RAPIDS_LOCAL_CONDA_CHANNEL}")
 
 if [ -z "${PKGS_TO_UPLOAD}" ]; then
