@@ -16,9 +16,11 @@ on:
 env:
   # CUDA architectures to build for
   CUDAARCHS: "all-major"
+  # needed for some uses of rapidsai/gha-tools in build scripts, which
+  # use the GitHub CLI
+  GH_TOKEN: ${{ github.token }}
   # where conda-python-build puts files it creates
   RAPIDS_CONDA_BLD_OUTPUT_DIR: /tmp/conda-bld-output
-  GH_TOKEN: ${{ github.token }}
 
 jobs:
 
