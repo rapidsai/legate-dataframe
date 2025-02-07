@@ -1,11 +1,13 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
 # cython: language_level=3
 
 
+from libcpp.optional cimport optional
 from libcpp.string cimport string
+from libcpp.vector cimport vector
 
 from legate_dataframe.lib.core.table cimport LogicalTable, cpp_LogicalTable
 
@@ -19,7 +21,8 @@ cdef extern from "<legate_dataframe/parquet.hpp>" nogil:
         cpp_LogicalTable& tbl, const string& dirpath
     ) except +
     cpp_LogicalTable cpp_parquet_read "legate::dataframe::parquet_read"(
-        const string& glob_string
+        const string& glob_string,
+        optional[vector[string]]& columns,
     ) except +
 
 
@@ -54,7 +57,7 @@ def parquet_write(LogicalTable tbl, path: pathlib.Path | str) -> None:
 
 
 @_track_provenance
-def parquet_read(glob_string: pathlib.Path | str) -> LogicalTable:
+def parquet_read(glob_string: pathlib.Path | str, *, columns=None) -> LogicalTable:
     """Read Parquet files into a logical table
 
     Parameters
@@ -63,6 +66,8 @@ def parquet_read(glob_string: pathlib.Path | str) -> LogicalTable:
         The glob string to specify the Parquet files. All glob matches
         must be valid Parquet files and have the same LogicalTable data
         types. See <https://linux.die.net/man/7/glob>.
+    columns
+        List of strings selecting a subset of columns to read.
 
     Returns
     -------
@@ -72,6 +77,15 @@ def parquet_read(glob_string: pathlib.Path | str) -> LogicalTable:
     --------
     parquet_write: Write parquet data
     """
+    cdef vector[string] cpp_columns
+    cdef optional[vector[string]] cpp_columns_opt
+
+    if columns is not None:
+        for name in columns:
+            cpp_columns.push_back(name.encode("UTF-8"))
+
+        cpp_columns_opt = cpp_columns
+
     return LogicalTable.from_handle(
-        cpp_parquet_read(str(glob_string).encode('UTF-8'))
+        cpp_parquet_read(str(glob_string).encode('UTF-8'), cpp_columns_opt)
     )

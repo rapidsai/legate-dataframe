@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,6 +63,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
   {
     GPUTaskContext ctx{context};
     const auto file_paths  = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto columns     = argument::get_next_scalar_vector<std::string>(ctx);
     const auto nrows       = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrows_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg  = argument::get_next_output<PhysicalTable>(ctx);
@@ -92,6 +93,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
 
       auto src = cudf::io::source_info(file_paths[i]);
       auto opt = cudf::io::parquet_reader_options::builder(src);
+      opt.columns(columns);
       opt.skip_rows(file_rows_offset);
       opt.num_rows(file_rows_to_read);
       tables.emplace_back(std::move(cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl));
@@ -144,14 +146,16 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath)
   runtime->submit(std::move(task));
 }
 
-LogicalTable parquet_read(const std::string& glob_string)
+LogicalTable parquet_read(const std::string& glob_string,
+                          const std::optional<std::vector<std::string>>& columns)
 {
   std::vector<std::string> file_paths = parse_glob(glob_string);
   if (file_paths.empty()) { throw std::invalid_argument("no parquet files specified"); }
   // We read the meta data from the first file
   auto source  = cudf::io::source_info(file_paths[0]);
   auto options = cudf::io::parquet_reader_options::builder(source).num_rows(1);
-  auto result  = cudf::io::read_parquet(options);
+  if (columns.has_value()) { options.columns(columns.value()); }
+  auto result = cudf::io::read_parquet(options);
 
   // Get the column names
   std::vector<std::string> column_names;
@@ -173,9 +177,22 @@ LogicalTable parquet_read(const std::string& glob_string)
 
   LogicalTable ret = LogicalTable::empty_like(*result.tbl, column_names);
 
+  // cudf doesn't raise if names are missing, so check now (just to have a map)
+  auto names_in_table = ret.get_column_names();
+  if (columns.has_value() && columns.value().size() != names_in_table.size()) {
+    for (auto col : columns.value()) {
+      if (names_in_table.count(col) == 0) {
+        throw std::invalid_argument("column was not found in parquet file: " + std::string(col));
+      }
+    }
+    // Should never reach here:
+    throw std::invalid_argument("not all columns found in parquet file.");
+  }
+
   auto runtime          = legate::Runtime::get_runtime();
   legate::AutoTask task = runtime->create_task(get_library(), task::ParquetRead::TASK_ID);
   argument::add_next_scalar_vector(task, file_paths);
+  argument::add_next_scalar_vector(task, ret.get_column_name_vector());
   argument::add_next_scalar_vector(task, nrows);
   argument::add_next_scalar(task, nrows_total);
   argument::add_next_output(task, ret);

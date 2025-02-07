@@ -36,12 +36,26 @@ def test_write(tmp_path, df):
     assert_frame_equal(res, df)
 
 
+@pytest.mark.parametrize("columns", [None, ["b"], ["a", "b"], ["b", "a"], []])
 @pytest.mark.parametrize("df", std_dataframe_set())
-def test_read(tmp_path, df, npartitions=2, glob_string="/*"):
+def test_read(tmp_path, df, columns, npartitions=2, glob_string="/*"):
     ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
     ddf.to_parquet(path=tmp_path, index=False)
-    tbl = parquet_read(str(tmp_path) + glob_string)
-    assert_frame_equal(tbl, df)
+
+    has_cols = columns is None or all(c in df.keys() for c in columns)
+    if not has_cols:
+        with pytest.raises(ValueError):
+            parquet_read(str(tmp_path) + glob_string, columns=columns)
+    else:
+        tbl = parquet_read(str(tmp_path) + glob_string, columns=columns)
+        if columns is not None:
+            df = df.loc[:, columns]
+
+        if tbl.get_column_names():
+            assert_frame_equal(tbl, df)
+        else:
+            # Table is empty (and has no rows). cudf has an index, though.
+            assert len(df.keys()) == 0
 
 
 def test_read_single_rows(tmp_path, glob_string="/*"):

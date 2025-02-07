@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,8 +55,10 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath);
  *
  * @param glob_string The glob string to specify the Parquet files. All glob matches must be valid
  * Parquet files and have the same LogicalTable data types. See <https://linux.die.net/man/7/glob>.
+ * @param columns The columns names to read.
  * @return The read LogicalTable
  */
-LogicalTable parquet_read(const std::string& glob_string);
+LogicalTable parquet_read(const std::string& glob_string,
+                          const std::optional<std::vector<std::string>>& columns = std::nullopt);
 
 }  // namespace legate::dataframe

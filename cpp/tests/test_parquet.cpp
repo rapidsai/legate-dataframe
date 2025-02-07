@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,6 +51,29 @@ TYPED_TEST(NumericParquetTest, ReadWrite)
 
   CUDF_TEST_EXPECT_TABLES_EQUAL(tbl_a.get_cudf()->view(), tbl_b.get_cudf()->view());
   EXPECT_TRUE(tbl_a.get_column_names() == tbl_b.get_column_names());
+}
+
+TYPED_TEST(NumericParquetTest, ReadColumnSubset)
+{
+  TempDir tmp_dir{false};
+  auto filepath = tmp_dir.path() / "parquet_file";
+  cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3});
+  cudf::test::fixed_width_column_wrapper<TypeParam> b({4, 5, 6, 7});
+  const std::vector<std::string> column_names({"a", "b"});
+  LogicalTable tbl_a({LogicalColumn{a}, LogicalColumn{b}}, column_names);
+
+  parquet_write(tbl_a, tmp_dir);
+
+  // NB: since Legate execute tasks lazily, we issue a blocking fence
+  //     in order to wait until all files has been written to disk.
+  legate::Runtime::get_runtime()->issue_execution_fence(true);
+
+  std::vector<std::string> columns({"b"});
+  tbl_a              = tbl_a.select(columns);
+  LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet", columns);
+
+  CUDF_TEST_EXPECT_TABLES_EQUAL(tbl_a.get_cudf()->view(), tbl_b.get_cudf()->view());
+  EXPECT_TRUE(tbl_b.get_column_name_vector() == columns);
 }
 
 TYPED_TEST(NumericParquetTest, ReadWriteSingleItem)
