@@ -34,11 +34,6 @@ build:
     - SCCACHE_S3_KEY_PREFIX=legate-dataframe-linux64 # [linux64]
     - SCCACHE_S3_USE_SSL
     - SCCACHE_S3_NO_CREDENTIALS
-  ignore_run_exports_from:
-    - {{ compiler('cuda') }}
-    - cuda-python
-    - cuda-cudart-dev
-    - cupynumeric  # only a build dependency to help resolver
 
 requirements:
   build:
@@ -77,10 +72,14 @@ outputs:
     string: "cuda{{ cuda_major }}_py{{ py_version }}_{{ PKG_BUILDNUM }}"
     script: install_legate-dataframe.sh
     requirements:
+      # Note: cuda-version and legate (+cupynumeric) are here for their run-exports
       build:
         - cmake {{ cmake_version }}
+        - cuda-version ={{ cuda_version }}
       host:
         - cuda-version ={{ cuda_version }}
+        - legate {{ legate_version }} =*_gpu*
+        - cupynumeric {{ cupynumeric_version }}
         - python
         - pip
       run:
@@ -98,6 +97,8 @@ outputs:
         - numpy >=1.23,<3.0.0a0
         - rmm {{ rapids_version }}
         - cudf {{ rapids_version }}
+    ignore_run_exports_from:
+      - cupynumeric  # only a build dependency to help resolver
     run_exports:
       - {{ pin_subpackage("legate-dataframe", max_pin="x.x") }}
     test:
