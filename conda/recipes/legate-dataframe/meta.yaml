@@ -55,7 +55,7 @@ requirements:
     # the '<=12.6.0' can be removed once this is resolved:
     # https://github.com/conda-forge/cuda-python-feedstock/issues/95
     - cuda-python >=12.0,<13.0a0,<=12.6.0
-    - legate {{ legate_version }}
+    - legate {{ legate_version }} =*_gpu*
     # Only to ensure a nightly legate version we pick up
     # is compatible with an existing cupynumeric version.
     # (may also stabilize not using debug/sanitizer builds)
