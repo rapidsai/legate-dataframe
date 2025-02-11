@@ -72,10 +72,14 @@ outputs:
     string: "cuda{{ cuda_major }}_py{{ py_version }}_{{ PKG_BUILDNUM }}"
     script: install_legate-dataframe.sh
     requirements:
-      # Note: cuda-version and legate (+cupynumeric) are here for their run-exports
+      # Note: build/host exists for run-exports (except cmake, pip, and python)
+      # for librmm, libcudf, pylibcudf we rely on the rmm/cudf run dependency.
       build:
         - cmake {{ cmake_version }}
+        - {{ compiler('c') }}
+        - {{ compiler('cxx') }}
         - cuda-version ={{ cuda_version }}
+        - {{ stdlib("c") }}
       host:
         - cuda-version ={{ cuda_version }}
         - legate {{ legate_version }} =*_gpu*
