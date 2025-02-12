@@ -28,7 +28,10 @@
 
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/repartition_by_hash.hpp>
+#include <legate_dataframe/hashpartition.hpp>
 #include <legate_dataframe/join.hpp>
+
+#include <iostream>
 
 namespace legate::dataframe {
 namespace task {
@@ -257,6 +260,36 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
   }
 };
 
+
+class JoinLocalTask : public Task<JoinLocalTask, OpCode::JoinLocal> {
+ public:
+  static void gpu_variant(legate::TaskContext context)
+  {
+    GPUTaskContext ctx{context};
+    const auto lhs          = argument::get_next_input<PhysicalTable>(ctx);
+    const auto rhs          = argument::get_next_input<PhysicalTable>(ctx);
+    const auto lhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
+    const auto rhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
+    auto join_type          = argument::get_next_scalar<JoinType>(ctx);
+    auto null_equality      = argument::get_next_scalar<cudf::null_equality>(ctx);
+    const auto lhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
+    const auto rhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
+    auto output             = argument::get_next_output<PhysicalTable>(ctx);
+
+    cudf_join_and_gather(ctx,
+                          lhs.table_view(),
+                          rhs.table_view(),
+                          lhs_keys,
+                          rhs_keys,
+                          join_type,
+                          null_equality,
+                          lhs_out_cols,
+                          rhs_out_cols,
+                          output);
+  }
+};
+
+
 }  // namespace task
 
 namespace {
@@ -291,7 +324,8 @@ LogicalTable join(const LogicalTable& lhs,
                   const std::vector<size_t>& lhs_out_columns,
                   const std::vector<size_t>& rhs_out_columns,
                   cudf::null_equality compare_nulls,
-                  BroadcastInput broadcast)
+                  BroadcastInput broadcast,
+                  int _num_partitions)
 {
   auto runtime = legate::Runtime::get_runtime();
   if (lhs_keys.size() != rhs_keys.size()) {
@@ -330,33 +364,62 @@ LogicalTable join(const LogicalTable& lhs,
   auto ret_names = concat(lhs_out.get_column_name_vector(), rhs_out.get_column_name_vector());
   auto ret       = LogicalTable(std::move(ret_cols), std::move(ret_names));
 
-  legate::AutoTask task = runtime->create_task(get_library(), task::JoinTask::TASK_ID);
-  // TODO: While legate may broadcast some arrays, it would be good to add
-  //       a heuristic (e.g. based on the fact that we need to do copies
-  //       anyway, so the broadcast may actually copy less).
-  //       That could be done here, in a mapper, or within the task itself.
-  argument::add_next_input(task, lhs, broadcast == BroadcastInput::LEFT);
-  argument::add_next_input(task, rhs, broadcast == BroadcastInput::RIGHT);
-  argument::add_next_scalar_vector(task, std::vector<int32_t>(lhs_keys.begin(), lhs_keys.end()));
-  argument::add_next_scalar_vector(task, std::vector<int32_t>(rhs_keys.begin(), rhs_keys.end()));
-  argument::add_next_scalar(task, static_cast<std::underlying_type_t<JoinType>>(join_type));
-  argument::add_next_scalar(
-    task, static_cast<std::underlying_type_t<cudf::null_equality>>(compare_nulls));
-  argument::add_next_scalar_vector(
-    task, std::vector<int32_t>(lhs_out_columns.begin(), lhs_out_columns.end()));
-  argument::add_next_scalar_vector(
-    task, std::vector<int32_t>(rhs_out_columns.begin(), rhs_out_columns.end()));
-  argument::add_next_output(task, ret);
-  if (broadcast == BroadcastInput::AUTO) {
-    task.add_communicator("nccl");
-  } else if (join_type == JoinType::FULL ||
-             (broadcast == BroadcastInput::LEFT && join_type != JoinType::INNER)) {
-    throw std::runtime_error(
-      "Force broadcast was indicated, but repartitioning is required. "
-      "FULL joins do not support broadcasting and LEFT joins only for the "
-      "right hand side argument.");
+  // TODO(seberg): Should probably split also the nccl version (unless there is some memory disadvantage?)
+  if (_num_partitions != -1 && broadcast == BroadcastInput::AUTO) {
+    /* Try to use the local partition -> image constraints -> local join method */
+    std::cout << "Creating first partition" << std::endl;
+    auto [lhs_part, lhs_constraints] = legate::dataframe::hashpartition(lhs, lhs_keys, _num_partitions);
+    std::cout << "Creating second partition" << std::endl;
+    auto [rhs_part, rhs_constraints] = legate::dataframe::hashpartition(rhs, rhs_keys, _num_partitions);
+
+    std::cout << "Starting with local join setup" << std::endl;
+    legate::AutoTask task = runtime->create_task(get_library(), task::JoinLocalTask::TASK_ID);
+
+    argument::add_next_input(task, lhs, lhs_constraints);
+    argument::add_next_input(task, rhs, rhs_constraints);
+    argument::add_next_scalar_vector(task, std::vector<int32_t>(lhs_keys.begin(), lhs_keys.end()));
+    argument::add_next_scalar_vector(task, std::vector<int32_t>(rhs_keys.begin(), rhs_keys.end()));
+    argument::add_next_scalar(task, static_cast<std::underlying_type_t<JoinType>>(join_type));
+    argument::add_next_scalar(
+      task, static_cast<std::underlying_type_t<cudf::null_equality>>(compare_nulls));
+    argument::add_next_scalar_vector(
+      task, std::vector<int32_t>(lhs_out_columns.begin(), lhs_out_columns.end()));
+    argument::add_next_scalar_vector(
+      task, std::vector<int32_t>(rhs_out_columns.begin(), rhs_out_columns.end()));
+    argument::add_next_output(task, ret);
+
+    runtime->submit(std::move(task));
   }
-  runtime->submit(std::move(task));
+  else {
+    /* Use the NCCL approach (or no communication necessary) */
+    legate::AutoTask task = runtime->create_task(get_library(), task::JoinTask::TASK_ID);
+    // TODO: While legate may broadcast some arrays, it would be good to add
+    //       a heuristic (e.g. based on the fact that we need to do copies
+    //       anyway, so the broadcast may actually copy less).
+    //       That could be done here, in a mapper, or within the task itself.
+    argument::add_next_input(task, lhs, broadcast == BroadcastInput::LEFT);
+    argument::add_next_input(task, rhs, broadcast == BroadcastInput::RIGHT);
+    argument::add_next_scalar_vector(task, std::vector<int32_t>(lhs_keys.begin(), lhs_keys.end()));
+    argument::add_next_scalar_vector(task, std::vector<int32_t>(rhs_keys.begin(), rhs_keys.end()));
+    argument::add_next_scalar(task, static_cast<std::underlying_type_t<JoinType>>(join_type));
+    argument::add_next_scalar(
+      task, static_cast<std::underlying_type_t<cudf::null_equality>>(compare_nulls));
+    argument::add_next_scalar_vector(
+      task, std::vector<int32_t>(lhs_out_columns.begin(), lhs_out_columns.end()));
+    argument::add_next_scalar_vector(
+      task, std::vector<int32_t>(rhs_out_columns.begin(), rhs_out_columns.end()));
+    argument::add_next_output(task, ret);
+    if (broadcast == BroadcastInput::AUTO) {
+      task.add_communicator("nccl");
+    } else if (join_type == JoinType::FULL ||
+              (broadcast == BroadcastInput::LEFT && join_type != JoinType::INNER)) {
+      throw std::runtime_error(
+        "Force broadcast was indicated, but repartitioning is required. "
+        "FULL joins do not support broadcasting and LEFT joins only for the "
+        "right hand side argument.");
+    }
+    runtime->submit(std::move(task));
+  }
   return ret;
 }
 
@@ -368,7 +431,8 @@ LogicalTable join(const LogicalTable& lhs,
                   const std::vector<std::string>& lhs_out_columns,
                   const std::vector<std::string>& rhs_out_columns,
                   cudf::null_equality compare_nulls,
-                  BroadcastInput broadcast)
+                  BroadcastInput broadcast,
+                  int _num_partitions)
 {
   // Convert column names to indices
   std::set<size_t> lhs_keys_idx;
@@ -397,7 +461,8 @@ LogicalTable join(const LogicalTable& lhs,
               lhs_out_columns_idx,
               rhs_out_columns_idx,
               compare_nulls,
-              broadcast);
+              broadcast,
+              _num_partitions);
 }
 
 LogicalTable join(const LogicalTable& lhs,
@@ -431,6 +496,7 @@ namespace {
 void __attribute__((constructor)) register_tasks()
 {
   legate::dataframe::task::JoinTask::register_variants();
+  legate::dataframe::task::JoinLocalTask::register_variants();
 }
 
 }  // namespace

@@ -333,6 +333,16 @@ class PhysicalTable {
   [[nodiscard]] int32_t num_columns() const { return columns_.size(); }
 
   /**
+   * @brief Finds the global row offset of the table.
+   *
+   * @throws std::out_of_range if there is no column in the table.
+   * @throws std::runtime_error if the first column is unbound (assumes others are not)
+   *
+   * @return The row offset in number of rows (inclusive).
+   */
+  [[nodiscard]] int64_t global_row_offset() { return columns_.at(0).global_row_offset(); }
+
+  /**
    * @brief Return a cudf table view of this physical table
    *
    * NB: The physical table MUST outlive the returned view thus it is UB to do some-
@@ -434,6 +444,25 @@ std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
                                              const LogicalTable& tbl,
                                              bool broadcast = false);
 
+
+/**
+ * @brief Add a logical table to the next input task argument
+ *
+ * This adds alignment constraints to all logical columns within the table.
+ * This should match a call to `get_next_input<PhysicalTable>()` by a legate task.
+ *
+ * NB: the order of "add_next_*" calls must match the order of the
+ * corresponding "get_next_*" calls.
+ *
+ * @param task The legate task to add the argument.
+ * @param tbl The logical table to add as the next task argument.
+ * @param constraints A LogicalArray belonging to tbl as returned by `hashpartition`.
+ * If passed, these are added as imaging constraints for the table.
+ */
+std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
+                                             const LogicalTable& tbl,
+                                             const legate::LogicalArray& constraints);
+
 /**
  * @brief Add a logical table to the next output task argument
  *
@@ -452,10 +481,19 @@ template <>
 inline task::PhysicalTable get_next_input<task::PhysicalTable>(GPUTaskContext& ctx)
 {
   auto num_columns = get_next_scalar<int32_t>(ctx);
+  bool get_constraints = false;
+  if (num_columns < 0) {
+    num_columns = -num_columns;
+    get_constraints = true;
+  }
   std::vector<task::PhysicalColumn> cols;
   cols.reserve(num_columns);
   for (auto i = 0; i < num_columns; ++i) {
     cols.push_back(argument::get_next_input<task::PhysicalColumn>(ctx));
+  }
+  if (get_constraints) {
+    // Imaging constraints were added.  We don't need them, but must skip it.
+    ctx.get_next_input_arg();
   }
   return task::PhysicalTable(std::move(cols));
 }
