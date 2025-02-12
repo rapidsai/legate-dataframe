@@ -48,6 +48,7 @@ class Mapper : public legate::mapping::Mapper {
     const std::vector<legate::mapping::StoreTarget>& options) override
   {
     using legate::mapping::StoreMapping;
+   const auto task_id = static_cast<int>(task.task_id());
     std::vector<StoreMapping> mappings;
 
     // For now, we set "exact" policy for all Stores
@@ -58,8 +59,19 @@ class Mapper : public legate::mapping::Mapper {
         mappings.push_back(
           StoreMapping::default_mapping(store, options.front(), /*exact = */ true));
       }
+      // TODO: This is also needed for strings!
+      mappings.back().policy().ordering.set_c_order();
     }
+    bool first = false;
     for (const legate::mapping::Array& ary : task.outputs()) {
+      if (first && task_id == legate::dataframe::task::OpCode::HashPartition) {
+        /* The first output of HashPartition is mapped to the CPU */
+        mappings.push_back(
+          StoreMapping::default_mapping(ary.stores().at(0), legate::mapping::StoreTarget::SYSMEM, /*exact = */ true));
+        first = false;
+        continue;
+      }
+      first = false;
       if (ary.type().variable_size()) { continue; }
       for (const legate::mapping::Store& store : ary.stores()) {
         mappings.push_back(
@@ -128,7 +140,7 @@ legate::Library create_and_registrate_library()
   }
   // Set with_has_allocations globally since currently all tasks allocate (and libcudf may also)
   // Also ensure we can generally work with 1000+ non-string return columns.
-  auto options = legate::VariantOptions{}.with_has_allocations(true).with_return_size(32768);
+  auto options = legate::VariantOptions{}.with_has_allocations(true);
   auto context =
     legate::Runtime::get_runtime()->find_or_create_library(library_name,
                                                            legate::ResourceConfig{},

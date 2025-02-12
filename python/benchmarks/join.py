@@ -114,6 +114,7 @@ def run_legate(args):
             rhs_keys=["rhs-key"],
             join_type=JoinType.INNER,
             compare_nulls=null_equality.EQUAL,
+            _num_paritions=args.legate_parts,
         )
         t1 = blocking_timing()
         return t1 - t0, res.num_rows()
@@ -246,6 +247,12 @@ if __name__ == "__main__":
         metavar="RMM_POOL_SIZE",
         default=None,
         help="The initial RMM pool size e.g. 1GiB (default: disabled).",
+    )
+    parser.add_argument(
+        "--legate-parts",
+        default=-1,
+        type=int,
+        help="Use legate partitioning approach (and how many partitions).",
     )
     args = parser.parse_args()
     main(args)

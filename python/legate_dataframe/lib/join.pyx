@@ -6,6 +6,7 @@
 
 
 from libc.stdint cimport int32_t
+from libcpp cimport bool as cpp_bool
 from libcpp.set cimport set as cpp_set
 from libcpp.string cimport string
 from libcpp.vector cimport vector
@@ -49,7 +50,8 @@ cdef extern from "<legate_dataframe/join.hpp>" nogil:
         const vector[string]& lhs_out_columns,
         const vector[string]& rhs_out_columns,
         null_equality compare_nulls,
-        BroadcastInput broadcast
+        BroadcastInput broadcast,
+        int _num_paritions
     ) except +
 
 
@@ -64,7 +66,8 @@ def join(
     lhs_out_columns: Optional[Iterable[str]] = None,
     rhs_out_columns: Optional[Iterable[str]] = None,
     null_equality compare_nulls = null_equality.EQUAL,
-    BroadcastInput broadcast = BroadcastInput.AUTO
+    BroadcastInput broadcast = BroadcastInput.AUTO,
+    int _num_paritions = -1,
 ):
     """Perform an join between the specified tables.
 
@@ -100,6 +103,10 @@ def join(
         to all workers (i.e. copied fully).  This can be much faster,
         as it avoids more complex all-to-all communication.
         Defaults to ``AUTO`` which may do this based on the data size.
+    _num_paritions : int, default -1
+        TODO(seberg): For testing only.  With -1 (default), uses the NCCL approach.
+        Otherwise, uses a legate partitioning approach.
+        *Has no effect for a broadcast join.*
 
     Returns
     -------
@@ -141,6 +148,7 @@ def join(
             lhs_out_columns_vector,
             rhs_out_columns_vector,
             compare_nulls,
-            broadcast
+            broadcast,
+            _num_paritions,
         )
     )

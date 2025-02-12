@@ -45,6 +45,9 @@ enum class BroadcastInput : int32_t { AUTO = 0, LEFT, RIGHT };
  * @param rhs_out_columns Indices of the right hand table columns to include in the result.
  * @param compare_nulls Controls whether null join-key values should match or not
  * @param broadcast Which, if any, of the inputs should be copied to all workers.
+ * @param _num_partitions TODO: For testing.
+ * The  number of partitions to use.  If -1 uses the nccl approach instead.  If
+ * broadcast is not AUTO, this is ignored (no shuffling is needed).
  * @return The joining result
  */
 LogicalTable join(const LogicalTable& lhs,
@@ -55,7 +58,8 @@ LogicalTable join(const LogicalTable& lhs,
                   const std::vector<size_t>& lhs_out_columns,
                   const std::vector<size_t>& rhs_out_columns,
                   cudf::null_equality compare_nulls = cudf::null_equality::EQUAL,
-                  BroadcastInput broadcast          = BroadcastInput::AUTO);
+                  BroadcastInput broadcast          = BroadcastInput::AUTO,
+                  int _num_partitions = -1);
 
 /**
  * @brief Perform a join between the specified tables.
@@ -75,6 +79,9 @@ LogicalTable join(const LogicalTable& lhs,
  * @param rhs_out_columns Names of the right hand table columns to include in the result.
  * @param compare_nulls Controls whether null join-key values should match or not
  * @param broadcast Which, if any, of the inputs should be copied to all workers.
+ * @param _num_partitions TODO: For testing.
+ * The  number of partitions to use.  If -1 uses the nccl approach instead.  If
+ * broadcast is not AUTO, this is ignored (no shuffling is needed).
  * @return The joining result
  */
 LogicalTable join(const LogicalTable& lhs,
@@ -85,7 +92,8 @@ LogicalTable join(const LogicalTable& lhs,
                   const std::vector<std::string>& lhs_out_columns,
                   const std::vector<std::string>& rhs_out_columns,
                   cudf::null_equality compare_nulls = cudf::null_equality::EQUAL,
-                  BroadcastInput broadcast          = BroadcastInput::AUTO);
+                  BroadcastInput broadcast          = BroadcastInput::AUTO,
+                  int _num_partitions = -1);
 
 /**
  * @brief Perform a join between the specified tables.
