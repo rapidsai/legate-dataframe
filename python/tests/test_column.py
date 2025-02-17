@@ -1,11 +1,18 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import cudf
 import pytest
+from legate.core import StoreTarget, get_legate_runtime
+from pylibcudf.unary import UnaryOperator
 
 from legate_dataframe import LogicalColumn, LogicalTable
-from legate_dataframe.testing import assert_frame_equal, get_column_set
+from legate_dataframe.lib.unaryop import unary_operation
+from legate_dataframe.testing import (
+    assert_frame_equal,
+    get_column_set,
+    guess_available_mem,
+)
 
 
 def test_column_name_by_index():
@@ -74,3 +81,33 @@ def test_huge_string_roundtrip(size):
     del col_lg
 
     assert col_cudf_arrow == col_lg_arrow
+
+
+def test_offload_to():
+    # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
+    available_mem_gpu, available_mem_cpu = guess_available_mem()
+    if not available_mem_gpu or not available_mem_cpu:
+        pytest.skip(reason="Could not guess available GPU or SYSMEM.")
+    if available_mem_cpu < available_mem_gpu * 2.5:
+        pytest.skip(reason="Need a more SYSMEM than GPU mem for test.")
+
+    length = available_mem_gpu // 10 // 8 * 1024**2
+    col = cudf.Series([1], dtype="int64")
+    col = col.repeat(length)
+    col_lg = LogicalColumn.from_cudf(col._column)
+
+    results = []
+    for i in range(15):
+        # Taking the negative 20 times can't possibly fit into GPU memory
+        res = unary_operation(col_lg, UnaryOperator.ABS)
+        # but should work if we offload all results
+        res.offload_to(StoreTarget.SYSMEM)
+        results.append(res)
+
+        # Make sure we clean up before we continue (or finalize the program)
+        # (As of writing, doing it every time prevents a hang.)
+        get_legate_runtime().issue_execution_fence(block=True)
+
+    # Not sure if helpful, but delete and wait.
+    del col_lg, results
+    get_legate_runtime().issue_execution_fence(block=True)

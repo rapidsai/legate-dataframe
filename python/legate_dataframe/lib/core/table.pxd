@@ -9,6 +9,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
+from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
 
 
 cdef extern from "<legate_dataframe/core/table.hpp>" nogil:
@@ -24,6 +25,7 @@ cdef extern from "<legate_dataframe/core/table.hpp>" nogil:
         cpp_LogicalColumn& get_column(size_t column_index) except +
         cpp_LogicalColumn& get_column(const string& column_index) except +
         vector[string] get_column_name_vector() except +
+        void offload_to(cpp_StoreTarget target_mem) except +
         string repr(size_t max_num_items) except +
 
 

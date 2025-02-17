@@ -14,6 +14,7 @@ from cudf._lib.column cimport Column as cudfColumn
 from cudf._lib.scalar cimport DeviceScalar
 from pylibcudf.libcudf.column.column cimport column
 
+from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
 from legate_dataframe.lib.core.legate_task cimport get_auto_task_handle
 from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
 
@@ -160,6 +161,22 @@ cdef class LogicalColumn:
             "version": 1,
             "data": {Field("LogicalColumn", array.type): array},
         }
+
+    def offload_to(self, cpp_StoreTarget target_mem):
+        """Offload the underlying data to the specified memory.
+
+        This method offloads the underlying data to the specified target memory.
+        The purpose of this is to free up GPU memory resources.
+        See :external:cpp:func:`legate::LogicalArray::offload_to` for more
+        information.
+
+        Parameters
+        ----------
+        target_mem : legate.core.StoreTarget
+            The memory kind to offload to. To offload to the CPU use
+            ``legate.core.StoreTarget.SYSMEM``.
+        """
+        self._handle.offload_to(target_mem)
 
     def to_cudf(self) -> cudfColumn:
         """Copy the logical column into a local cudf column

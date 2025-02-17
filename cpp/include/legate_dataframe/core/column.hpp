@@ -218,6 +218,21 @@ class LogicalColumn {
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
   /**
+   * @brief Offload column to the specified target memory (default SYSMEM).
+   *
+   * This method offloads the underlying data to the specified target memory.
+   * The purpose of this is to free up GPU memory resources.
+   * See `legate::LogicalArray::offload_to` for more information.
+   *
+   * @param target_mem The `legate::mapping::StoreTarget` target memory.
+   * This will be `legate::mapping::StoreTarget::SYSMEM` to move data to the CPU.
+   */
+  void offload_to(legate::mapping::StoreTarget target_mem) const
+  {
+    return array_->offload_to(target_mem);
+  }
+
+  /**
    * @brief Indicates whether the column is unbound
    *
    * @return true The column is unbound

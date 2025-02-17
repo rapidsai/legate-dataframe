@@ -9,6 +9,7 @@ from libcpp.utility cimport move
 from libcpp.vector cimport vector
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
+from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
 from legate_dataframe.lib.core.table cimport cpp_LogicalTable
 
 from typing import Iterable
@@ -202,6 +203,22 @@ cdef class LogicalTable:
         for i in range(names.size()):
             ret.append(names.at(i).decode('UTF-8'))
         return ret
+
+    def offload_to(self, cpp_StoreTarget target_mem):
+        """Offload the underlying data to the specified memory.
+
+        This method offloads the underlying data to the specified target memory.
+        The purpose of this is to free up GPU memory resources.
+        See :external:cpp:func:`legate::LogicalArray::offload_to` for more
+        information.
+
+        Parameters
+        ----------
+        target_mem : legate.core.StoreTarget
+            The memory kind to offload to. To offload to the CPU use
+            ``legate.core.StoreTarget.SYSMEM``.
+        """
+        self._handle.offload_to(target_mem)
 
     def to_cudf(self) -> cudf.DataFrame:
         """Copy the logical table into a local cudf table
