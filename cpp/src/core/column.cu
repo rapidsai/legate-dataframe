@@ -295,7 +295,8 @@ cudf::column_view PhysicalColumn::column_view() const
 namespace {
 
 struct move_into_fn {
-  template <typename T, std::enable_if_t<cudf::is_rep_layout_compatible<T>()>* = nullptr>
+  template <typename T, std::enable_if_t<cudf::is_rep_layout_compatible<T>() ||
+                                         cudf::is_fixed_width<T>()>* = nullptr>
   void operator()(GPUTaskContext* ctx,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
@@ -325,9 +326,10 @@ struct move_into_fn {
     } else {
       auto out =
         array.data().create_output_buffer<T, 1>(legate::Point<1>(num_rows), true /* bind_buffer */);
+      auto cudf_ptr = static_cast<char const*>(cudf_col.head()) + (cudf_col.offset() * cudf::size_of(cudf_col.type()));
       LEGATE_CHECK_CUDA(cudaMemcpyAsync(out.ptr(0),
-                                        cudf_col.data<T>(),
-                                        cudf_col.size() * sizeof(T),
+                                        cudf_ptr,
+                                        cudf_col.size() * cudf::size_of(cudf_col.type()),
                                         cudaMemcpyDeviceToDevice,
                                         stream));
     }
@@ -380,8 +382,9 @@ struct move_into_fn {
   }
 
   template <typename T,
-            std::enable_if_t<!(cudf::is_rep_layout_compatible<T>() ||
-                               std::is_same_v<T, cudf::string_view>)>* = nullptr>
+            std::enable_if_t<!(cudf::is_fixed_width<T>() ||
+                               std::is_same_v<T, cudf::string_view> ||
+                               cudf::is_fixed_width<T>())>* = nullptr>
   void operator()(GPUTaskContext* ctx,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
@@ -429,7 +432,7 @@ namespace argument {
 
 legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col, bool broadcast)
 {
-  add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+  add_next_scalar(task, col.cudf_type());
   add_next_scalar(task, col.unbound() ? -1 : static_cast<int64_t>(col.num_rows()));
   auto arr      = col.get_logical_array();
   auto variable = task.add_input(arr);
@@ -439,7 +442,7 @@ legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col
 
 legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& col)
 {
-  add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+  add_next_scalar(task, col.cudf_type());
   add_next_scalar(task, col.unbound() ? -1 : static_cast<int64_t>(col.num_rows()));
   return {task.add_output(col.get_logical_array())};
 }

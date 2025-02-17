@@ -48,7 +48,7 @@ def test_column_name_by_string():
 )
 def test_column_dtype(cudf_column):
     col = LogicalColumn.from_cudf(cudf_column)
-    assert col.dtype() == cudf_column.dtype
+    assert col.cudf_dtype() == cudf_column.dtype
 
 
 @pytest.mark.skip(reason="Test is fairly slow and requires a lot of GPU memory.")

@@ -175,10 +175,16 @@ legate::Type to_legate_type(cudf::type_id dtype)
     case cudf::type_id::DURATION_NANOSECONDS: {
       return legate::int64();
     }
+    case cudf::type_id::DECIMAL32: {
+      return legate::int32();
+    }
+    case cudf::type_id::DECIMAL64: {
+      return legate::int64();
+    }
+    case cudf::type_id::DECIMAL128: {
+      return legate::binary_type(16);  // for lack of an int128
+    }
     case cudf::type_id::DICTIONARY32:
-    case cudf::type_id::DECIMAL32:
-    case cudf::type_id::DECIMAL64:
-    case cudf::type_id::DECIMAL128:
     case cudf::type_id::LIST:
     case cudf::type_id::STRUCT:
     default: throw std::invalid_argument("unsupported cudf datatype");

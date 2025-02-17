@@ -141,8 +141,14 @@ std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggreg
     case cudf::aggregation::Kind::NUNIQUE: {
       return cudf::make_nunique_aggregation<cudf::groupby_aggregation>();
     }
+    case cudf::aggregation::Kind::COUNT_ALL: {
+      return cudf::make_count_aggregation<cudf::groupby_aggregation>(cudf::null_policy::INCLUDE);
+    }
+    case cudf::aggregation::Kind::COUNT_VALID: {
+      return cudf::make_count_aggregation<cudf::groupby_aggregation>(cudf::null_policy::EXCLUDE);
+    }
     default: {
-      throw std::invalid_argument("Unsupported groupby aggregation");
+      throw std::invalid_argument("Unsupported groupby aggregation " + std::to_string(kind));
     }
   }
 }
@@ -178,8 +184,12 @@ LogicalColumn make_output_column(const LogicalColumn& values, cudf::aggregation:
       // These might be nullable even when the input isn't
       return LogicalColumn::empty_like(dtype, /* nullable = */ true);
     }
+    case cudf::aggregation::Kind::COUNT_ALL:
+    case cudf::aggregation::Kind::COUNT_VALID: {
+      return LogicalColumn::empty_like(cudf::data_type(cudf::type_id::INT64), /* nullable = */ false);
+    }
     default: {
-      throw std::invalid_argument("Unsupported groupby aggregation");
+      throw std::invalid_argument("Unsupported groupby aggregation " + std::to_string(kind));
     }
   }
 }

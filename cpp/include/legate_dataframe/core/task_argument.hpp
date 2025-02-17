@@ -17,8 +17,11 @@
 #pragma once
 
 #include <vector>
+#include <cstdint>
 
 #include <legate.h>
+
+#include <cudf/types.hpp>
 
 #include <legate_dataframe/core/task_context.hpp>
 
@@ -46,6 +49,15 @@ template <>
 inline void add_next_scalar<legate::Scalar>(legate::AutoTask& task, const legate::Scalar& scalar)
 {
   task.add_scalar_arg(scalar);
+}
+
+template <>
+inline void add_next_scalar<cudf::data_type>(legate::AutoTask& task, const cudf::data_type& type)
+{
+  add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(type.id()));
+  if (type.id() == cudf::type_id::DECIMAL32 || type.id() == cudf::type_id::DECIMAL64) {
+    add_next_scalar(task, type.scale());
+  }
 }
 
 /**
@@ -82,9 +94,22 @@ void add_next_scalar_vector(AutoTask& task, const std::vector<T>& scalars)
  * @return The value of the scalar argument.
  */
 template <typename T>
-T get_next_scalar(GPUTaskContext& ctx)
+inline T get_next_scalar(GPUTaskContext& ctx)
 {
   return ctx.get_next_scalar_arg().value<T>();
+}
+
+
+template <>
+inline cudf::data_type get_next_scalar(GPUTaskContext& ctx)
+{
+  auto type_id = ctx.get_next_scalar_arg().value<cudf::type_id>();
+  if (type_id == cudf::type_id::DECIMAL32 || type_id == cudf::type_id::DECIMAL64) {
+    auto scale = ctx.get_next_scalar_arg().value<int32_t>();
+
+    return cudf::data_type{type_id, scale};
+  }
+  return cudf::data_type{type_id};
 }
 
 /**

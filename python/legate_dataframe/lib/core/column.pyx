@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -12,6 +12,7 @@ from libcpp.utility cimport move
 
 from cudf._lib.column cimport Column as cudfColumn
 from pylibcudf.libcudf.column.column cimport column
+from pylibcudf.types cimport DataType
 
 from legate_dataframe.lib.core.legate_task cimport get_auto_task_handle
 from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
@@ -112,7 +113,7 @@ cdef class LogicalColumn:
         """
         return self._handle.num_rows()
 
-    def dtype(self) -> DtypeObj:
+    def cudf_dtype(self) -> DtypeObj:
         """Returns the cudf data type of the row elements
 
         Returns
@@ -120,6 +121,9 @@ cdef class LogicalColumn:
             The cudf data type
         """
         return cpp_cudf_type_to_cudf_dtype(self._handle.cudf_type())
+
+    def dtype(self) -> pylibcudf.types.DataType:
+        return DataType.from_libcudf(self._handle.cudf_type())
 
     def get_logical_array(self) -> LogicalArray:
         """Return the underlying logical array

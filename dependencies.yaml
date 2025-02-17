@@ -178,6 +178,7 @@ dependencies:
           - pytest>=7.0
           - dask-cuda==24.12.*
           - dask-cudf==24.12.*
+          - ibis-framework
       - output_types: conda
         packages:
           - cuda-sanitizer-api
