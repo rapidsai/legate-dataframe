@@ -68,4 +68,5 @@ autosummary_generate = True
 # ensure links to third-party docs work
 intersphinx_mapping = {
     "cudf": ("https://docs.rapids.ai/api/cudf/stable/", None),
+    "legate": ("https://docs.nvidia.com/legate/latest/", None),
 }

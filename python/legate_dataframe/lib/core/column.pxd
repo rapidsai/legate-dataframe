@@ -11,6 +11,7 @@ from libcpp.string cimport string
 from pylibcudf.libcudf.column.column cimport column, column_view
 from pylibcudf.types cimport data_type
 
+from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
 from legate_dataframe.lib.core.legate_task cimport cpp_AutoTask
 from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
 
@@ -29,6 +30,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         unique_ptr[column] get_cudf() except +
         string repr(size_t max_num_items) except +
         data_type cudf_type() except +
+        void offload_to(cpp_StoreTarget target_mem) except +
 
     void cpp_add_next_input "legate::dataframe::argument::add_next_input"(
         const cpp_AutoTask &task,
