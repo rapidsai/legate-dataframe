@@ -68,7 +68,6 @@ channels:
   - rapidsai
   - legate
   - legate/label/rc
-  - legate/label/branch-25.01
   - legate/label/experimental
   - conda-forge
   - nvidia
@@ -174,7 +173,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - cupynumeric==25.01.*,>=0.0.0.dev0
+          - cupynumeric==25.03.*,>=0.0.0.dev0
           - pytest>=7.0
           - dask-cuda==24.12.*
           - dask-cudf==24.12.*
@@ -218,7 +217,7 @@ dependencies:
     common:
       - output_types: [conda, pyproject, requirements]
         packages:
-          - legate==25.01.*,>=0.0.0.dev0
+          - legate==25.03.*,>=0.0.0.dev0
 
   depends_on_libcudf:
     common:

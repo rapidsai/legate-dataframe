@@ -127,8 +127,7 @@ legate::Library create_and_registrate_library()
     GlobalMemoryResource::set_as_default_mmr_resource();
   }
   // Set with_has_allocations globally since currently all tasks allocate (and libcudf may also)
-  // Also ensure we can generally work with 1000+ non-string return columns.
-  auto options = legate::VariantOptions{}.with_has_allocations(true).with_return_size(32768);
+  auto options = legate::VariantOptions{}.with_has_allocations(true);
   auto context =
     legate::Runtime::get_runtime()->find_or_create_library(library_name,
                                                            legate::ResourceConfig{},
