@@ -209,7 +209,7 @@ cdef class LogicalTable:
 
         This method offloads the underlying data to the specified target memory.
         The purpose of this is to free up GPU memory resources.
-        See :external:cpp:function:`legate::LogicalArray::offload_to` for more
+        See :external:cpp:func:`legate::LogicalArray::offload_to` for more
         information.
 
         Parameters
