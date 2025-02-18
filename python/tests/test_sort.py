@@ -17,6 +17,7 @@ import cudf
 import cupy
 import numpy as np
 import pytest
+from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.sort import NullOrder, Order, sort
@@ -109,6 +110,9 @@ def test_shifted_equal_window(reversed):
         df_sorted = df.sort_values(by=["a"], kind="stable")
 
         assert_frame_equal(lg_sorted, df_sorted)
+
+        # Block for stability with lower memory (not sure if it should be here)
+        get_legate_runtime().issue_execution_fence(block=True)
 
 
 @pytest.mark.parametrize("stable", [True, False])
