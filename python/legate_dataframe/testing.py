@@ -1,12 +1,15 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import argparse
+import os
 from typing import Any, List
 
 import cudf
 import cudf.core.column
 import cudf.testing
 import cupy
+import legate.core
 import numpy as np
 import pytest
 
@@ -170,3 +173,29 @@ def get_column_set(dtypes, nulls=True):
             series = series.mask(np.random.randint(2, size=len(series), dtype=bool))
 
         yield pytest.param(series._column, id=f"col({dtype}, nulls={nulls})")
+
+
+def guess_available_mem():
+    """Function that guesses the available GPU and SYSMEM memory in MiB based
+    on the ``LEGATE_CONFIG`` environment variable.
+    If the variable is not found or doesn't include ``--fbmem``/``--sysmem``
+    returns None for the non-available one.
+
+    Returns a tuple of ``(gpumem, sysmem)``
+    """
+    config = os.environ.get("LEGATE_CONFIG", "")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--fbmem", type=int, default=None)
+    # could probably factor in CPUs, but probably OK in practice.
+    parser.add_argument("--sysmem", type=int, default=None)
+
+    args, _ = parser.parse_known_args(config.split())
+
+    ngpus = legate.core.get_machine().count(legate.core.TaskTarget.GPU)
+    ncpus = legate.core.get_machine().count(legate.core.TaskTarget.CPU)
+
+    fbmem = args.fbmem * ngpus if args.fbmem is not None else None
+    sysmem = args.sysmem * ncpus if args.sysmem is not None else None
+
+    return fbmem, sysmem

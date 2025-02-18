@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -258,6 +258,23 @@ class LogicalTable {
     }
     return LogicalTable(std::move(columns), std::move(names));
   };
+
+  /**
+   * @brief Offload all columns to the specified target memory.
+   *
+   * This method offloads the underlying data to the specified target memory.
+   * The purpose of this is to free up GPU memory resources.
+   * See `legate::LogicalArray::offload_to` for more information.
+   *
+   * @param target_mem The `legate::mapping::StoreTarget` target memory.
+   * This will be `legate::mapping::StoreTarget::SYSMEM` to move data to the CPU.
+   */
+  void offload_to(legate::mapping::StoreTarget target_mem) const
+  {
+    for (const auto& col : columns_) {
+      return col.offload_to(target_mem);
+    }
+  }
 
   /**
    * @brief Indicates whether the table is unbound

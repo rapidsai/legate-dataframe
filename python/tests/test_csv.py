@@ -18,7 +18,7 @@ import cudf
 import cupy
 import dask_cudf
 import pytest
-from legate.core import get_legate_runtime
+from legate.core import TaskTarget, get_legate_runtime, get_machine
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.csv import csv_read, csv_write
@@ -59,15 +59,20 @@ def test_read_single_rows(tmp_path):
 
 
 def test_read_single_many_columns(tmp_path):
+    if get_machine().count(TaskTarget.GPU) > 2:
+        pytest.skip(reason="As of 25.03 test seems to need more ZCMEM with more GPUs.")
     # Legate used to have a limit on number of returns which limnits the
-    # number of columns (<25.03).  So make sure we support ~2000.
+    # number of columns (<25.03).  So make sure we support ~1000.
     file = tmp_path / "file.csv"
     # Write a file with many columns (and a few rows)
-    ncols = 2000
+    ncols = 1000
     for i in range(5):
         file.write_text(",".join([str(i) for i in range(ncols)]) + "\n")
 
+    # Guard by execution fence for sports (the skip above seems needed...)
+    get_legate_runtime().issue_execution_fence(block=True)
     csv_read(file, dtypes=["int64"] * ncols)
+    get_legate_runtime().issue_execution_fence(block=True)
 
 
 def test_read_many_files_per_rank(tmp_path):

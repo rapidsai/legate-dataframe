@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -166,6 +166,21 @@ class LogicalColumn {
   std::unique_ptr<cudf::column> get_cudf(
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
+
+  /**
+   * @brief Offload column to the specified target memory (default SYSMEM).
+   *
+   * This method offloads the underlying data to the specified target memory.
+   * The purpose of this is to free up GPU memory resources.
+   * See `legate::LogicalArray::offload_to` for more information.
+   *
+   * @param target_mem The `legate::mapping::StoreTarget` target memory.
+   * This will be `legate::mapping::StoreTarget::SYSMEM` to move data to the CPU.
+   */
+  void offload_to(legate::mapping::StoreTarget target_mem) const
+  {
+    return array_->offload_to(target_mem);
+  }
 
   /**
    * @brief Indicates whether the column is unbound
