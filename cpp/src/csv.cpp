@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,12 +58,13 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
   {
     GPUTaskContext ctx{context};
     const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto all_column_names = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_names     = argument::get_next_scalar_vector<std::string>(ctx);
     const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
     const auto na_filter        = argument::get_next_scalar<bool>(ctx);
     const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
     const auto nbytes           = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nbytes_total     = argument::get_next_scalar<size_t>(ctx);
+    const auto read_header      = argument::get_next_scalar<bool>(ctx);
     PhysicalTable tbl_arg       = argument::get_next_output<PhysicalTable>(ctx);
     argument::get_parallel_launch_task(ctx);
 
@@ -78,7 +79,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
     std::map<std::string, cudf::data_type> dtypes_map;
     for (size_t i = 0; i < dtypes.size(); i++) {
-      dtypes_map[all_column_names[use_cols_indexes[i]]] = dtypes[i];
+      dtypes_map[column_names[i]] = dtypes[i];
     }
 
     // Iterate through the file and nrow list and read as many rows from the
@@ -99,18 +100,18 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
       auto src = cudf::io::source_info(file_paths[i]);
       auto opt = cudf::io::csv_reader_options::builder(src);
-      if (file_bytes_offset != 0) {
+      if (file_bytes_offset != 0 || !read_header) {
         // Reading the header makes only sense at the start of a file
         // TODO: If the header is read, could sanity check columns for multiple files.
         opt.header(-1);
       }
-      opt.names(all_column_names);
       opt.delimiter(delimiter);
       opt.na_filter(na_filter);
       opt.dtypes(dtypes_map);
       opt.byte_range_offset(file_bytes_offset);
       opt.byte_range_size(file_bytes_to_read);
       opt.use_cols_indexes(use_cols_indexes);
+      opt.names(column_names);
 
       auto read_table = cudf::io::read_csv(opt, ctx.stream(), ctx.mr()).tbl;
 
@@ -174,13 +175,22 @@ LogicalTable csv_read(const std::string& glob_string,
                       const std::vector<cudf::data_type>& dtypes,
                       bool na_filter,
                       char delimiter,
-                      const std::optional<std::vector<std::string>>& usecols)
+                      const std::optional<std::vector<std::string>>& names,
+                      const std::optional<std::vector<int>>& usecols)
 {
   std::vector<std::string> file_paths = parse_glob(glob_string);
   if (file_paths.empty()) { throw std::invalid_argument("no csv files specified"); }
 
-  if (usecols.has_value() && usecols.value().size() != dtypes.size()) {
-    throw std::invalid_argument("usecols and dtypes must have same number of entries.");
+  if (usecols.has_value()) {
+    if (!names.has_value()) {
+      throw std::invalid_argument("If usecols is given names must also be given.");
+    }
+    if (usecols.value().size() != dtypes.size()) {
+      throw std::invalid_argument("usecols, names, and dtypes must have same number of entries.");
+    }
+  }
+  if (names.has_value() && names.value().size() != dtypes.size()) {
+    throw std::invalid_argument("usecols, names, and dtypes must have same number of entries.");
   }
 
   // We read the column names from the first file.
@@ -188,7 +198,13 @@ LogicalTable csv_read(const std::string& glob_string,
   // rows to make a guess (but especially with nullable data that can fail).
   auto source  = cudf::io::source_info(file_paths[0]);
   auto options = cudf::io::csv_reader_options::builder(source);
-  options.nrows(0);
+  if (usecols.has_value()) {
+    options.use_cols_indexes(usecols.value());
+    options.header(-1);
+    options.nrows(1);  // Try to read one row to error on a bad file.
+  } else {
+    options.nrows(0);
+  }
   options.delimiter(delimiter);
   auto result = cudf::io::read_csv(options);
 
@@ -208,7 +224,18 @@ LogicalTable csv_read(const std::string& glob_string,
   column_names.reserve(dtypes.size());
   columns.reserve(dtypes.size());
   use_cols_indexes.reserve(dtypes.size());
-  if (!usecols.has_value()) {
+  if (usecols.has_value()) {
+    // We seem to have to sort usecols and names?  Just do so with a map...
+    std::map<size_t, size_t> reorder_map;
+    for (size_t i = 0; i < usecols.value().size(); i++) {
+      reorder_map[usecols.value().at(i)] = i;
+    }
+    for (const auto& [column_index, i] : reorder_map) {
+      use_cols_indexes.push_back(column_index);
+      column_names.push_back(names.value().at(i));
+      columns.emplace_back(LogicalColumn::empty_like(dtypes.at(i), true));
+    }
+  } else if (!names.has_value()) {
     if (all_column_names.size() != dtypes.size()) {
       throw std::invalid_argument("number of columns in csv doesn't match number of dtypes.");
     }
@@ -220,12 +247,12 @@ LogicalTable csv_read(const std::string& glob_string,
       use_cols_indexes.push_back(column_index);
     }
   } else {
-    // Translate provided usecols to (sorted) indexes for passing to the task
+    // Translate provided names to (sorted) indexes for passing to the task
     // and create the corresponding columns in the same order.
     // TODO: This can probably be simplified, as we could pass the names and sorting
     //       should be unnecessary.  It is good to check for columns not found, though.
     std::map<std::string, size_t> provided_names;
-    for (const auto& name : usecols.value()) {
+    for (const auto& name : names.value()) {
       const auto [_, success] = provided_names.insert({name, provided_names.size()});
       if (!success) { throw std::invalid_argument("all column names must be unique"); }
     }
@@ -262,13 +289,14 @@ LogicalTable csv_read(const std::string& glob_string,
   auto runtime          = legate::Runtime::get_runtime();
   legate::AutoTask task = runtime->create_task(get_library(), task::CSVRead::TASK_ID);
   argument::add_next_scalar_vector(task, file_paths);
-  argument::add_next_scalar_vector(task, all_column_names);
+  argument::add_next_scalar_vector(task, column_names);
   argument::add_next_scalar_vector(task, use_cols_indexes);
   argument::add_next_scalar(task, na_filter);
   // legate doesn't accept char so we use int32_t instead
   argument::add_next_scalar(task, static_cast<int32_t>(delimiter));
   argument::add_next_scalar_vector(task, nbytes);
   argument::add_next_scalar(task, nbytes_total);
+  argument::add_next_scalar(task, !usecols.has_value());
   argument::add_next_output(task, ret);
   argument::add_parallel_launch_task(task);
   runtime->submit(std::move(task));

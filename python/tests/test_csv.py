@@ -129,7 +129,7 @@ def test_usecols(tmp_path):
     df = cudf.DataFrame({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
     df.to_csv(tmp_path / "tmp.csv", index=False)
 
-    with pytest.raises(ValueError, match="usecols and dtypes must"):
+    with pytest.raises(ValueError, match="usecols, names, and dtypes"):
         csv_read(str(tmp_path) + "/*", dtypes=["int64", "int64"], usecols=["a"])
 
     with pytest.raises(ValueError, match="column 'bad-name' not found"):
@@ -142,6 +142,36 @@ def test_usecols(tmp_path):
 
     read_tbl = csv_read(
         str(tmp_path) + "/*", dtypes=["int64", "float64"], usecols=["c", "b"]
+    )
+    assert_frame_equal(read_tbl, df[["b", "c"]].astype({"b": "float64"}))
+
+
+def test_usecols_and_names_no_header(tmp_path):
+    df = cudf.DataFrame({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
+    file_path = tmp_path / "tmp.csv"
+    df.to_csv(file_path, index=False)
+
+    # Remove the header (first line):
+    file_path.write_text("\n".join(file_path.read_text().split("\n")[1:]))
+
+    with pytest.raises(ValueError, match="usecols, names, and dtypes"):
+        csv_read(
+            str(tmp_path) + "/*", dtypes=["int64", "int64"], usecols=[0, 2], names=["a"]
+        )
+
+    read_tbl = csv_read(
+        str(tmp_path) + "/*",
+        dtypes=["int64", "float64"],
+        usecols=[1, 2],
+        names=["b", "c"],
+    )
+    assert_frame_equal(read_tbl, df[["b", "c"]].astype({"c": "float64"}))
+
+    read_tbl = csv_read(
+        str(tmp_path) + "/*",
+        dtypes=["int64", "float64"],
+        usecols=[2, 1],
+        names=["c", "b"],
     )
     assert_frame_equal(read_tbl, df[["b", "c"]].astype({"b": "float64"}))
 

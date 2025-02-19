@@ -14,5 +14,6 @@ def csv_read(
     *,
     na_filter: bool = False,
     delimiter: str = ",",
-    usecols: Iterable[str] | None,
+    usecols: Iterable[str | int] | None,
+    names: Iterable[str] | None,
 ) -> LogicalTable: ...

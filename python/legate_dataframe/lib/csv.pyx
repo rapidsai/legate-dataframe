@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -25,7 +25,8 @@ cdef extern from "<legate_dataframe/csv.hpp>" nogil:
         const vector[cpp_cudf_type]& out,
         cpp_bool na_filter,
         char delimiter,
-        optional[vector[string]]& names
+        optional[vector[string]]& names,
+        optional[vector[int]]& usecols
     ) except +
 
 
@@ -65,7 +66,9 @@ def csv_write(LogicalTable tbl, path, delimiter=","):
 
 
 @_track_provenance
-def csv_read(glob_string, *, dtypes, na_filter=True, delimiter=",", usecols=None):
+def csv_read(
+    glob_string, *, dtypes, na_filter=True, delimiter=",", usecols=None, names=None
+):
     """Read csv files into a logical table
 
     Parameters
@@ -80,9 +83,13 @@ def csv_read(glob_string, *, dtypes, na_filter=True, delimiter=",", usecols=None
         Whether to detect missing values, set to ``False`` to improve performance.
     delimiter : str, optional
         The field delimiter.
-    usecols : iterable of str or None, optional
+    usecols : iterable of str or int or None, optional
         If given, must match `dtypes` in length and denotes column names to
         be extracted from the file.
+        If passes as integers, implies the file has no header and names must
+        be passed.
+    names : iterable of str
+        The names of the read columns, must be used with integral usecols.
 
     Returns
     -------
@@ -94,15 +101,28 @@ def csv_read(glob_string, *, dtypes, na_filter=True, delimiter=",", usecols=None
     lib.parquet.parquet_write: Write parquet data
     """
     cdef vector[cpp_cudf_type] cpp_dtypes
-    cdef vector[string] cpp_usecols
-    cdef optional[vector[string]] cpp_usecols_opt
+    cdef vector[string] cpp_names
+    cdef vector[int] cpp_usecols
+    cdef optional[vector[string]] cpp_names_opt
+    cdef optional[vector[int]] cpp_usecols_opt
 
     for dtype in dtypes:
         cpp_dtypes.push_back(as_data_type(dtype))
 
+    # Slightly awkward.  C++ uses `names` as string `usecols`.
+    if names is None:
+        names = usecols  # usecols must be column names then.
+        usecols = None
+
+    if names is not None:
+        for name in names:
+            cpp_names.push_back(name.encode("UTF-8"))
+
+        cpp_names_opt = cpp_names
+
     if usecols is not None:
-        for name in usecols:
-            cpp_usecols.push_back(name.encode("UTF-8"))
+        for indx in usecols:
+            cpp_usecols.push_back(indx)
 
         cpp_usecols_opt = cpp_usecols
 
@@ -111,6 +131,7 @@ def csv_read(glob_string, *, dtypes, na_filter=True, delimiter=",", usecols=None
             str(glob_string).encode('UTF-8'),
             cpp_dtypes, <cpp_bool>na_filter,
             ord(str(delimiter).encode('UTF-8')),
-            cpp_usecols_opt
+            cpp_names_opt,
+            cpp_usecols_opt,
         )
     )

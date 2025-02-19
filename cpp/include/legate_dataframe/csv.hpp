@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,21 +56,24 @@ void csv_write(LogicalTable& tbl, const std::string& dirpath, char delimiter = '
  *
  * Note that file order is currently glob/string sorted.
  *
- * TODO: This function does currently not support passing csv reader
- *       parameters.
+ * TODO: We should replace some/all params with cudf::io::csv_reader_options eventually.
+ *       As if writing, this would be better with pylibcudf 25.02 which cannot be quite used.
  *
  * @param glob_string The glob string to specify the csv files. All glob matches must be valid
  * csv files and have the same layout. See <https://linux.die.net/man/7/glob>.
  * @param dtypes The cudf type for each column (must match usecols).
  * @param na_filter Whether to detect missing values, set to false to improve performance.
  * @param delimiter The field delimiter.
- * @param usecols The column names to read from the file, if not passed reads all columns.
+ * @param names The column names to read from the file, if not passed reads all columns.
+ * @param usecols Column index in file.  If given, assumes the file includes no header.
+ * passing `usecols_idx` without names is not supported.
  * @return The read LogicalTable.
  */
 LogicalTable csv_read(const std::string& glob_string,
                       const std::vector<cudf::data_type>& dtypes,
-                      bool na_filter                                         = true,
-                      char delimiter                                         = ',',
-                      const std::optional<std::vector<std::string>>& usecols = std::nullopt);
+                      bool na_filter                                       = true,
+                      char delimiter                                       = ',',
+                      const std::optional<std::vector<std::string>>& names = std::nullopt,
+                      const std::optional<std::vector<int>>& usecols       = std::nullopt);
 
 }  // namespace legate::dataframe
