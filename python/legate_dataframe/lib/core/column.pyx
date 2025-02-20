@@ -97,6 +97,10 @@ cdef class LogicalColumn:
             return LogicalColumn.from_handle(
                 cpp_LogicalColumn(dereference(scalar.get_raw_ptr()))
             )
+        else:
+            raise TypeError(
+                "from_cudf() only supports cudf columns and device scalars."
+            )
 
     @staticmethod
     def empty_like_logical_column(LogicalColumn col) -> LogicalColumn:

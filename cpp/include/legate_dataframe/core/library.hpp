@@ -37,6 +37,7 @@ enum : int {
   Join,
   ToTimestamps,
   ExtractTimestampComponent,
+  ReduceLocal,
   Sequence,
   Sort,
   GroupByAggregation

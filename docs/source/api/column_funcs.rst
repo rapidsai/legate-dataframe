@@ -11,6 +11,9 @@ Column functions
     legate_dataframe.lib.timestamps.to_timestamps
 
 .. autofunction::
+    legate_dataframe.lib.reduction.reduce
+
+.. autofunction::
     legate_dataframe.lib.replace.replace_nulls
 
 

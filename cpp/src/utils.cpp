@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -181,7 +181,10 @@ legate::Type to_legate_type(cudf::type_id dtype)
     case cudf::type_id::DECIMAL128:
     case cudf::type_id::LIST:
     case cudf::type_id::STRUCT:
-    default: throw std::invalid_argument("unsupported cudf datatype");
+    default:
+      throw std::invalid_argument(
+        "unsupported cudf datatype: " +
+        std::to_string(static_cast<std::underlying_type_t<cudf::type_id>>(dtype)));
   }
 }
 
