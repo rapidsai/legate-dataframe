@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION
+# Copyright (c) 2023-2025, NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ import cupy
 import pytest
 
 from legate_dataframe import LogicalTable
-from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.lib.join import BroadcastInput, JoinType, join
+from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import assert_frame_equal
 
 

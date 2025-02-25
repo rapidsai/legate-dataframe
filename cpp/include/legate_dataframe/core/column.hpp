@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -242,12 +242,8 @@ class PhysicalColumn {
    * column is part of. Use a negative value to indicate that the number of rows is
    * unknown.
    */
-  PhysicalColumn(GPUTaskContext& ctx,
-                 legate::PhysicalArray array,
-                 cudf::data_type cudf_type)
-    : ctx_{&ctx},
-      array_{std::move(array)},
-      cudf_type_{std::move(cudf_type)}
+  PhysicalColumn(GPUTaskContext& ctx, legate::PhysicalArray array, cudf::data_type cudf_type)
+    : ctx_{&ctx}, array_{std::move(array)}, cudf_type_{std::move(cudf_type)}
   {
   }
 
@@ -339,10 +335,7 @@ class PhysicalColumn {
    *
    * @return true if data is partitioned.
    */
-  [[nodiscard]] bool is_partitioned() const
-  {
-    return array_.data().is_partitioned();
-  }
+  [[nodiscard]] bool is_partitioned() const { return array_.data().is_partitioned(); }
 
   /**
    * @brief Return a cudf column view of this physical column
@@ -423,8 +416,7 @@ inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(GPUTaskContext&
 {
   auto cudf_type_id = static_cast<cudf::type_id>(
     argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
-  return task::PhysicalColumn(
-    ctx, ctx.get_next_input_arg(), cudf::data_type{cudf_type_id});
+  return task::PhysicalColumn(ctx, ctx.get_next_input_arg(), cudf::data_type{cudf_type_id});
 }
 
 template <>
@@ -432,8 +424,7 @@ inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(GPUTaskContext
 {
   auto cudf_type_id = static_cast<cudf::type_id>(
     argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
-  return task::PhysicalColumn(
-    ctx, ctx.get_next_output_arg(), cudf::data_type{cudf_type_id});
+  return task::PhysicalColumn(ctx, ctx.get_next_output_arg(), cudf::data_type{cudf_type_id});
 }
 
 }  // namespace argument

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -385,10 +385,7 @@ class PhysicalTable {
    * @throw std::out_of_range if the table doesn't have at least one column.
    * @return true if data is partitioned.
    */
-  [[nodiscard]] bool is_partitioned() const
-  {
-    return columns_.at(0).is_partitioned();
-  }
+  [[nodiscard]] bool is_partitioned() const { return columns_.at(0).is_partitioned(); }
 
   /**
    * @brief Releases ownership of the `column`s by returning a vector of
