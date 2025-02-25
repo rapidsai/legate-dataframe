@@ -161,7 +161,7 @@ cudf::table_view revert_broadcast(GPUTaskContext& ctx,
                                   const PhysicalTable& table,
                                   std::vector<std::unique_ptr<cudf::table>>& owners)
 {
-  if (ctx.rank == 0 || !table.is_broadcasted()) {
+  if (ctx.rank == 0 || table.is_partitioned()) {
     return table.table_view();
   } else {
     owners.push_back(no_rows_table_like(table));
@@ -215,9 +215,10 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
     const auto rhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
     auto output             = argument::get_next_output<PhysicalTable>(ctx);
 
-    const bool lhs_broadcasted = lhs.is_broadcasted();
-    const bool rhs_broadcasted = rhs.is_broadcasted();
-    if (lhs_broadcasted && rhs_broadcasted) {
+    /* Use "is_paritioned" to check if the table is broadcast. */
+    const bool lhs_broadcasted = !lhs.is_partitioned();
+    const bool rhs_broadcasted = !rhs.is_partitioned();
+    if (lhs_broadcasted && rhs_broadcasted && ctx.nranks != 1) {
       throw std::runtime_error("join(): cannot have both the lhs and the rhs broadcasted");
     }
 

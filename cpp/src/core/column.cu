@@ -232,11 +232,6 @@ std::string LogicalColumn::repr(size_t max_num_items) const
 
 namespace task {
 
-bool PhysicalColumn::is_broadcasted() const
-{
-  return ctx_->nranks > 1 && num_rows() == global_num_rows();
-}
-
 std::string PhysicalColumn::repr(legate::Memory::Kind mem_kind,
                                  cudaStream_t stream,
                                  size_t max_num_items) const
@@ -430,7 +425,6 @@ namespace argument {
 legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col, bool broadcast)
 {
   add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
-  add_next_scalar(task, col.unbound() ? -1 : static_cast<int64_t>(col.num_rows()));
   auto arr      = col.get_logical_array();
   auto variable = task.add_input(arr);
   if (broadcast) { task.add_constraint(legate::broadcast(variable, {0})); }
@@ -440,7 +434,6 @@ legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col
 legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& col)
 {
   add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
-  add_next_scalar(task, col.unbound() ? -1 : static_cast<int64_t>(col.num_rows()));
   return {task.add_output(col.get_logical_array())};
 }
 

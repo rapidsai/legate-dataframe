@@ -122,22 +122,6 @@ std::string LogicalTable::repr(size_t max_num_items_ptr_column) const
   return ss.str();
 }
 
-namespace task {
-
-bool PhysicalTable::is_broadcasted() const
-{
-  const bool ret = std::any_of(
-    columns_.cbegin(), columns_.cend(), [](const auto& col) { return col.is_broadcasted(); });
-
-  if (ret && !std::all_of(columns_.cbegin(), columns_.cend(), [](const auto& col) {
-        return col.is_broadcasted();
-      })) {
-    throw std::runtime_error("A table cannot mix broadcasted and non-broadcasted columns");
-  }
-  return ret;
-}
-}  // namespace task
-
 namespace argument {
 std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
                                              const LogicalTable& tbl,

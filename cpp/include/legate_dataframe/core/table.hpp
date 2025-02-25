@@ -313,19 +313,6 @@ class PhysicalTable {
 
  public:
   /**
-   * @brief Indicates whether the table has been broadcasted or not
-   *
-   * Legate may broadcast small input data such that each task in a parallel launch gets the same
-   * copy of the data.
-   *
-   * @throw std::runtime_error if the table is unbound.
-   * @throw std::runtime_error if some columns are broadcasted and some are not.
-   * @return true The table has been broadcasted to all parallel tasks
-   * @return false The table is distributed between parallel tasks as usual
-   */
-  [[nodiscard]] bool is_broadcasted() const;
-
-  /**
    * @brief Returns the number of columns
    *
    * @return The number of columns
@@ -384,6 +371,25 @@ class PhysicalTable {
       col.bind_empty_data();
     }
   }
+
+  /**
+   * @brief Returns true if the data is partitioned.
+   *
+   * You can use this to check whether a column is partitioned, please see
+   * `legate::PhysicalStore::is_partitioned` for more information.
+   * This can be used to check whether a column is broadcasted (i.e. partitioned
+   * is false), meaning that all workers see the same data.
+   *
+   * This function relies on tables always adding an alignment constraint.
+   *
+   * @throw std::out_of_range if the table doesn't have at least one column.
+   * @return true if data is partitioned.
+   */
+  [[nodiscard]] bool is_partitioned() const
+  {
+    return columns_.at(0).is_partitioned();
+  }
+
   /**
    * @brief Releases ownership of the `column`s by returning a vector of
    * the constituent columns.

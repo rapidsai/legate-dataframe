@@ -239,18 +239,15 @@ class PhysicalColumn {
    * @param ctx The context of the calling task
    * @param array The logical array (zero copy)
    * @param cudf_type The cudf data type of the column
-   * @param global_num_rows The number of rows of the logical column this physical
    * column is part of. Use a negative value to indicate that the number of rows is
    * unknown.
    */
   PhysicalColumn(GPUTaskContext& ctx,
                  legate::PhysicalArray array,
-                 cudf::data_type cudf_type,
-                 int64_t global_num_rows)
+                 cudf::data_type cudf_type)
     : ctx_{&ctx},
       array_{std::move(array)},
-      cudf_type_{std::move(cudf_type)},
-      global_num_rows_{global_num_rows}
+      cudf_type_{std::move(cudf_type)}
   {
   }
 
@@ -274,18 +271,6 @@ class PhysicalColumn {
     const std::vector<legate::PhysicalStore> ss = get_stores(array_);
     return std::any_of(ss.cbegin(), ss.cend(), [](const auto& s) { return s.is_unbound_store(); });
   }
-
-  /**
-   * @brief Indicates whether the column has been broadcasted or not
-   *
-   * Legate may broadcast small input data such that each task in a parallel launch gets the same
-   * copy of the data.
-   *
-   * @throw std::runtime_error if column is unbound.
-   * @return true The column has been broadcasted to all parallel tasks
-   * @return false The column is distributed between parallel tasks as usual
-   */
-  [[nodiscard]] bool is_broadcasted() const;
 
   /**
    * @brief Get the data type of the underlying logical array
@@ -345,18 +330,18 @@ class PhysicalColumn {
   }
 
   /**
-   * @brief Returns the number of rows of the logical column this physical column is part of.
+   * @brief Returns true if the data is partitioned.
    *
-   * @throw std::runtime_error if the global number of rows are unknown.
-   * @return The number of rows
+   * You can use this to check whether a column is partitioned, please see
+   * `legate::PhysicalStore::is_partitioned` for more information.
+   * This can be used to check whether a column is broadcasted (i.e. partitioned
+   * is false), meaning that all workers see the same data.
+   *
+   * @return true if data is partitioned.
    */
-  [[nodiscard]] int64_t global_num_rows() const
+  [[nodiscard]] bool is_partitioned() const
   {
-    if (global_num_rows_ < 0) {
-      throw std::runtime_error(
-        "The global number of rows are unknown, must likely because the column is/was unbound");
-    }
-    return global_num_rows_;
+    return array_.data().is_partitioned();
   }
 
   /**
@@ -396,7 +381,6 @@ class PhysicalColumn {
   GPUTaskContext* ctx_;
   legate::PhysicalArray array_;
   const cudf::data_type cudf_type_;
-  const int64_t global_num_rows_;
   mutable std::vector<std::unique_ptr<cudf::column>> tmp_cols_;
   mutable std::vector<rmm::device_buffer> tmp_null_masks_;
 };
@@ -439,9 +423,8 @@ inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(GPUTaskContext&
 {
   auto cudf_type_id = static_cast<cudf::type_id>(
     argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
-  auto global_num_rows = argument::get_next_scalar<int64_t>(ctx);
   return task::PhysicalColumn(
-    ctx, ctx.get_next_input_arg(), cudf::data_type{cudf_type_id}, global_num_rows);
+    ctx, ctx.get_next_input_arg(), cudf::data_type{cudf_type_id});
 }
 
 template <>
@@ -449,9 +432,8 @@ inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(GPUTaskContext
 {
   auto cudf_type_id = static_cast<cudf::type_id>(
     argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
-  auto global_num_rows = argument::get_next_scalar<int64_t>(ctx);
   return task::PhysicalColumn(
-    ctx, ctx.get_next_output_arg(), cudf::data_type{cudf_type_id}, global_num_rows);
+    ctx, ctx.get_next_output_arg(), cudf::data_type{cudf_type_id});
 }
 
 }  // namespace argument

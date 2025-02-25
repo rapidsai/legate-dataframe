@@ -37,16 +37,12 @@ struct GlobalRowOffsetTask : public legate::LegateTask<GlobalRowOffsetTask> {
     GPUTaskContext ctx{context};
     auto tbl                               = argument::get_next_input<task::PhysicalTable>(ctx);
     auto output                            = argument::get_next_output<task::PhysicalColumn>(ctx);
-    auto global_num_rows                   = argument::get_next_scalar<int64_t>(ctx);
     std::vector<task::PhysicalColumn> cols = tbl.release();
     int64_t offset                         = cols.at(0).global_row_offset();
     int64_t nrows                          = cols.at(0).num_rows();
 
     // We expect the columns of a table are aligned.
     EXPECT_EQ(offset, cols.at(1).global_row_offset());
-
-    // Check the global number of rows
-    EXPECT_EQ(global_num_rows, cols.at(0).global_num_rows());
 
     // Write our row offset and size
     cudf::test::fixed_width_column_wrapper<int64_t> out({offset, nrows});
@@ -76,21 +72,21 @@ struct TaskArgumentMix : public legate::LegateTask<TaskArgumentMix> {
     const auto input = argument::get_next_input<task::PhysicalColumn>(ctx);
     {
       auto [scalar_idx, input_idx, output_idx] = ctx.get_task_argument_indices();
-      EXPECT_EQ(scalar_idx, 2);
+      EXPECT_EQ(scalar_idx, 1);
       EXPECT_EQ(input_idx, 1);
       EXPECT_EQ(output_idx, 0);
     }
     auto output = argument::get_next_output<task::PhysicalColumn>(ctx);
     {
       auto [scalar_idx, input_idx, output_idx] = ctx.get_task_argument_indices();
-      EXPECT_EQ(scalar_idx, 4);
+      EXPECT_EQ(scalar_idx, 2);
       EXPECT_EQ(input_idx, 1);
       EXPECT_EQ(output_idx, 1);
     }
     auto scalar = argument::get_next_scalar<int32_t>(ctx);
     {
       auto [scalar_idx, input_idx, output_idx] = ctx.get_task_argument_indices();
-      EXPECT_EQ(scalar_idx, 5);
+      EXPECT_EQ(scalar_idx, 3);
       EXPECT_EQ(input_idx, 1);
       EXPECT_EQ(output_idx, 1);
     }
