@@ -40,7 +40,7 @@ repos:
       - id: clang-format
         types_or: [c, c++, cuda]
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v0.4.0
+    rev: v0.6.0
     hooks:
       - id: verify-copyright
   - repo: local
@@ -78,7 +78,7 @@ repos:
             ^CHANGELOG.md$
           )
   - repo: https://github.com/rapidsai/dependency-file-generator
-    rev: v1.17.0
+    rev: v1.17.1
     hooks:
         - id: rapids-dependency-file-generator
           args: ["--clean"]
