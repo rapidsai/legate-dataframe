@@ -17,7 +17,6 @@
 #include <legate.h>
 
 #include <cudf/replace.hpp>
-#include <cudf/scalar/scalar.hpp>
 #include <cudf_test/base_fixture.hpp>
 #include <cudf_test/column_utilities.hpp>
 #include <cudf_test/column_wrapper.hpp>
@@ -39,7 +38,7 @@ TYPED_TEST(NullOpsTest, FillWithScalar)
   using ScalarType = cudf::scalar_type_t<TypeParam>;
   TypeParam value  = cudf::test::make_type_param_scalar<TypeParam>(5);
   auto scalar      = ScalarType(value);
-  auto lg_scalar   = ScalarArg(scalar);
+  auto lg_scalar   = LogicalColumn(scalar);
 
   cudf::test::fixed_width_column_wrapper<TypeParam> col({5, 6, 7, 8, 9}, {1, 0, 1, 0, 1});
   auto lg_col = LogicalColumn(col);
@@ -55,7 +54,7 @@ TYPED_TEST(NullOpsTest, FillWithNullScalar)
   using ScalarType = cudf::scalar_type_t<TypeParam>;
   TypeParam value  = cudf::test::make_type_param_scalar<TypeParam>(5);
   auto scalar      = ScalarType(value, false);  // null scalar
-  auto lg_scalar   = ScalarArg(scalar);
+  auto lg_scalar   = LogicalColumn(scalar);
 
   cudf::test::fixed_width_column_wrapper<TypeParam> col({5, 6, 7, 8, 9}, {1, 0, 1, 0, 1});
   auto lg_col = LogicalColumn(col);

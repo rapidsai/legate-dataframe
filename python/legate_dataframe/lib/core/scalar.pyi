@@ -6,5 +6,8 @@ import numbers
 import cudf
 import legate.core
 import numpy
+from cudf._lib.scalar import DeviceScalar
 
-ScalarLike = numpy.number | numbers.Number | cudf.Scalar | legate.core.Scalar
+ScalarLike = (
+    numpy.number | numbers.Number | cudf.Scalar | legate.core.Scalar | DeviceScalar
+)

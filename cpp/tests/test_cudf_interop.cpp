@@ -29,7 +29,6 @@
 #include <cudf_test/type_lists.hpp>
 
 #include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/scalar.hpp>
 #include <legate_dataframe/core/table.hpp>
 
 using namespace legate::dataframe;
@@ -154,13 +153,18 @@ TYPED_TEST(CudfInterOp, ScalarConversion)
   using ScalarType = cudf::scalar_type_t<TypeParam>;
 
   TypeParam scalar_val = cudf::test::make_type_param_scalar<TypeParam>(5);
-  auto converted       = legate::dataframe::ScalarArg(ScalarType(scalar_val, true));
-  auto converted_null  = legate::dataframe::ScalarArg(ScalarType(scalar_val, false));
+  auto scalar          = ScalarType(scalar_val, true);
+  auto scalar_null     = ScalarType(scalar_val, false);
+  auto converted       = legate::dataframe::LogicalColumn(scalar);
+  auto converted_null  = legate::dataframe::LogicalColumn(scalar_null);
+
+  EXPECT_TRUE(converted.scalar());
+  EXPECT_TRUE(converted_null.scalar());
 
   auto result =
-    converted.get_cudf(cudf::get_default_stream(), rmm::mr::get_current_device_resource());
-  auto result_null =
-    converted_null.get_cudf(cudf::get_default_stream(), rmm::mr::get_current_device_resource());
+    converted.get_cudf_scalar(cudf::get_default_stream(), rmm::mr::get_current_device_resource());
+  auto result_null = converted_null.get_cudf_scalar(cudf::get_default_stream(),
+                                                    rmm::mr::get_current_device_resource());
 
   EXPECT_EQ(result->type(), cudf::data_type{cudf::type_to_id<TypeParam>()});
   EXPECT_EQ(result_null->type(), cudf::data_type{cudf::type_to_id<TypeParam>()});

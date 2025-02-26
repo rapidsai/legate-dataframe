@@ -21,14 +21,17 @@
 #include <cudf/binaryop.hpp>
 
 #include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/scalar.hpp>
 
 namespace legate::dataframe {
 
 /**
  * @brief Performs a binary operation between two columns.
  *
- * The output contains the result of `op(lhs[i], rhs[i])` for all `0 <= i < lhs.size()`
+ * The output contains the result of `op(lhs[i], rhs[i])` for all `0 <= i < lhs.size()`.
+ * Either or both columns may be "scalar" columns (e.g. created from a cudf scalar).
+ * In that case, they will act as a scalar (identical to broadcasting them to all
+ * entries of the second column).
+ * If both are scalars, the result will also be marked as scalar.
  *
  * Regardless of the operator, the validity of the output value is the logical
  * AND of the validity of the two operands except NullMin and NullMax (logical OR).
@@ -46,58 +49,6 @@ namespace legate::dataframe {
  * @throw cudf::data_type_error if the operation is not supported for the types of @p lhs and @p rhs
  */
 LogicalColumn binary_operation(const LogicalColumn& lhs,
-                               const LogicalColumn& rhs,
-                               cudf::binary_operator op,
-                               cudf::data_type output_type);
-
-/**
- * @brief Performs a binary operation between a column and a scalar.
- *
- * The output contains the result of `op(lhs[i], rhs)` for all `0 <= i < lhs.size()`
- * The column elements are the left operand and the scalar is the right operand.
- * This distinction is significant in case of non-commutative binary operations
- *
- * Regardless of the operator, the validity of the output value is the logical
- * AND of the validity of the two operands except NullMin and NullMax (logical OR).
- *
- * @param lhs         The left operand column
- * @param rhs         The right operand scalar
- * @param op          The binary operator
- * @param output_type The desired data type of the output column
- * @return            Output column of `output_type` type containing the result of
- *                    the binary operation
- * @throw cudf::logic_error if @p output_type dtype isn't fixed-width
- * @throw cudf::logic_error if @p output_type dtype isn't boolean for comparison and logical
- * operations.
- * @throw cudf::data_type_error if the operation is not supported for the types of @p lhs and @p rhs
- */
-LogicalColumn binary_operation(const LogicalColumn& lhs,
-                               const ScalarArg& rhs,
-                               cudf::binary_operator op,
-                               cudf::data_type output_type);
-
-/**
- * @brief Performs a binary operation between a scalar and a column.
- *
- * The output contains the result of `op(lhs, rhs[i])` for all `0 <= i < rhs.size()`
- * The scalar is the left operand and the column elements are the right operand.
- * This distinction is significant in case of non-commutative binary operations
- *
- * Regardless of the operator, the validity of the output value is the logical
- * AND of the validity of the two operands except NullMin and NullMax (logical OR).
- *
- * @param lhs         The left operand scalar
- * @param rhs         The right operand column
- * @param op          The binary operator
- * @param output_type The desired data type of the output column
- * @return            Output column of `output_type` type containing the result of
- *                    the binary operation
- * @throw cudf::logic_error if @p output_type dtype isn't fixed-width
- * @throw cudf::logic_error if @p output_type dtype isn't boolean for comparison and logical
- * operations.
- * @throw cudf::data_type_error if the operation is not supported for the types of @p lhs and @p rhs
- */
-LogicalColumn binary_operation(const ScalarArg& lhs,
                                const LogicalColumn& rhs,
                                cudf::binary_operator op,
                                cudf::data_type output_type);

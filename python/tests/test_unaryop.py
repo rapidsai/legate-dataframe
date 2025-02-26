@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION
+# Copyright (c) 2023-2025, NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,3 +32,15 @@ def test_unary_operation(op):
     res = unary_operation(col, op)
     expect = series._column.unary_operator(op.name)
     assert_frame_equal(res, expect)
+
+
+def test_unary_operation_scalar():
+    # It makes sense for unary operators to propagte "scalar" information
+    # check that.
+    scalar = cudf.Scalar(-3).device_value
+
+    scalar_col = LogicalColumn.from_cudf(scalar)
+    res = unary_operation(scalar_col, UnaryOperator.ABS)
+
+    assert res.scalar()
+    assert res.to_cudf_scalar().value == 3

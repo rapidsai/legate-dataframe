@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -11,6 +11,7 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 
 from cudf._lib.column cimport Column as cudfColumn
+from cudf._lib.scalar cimport DeviceScalar
 from pylibcudf.libcudf.column.column cimport column
 
 from legate_dataframe.lib.core.legate_task cimport get_auto_task_handle
@@ -31,6 +32,9 @@ cdef class LogicalColumn:
 
     Underlying a logical column is a logical array. The column doesn't own the array,
     a logical array can be part of multiple columns.
+
+    A column may represent columnar or scalar data.  For a scalar column
+    ``column.scalar()`` is ``True`` and it has always one row.
     """
 
     def __init__(self, obj: Any):
@@ -66,11 +70,13 @@ cdef class LogicalColumn:
         return ret
 
     @staticmethod
-    def from_cudf(cudfColumn col) -> LogicalColumn:
-        """Create a logical column from a local cudf column.
+    def from_cudf(col_or_scalar) -> LogicalColumn:
+        """Create a logical column from a local cudf column or column.
 
         This call blocks the client's control flow and scatter
         the data to all legate nodes.
+        If the input is a ``DeviceScalar`` the column will be marked as
+        scalar.
 
         Parameters
         ----------
@@ -81,7 +87,16 @@ cdef class LogicalColumn:
         -------
             New logical column
         """
-        return LogicalColumn.from_handle(cpp_LogicalColumn(col.view()))
+        cdef cudfColumn col
+        cdef DeviceScalar scalar
+        if isinstance(col_or_scalar, cudfColumn):
+            col = <cudfColumn>col_or_scalar
+            return LogicalColumn.from_handle(cpp_LogicalColumn(col.view()))
+        elif isinstance(col_or_scalar, DeviceScalar):
+            scalar = <DeviceScalar>col_or_scalar
+            return LogicalColumn.from_handle(
+                cpp_LogicalColumn(dereference(scalar.get_raw_ptr()))
+            )
 
     @staticmethod
     def empty_like_logical_column(LogicalColumn col) -> LogicalColumn:
@@ -147,10 +162,31 @@ cdef class LogicalColumn:
 
         Returns
         -------
-            A cudf column, which own the data.
+            A cudf column that owns its data.
+
         """
         cdef unique_ptr[column] col = self._handle.get_cudf()
         return cudfColumn.from_unique_ptr(move(col))
+
+    def to_cudf_scalar(self) -> DeviceScalar:
+        """Copy the logical column into a local cudf scalar
+
+        This call blocks the client's control flow and fetches the data for the
+        scalar.
+        To succeed the column must have length one.  Columns for which
+        ``column.scalar()`` is ``True`` always have length 1.
+
+        Returns
+        -------
+            A cudf scalar that owns its data.
+
+        Raises
+        ------
+        ValueError
+            If the column is not length 1 (scalar columns always are).
+        """
+        cdef unique_ptr[scalar] scalar = self._handle.get_cudf_scalar()
+        return DeviceScalar.from_unique_ptr(move(scalar))
 
     def repr(self, size_t max_num_items=30) -> str:
         """Return a printable representational string
@@ -169,6 +205,9 @@ cdef class LogicalColumn:
 
     def __repr__(self) -> str:
         return self.repr()
+
+    def scalar(self):
+        return self._handle.scalar()
 
     def add_as_next_task_input(self, task: AutoTask) -> None:
         """Add a logical column to the next input task argument

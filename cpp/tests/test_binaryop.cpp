@@ -67,7 +67,7 @@ TYPED_TEST(BinaryOpsTest, AddColScalar)
   auto const type = static_cast<cudf::column_view>(lhs).type();
 
   std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(LogicalColumn{lhs}, ScalarArg{rhs}, op, type);
+  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
 
   CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
 }
@@ -80,7 +80,7 @@ TYPED_TEST(BinaryOpsTest, AddColScalarWithNull)
   auto const type = static_cast<cudf::column_view>(lhs).type();
 
   std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(LogicalColumn{lhs}, ScalarArg{rhs}, op, type);
+  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
 
   CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
 }
@@ -93,7 +93,7 @@ TYPED_TEST(BinaryOpsTest, AddScalarCol)
   auto const type = static_cast<cudf::column_view>(rhs).type();
 
   std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(ScalarArg{lhs}, LogicalColumn{rhs}, op, type);
+  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
 
   CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
 }

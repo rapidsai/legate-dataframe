@@ -24,6 +24,9 @@ A physical column is local to single legate node and is used by legate tasks. A 
 A logical column is distributed between legate nodes and is the class that we expose to the client. Must of the client API in legate-dataframe takes logical columns and tables as arguments.
 A LogicalColumn corresponds to legate’s LogicalArray and LogicalStore.
 
+Note that `LogicalColumn` can be marked as scalar.  By default, this information
+is largely ignored, but can be used to specialize for scalars, see e.g. binary operations.
+
 #### Table
 
 A table is a collection of columns with equal number of elements. Tables come in two variants - a logical variant and a physical variant. Both variants are the legate equivalent to a libcudf [Table](https://docs.rapids.ai/api/libcudf/stable/group__table__classes).
@@ -42,7 +45,9 @@ An individual data item within a column. Also known as a row.
 
 #### Scalar
 
-A type representing a single element of a data type.
+A type representing a single element of a data type. In `legate-dataframe`
+a scalar is represented by a `LogicalColumn` for which `LogicalColumn.scalar()`
+returns true.
 
 ## Task Implementation
 Currently, we only implement GPU task variants.

@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import cudf
@@ -13,7 +13,26 @@ from legate_dataframe.testing import assert_frame_equal, std_dataframe_set
 def test_column_round_trip(cudf_col):
     col = LogicalColumn.from_cudf(cudf_col)
     cudf_res = col.to_cudf()
+
+    assert not col.scalar()
     assert_column_equal(cudf_col, cudf_res)
+
+
+def test_scalar_column_round_trip():
+    cudf_scalar = cudf.Scalar(3).device_value
+    col = LogicalColumn.from_cudf(cudf_scalar)
+    assert col.scalar()
+
+    cudf_res = col.to_cudf_scalar()
+    assert cudf_res.value == cudf_scalar.value
+
+
+def test_non_scalar_column_error():
+    cudf_col = cudf.Series(range(10))._columns[0]
+    col = LogicalColumn.from_cudf(cudf_col)
+
+    with pytest.raises(ValueError, match="only length 1/scalar columns"):
+        col.to_cudf_scalar()
 
 
 @pytest.mark.parametrize("df", std_dataframe_set())

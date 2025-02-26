@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
@@ -25,6 +26,7 @@
 #include <legate/cuda/cuda.h>
 
 #include <cudf/column/column_factories.hpp>
+#include <cudf/copying.hpp>
 #include <cudf/strings/strings_column_view.hpp>
 #include <cudf/types.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
@@ -131,10 +133,23 @@ legate::LogicalArray from_cudf(const cudf::column_view& col, rmm::cuda_stream_vi
   return legate::LogicalArray(logical_store_from_cudf(col, stream));
 }
 
+legate::LogicalArray from_cudf(const cudf::scalar& scalar, rmm::cuda_stream_view stream)
+{
+  // NOTE: this goes via a column-view.  Moving data more directly may be
+  // preferable (although libcudf could also grow a way to get a column view).
+  auto col = cudf::make_column_from_scalar(scalar, 1, stream);
+  return from_cudf(col->view(), stream);
+}
+
 }  // namespace
 
 LogicalColumn::LogicalColumn(cudf::column_view cudf_col, rmm::cuda_stream_view stream)
-  : LogicalColumn{from_cudf(cudf_col, stream), cudf_col.type()}
+  : LogicalColumn{from_cudf(cudf_col, stream), cudf_col.type(), /* scalar */ false}
+{
+}
+
+LogicalColumn::LogicalColumn(const cudf::scalar& cudf_scalar, rmm::cuda_stream_view stream)
+  : LogicalColumn{from_cudf(cudf_scalar, stream), cudf_scalar.type(), /* scalar */ true}
 {
 }
 
@@ -211,22 +226,34 @@ std::unique_ptr<cudf::column> LogicalColumn::get_cudf(rmm::cuda_stream_view stre
     null_count);
 }
 
+std::unique_ptr<cudf::scalar> LogicalColumn::get_cudf_scalar(
+  rmm::cuda_stream_view stream, rmm::mr::device_memory_resource* mr) const
+{
+  // NOTE: We could specialize simple scalars here at least.
+  auto col = get_cudf(stream, mr);
+  if (col->size() != 1) {
+    throw std::invalid_argument("only length 1/scalar columns can be converted to scalar.");
+  }
+  return std::move(cudf::get_element(col->view(), 0));
+}
+
 std::string LogicalColumn::repr(size_t max_num_items) const
 {
   std::stringstream ss;
   ss << "LogicalColumn(";
   if (unbound()) {
-    ss << "data=unbound ";
-    if (array_->nullable()) { ss << "null_mask=unbound "; }
-    ss << "dtype=" << array_->type() << ")";
+    ss << "data=unbound, ";
+    if (array_->nullable()) { ss << "null_mask=unbound, "; }
+    ss << "dtype=" << array_->type();
   } else {
     legate::PhysicalArray ary = array_->get_physical_array();
 
     // Notice, `get_physical_array()` returns host memory always
     ss << legate::dataframe::repr(
-            ary, max_num_items, legate::Memory::Kind::SYSTEM_MEM, cudaStream_t{0})
-       << ")";
+      ary, max_num_items, legate::Memory::Kind::SYSTEM_MEM, cudaStream_t{0});
   }
+  if (unbound() || num_rows() == 1) { ss << ", scalar=" << (scalar() ? "True" : "False"); }
+  ss << ")";
   return ss.str();
 }
 
@@ -285,6 +312,14 @@ cudf::column_view PhysicalColumn::column_view() const
     null_count = cudf::null_count(null_mask, 0, num_rows(), ctx_->stream());
   }
   return cudf::column_view(cudf_type_, num_rows(), data, null_mask, null_count, offset, children);
+}
+
+std::unique_ptr<cudf::scalar> PhysicalColumn::cudf_scalar() const
+{
+  if (num_rows() != 1) {
+    throw std::invalid_argument("can only convert length one columns to scalar.");
+  }
+  return cudf::get_element(column_view(), 0);
 }
 
 namespace {
@@ -398,14 +433,29 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
     throw std::invalid_argument(
       "move_into(): the cudf column is nullable while the PhysicalArray isn't");
   }
+  if (scalar_out_ && (column->size() != 1 || is_partitioned())) {
+    throw std::logic_error(
+      "move_into(): for scalar, column must have size one and result must be partitioned.");
+  }
   cudf::type_dispatcher(
     column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
+}
+
+void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
+{
+  // NOTE: this goes via a column-view.  Moving data more directly may be
+  // preferable (although libcudf could also grow a way to get a column view).
+  auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream(), ctx_->mr());
+  move_into(std::move(col));
 }
 
 void PhysicalColumn::bind_empty_data() const
 {
   if (!unbound()) {
     throw std::invalid_argument("Cannot call `.bind_empty_data()` on a bound column");
+  }
+  if (scalar_out_) {
+    throw std::logic_error("Binding empty data to scalar column should not happen?");
   }
 
   if (array_.nullable()) { array_.null_mask().bind_empty_data(); }
@@ -434,7 +484,14 @@ legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col
 legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& col)
 {
   add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
-  return {task.add_output(col.get_logical_array())};
+  // While we don't care much for reading from a scalar column, pass scalar information
+  // for outputs to enforce the result having the right size.
+  add_next_scalar(task, col.scalar());
+  auto variable = task.add_output(col.get_logical_array());
+  // Output scalars must be broadcast (for inputs alignment should enforce reasonable things).
+  // (If needed, we could enforce that only rank 0 can bind a result instead.)
+  if (col.scalar()) { task.add_constraint(legate::broadcast(variable, {0})); }
+  return variable;
 }
 
 }  // namespace argument

@@ -17,7 +17,6 @@
 #pragma once
 
 #include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/scalar.hpp>
 
 namespace legate::dataframe {
 

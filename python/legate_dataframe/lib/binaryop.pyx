@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -10,7 +10,7 @@ from pylibcudf.types cimport data_type
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
 from legate_dataframe.lib.core.data_type cimport as_data_type
-from legate_dataframe.lib.core.scalar cimport cpp_scalar_arg_from_python, cpp_ScalarArg
+from legate_dataframe.lib.core.scalar cimport cpp_scalar_col_from_python
 
 from numpy.typing import DTypeLike
 
@@ -101,49 +101,6 @@ cdef extern from "<legate_dataframe/binaryop.hpp>" nogil:
         binary_operator op,
         data_type output_type
     )
-    cpp_LogicalColumn cpp_binary_operation "binary_operation"(
-        const cpp_LogicalColumn& lhs,
-        const cpp_ScalarArg& rhs,
-        binary_operator op,
-        data_type output_type
-    )
-    cpp_LogicalColumn cpp_binary_operation "binary_operation"(
-        const cpp_ScalarArg& lhs,
-        const cpp_LogicalColumn& rhs,
-        binary_operator op,
-        data_type output_type
-    )
-
-
-cdef LogicalColumn _binop_column_column(
-    LogicalColumn lhs,
-    LogicalColumn rhs,
-    binary_operator op,
-    data_type output_type
-):
-    return LogicalColumn.from_handle(
-        cpp_binary_operation(lhs._handle, rhs._handle, op, output_type)
-    )
-
-cdef LogicalColumn _binop_column_scalar(
-    LogicalColumn lhs,
-    cpp_ScalarArg rhs,
-    binary_operator op,
-    data_type output_type
-):
-    return LogicalColumn.from_handle(
-        cpp_binary_operation(lhs._handle, rhs, op, output_type)
-    )
-
-cdef LogicalColumn _binop_scalar_column(
-    cpp_ScalarArg lhs,
-    LogicalColumn rhs,
-    binary_operator op,
-    data_type output_type
-):
-    return LogicalColumn.from_handle(
-        cpp_binary_operation(lhs, rhs._handle, op, output_type)
-    )
 
 
 @_track_provenance
@@ -193,15 +150,21 @@ def binary_operation(
         if the operation is not supported for the types of `lhs` and `rhs`
 
     """
+    cdef LogicalColumn lhs_col
+    cdef LogicalColumn rhs_col
+    # If an input is not a column, assume it is scalar:
     if isinstance(lhs, LogicalColumn):
-        if isinstance(rhs, LogicalColumn):
-            return _binop_column_column(lhs, rhs, op, as_data_type(output_type))
-        else:
-            return _binop_column_scalar(
-                lhs, cpp_scalar_arg_from_python(rhs), op, as_data_type(output_type)
-            )
-    elif isinstance(rhs, LogicalColumn):
-        return _binop_scalar_column(
-                cpp_scalar_arg_from_python(lhs), rhs, op, as_data_type(output_type)
-            )
-    raise ValueError("both inputs cannot be scalars")
+        lhs_col = <LogicalColumn>lhs
+    else:
+        lhs_col = cpp_scalar_col_from_python(lhs)
+
+    if isinstance(rhs, LogicalColumn):
+        rhs_col = <LogicalColumn>rhs
+    else:
+        rhs_col = cpp_scalar_col_from_python(rhs)
+
+    return LogicalColumn.from_handle(
+        cpp_binary_operation(
+            lhs_col._handle, rhs_col._handle, op, as_data_type(output_type)
+        )
+    )

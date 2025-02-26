@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,52 +34,28 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
-    auto op                           = argument::get_next_scalar<cudf::binary_operator>(ctx);
-    const auto lhs                    = argument::get_next_input<PhysicalColumn>(ctx);
-    const auto rhs                    = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
-    std::unique_ptr<cudf::column> ret = cudf::binary_operation(
-      lhs.column_view(), rhs.column_view(), op, output.cudf_type(), ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
-  }
-};
-
-class BinaryOpColScalarTask : public Task<BinaryOpColScalarTask, OpCode::BinaryOpColScalar> {
- public:
-  static void gpu_variant(legate::TaskContext context)
-  {
-    GPUTaskContext ctx{context};
     auto op        = argument::get_next_scalar<cudf::binary_operator>(ctx);
     const auto lhs = argument::get_next_input<PhysicalColumn>(ctx);
-    const auto rhs = argument::get_next_scalar<ScalarArg>(ctx);
-    auto output    = argument::get_next_output<PhysicalColumn>(ctx);
-    std::unique_ptr<cudf::column> ret =
-      cudf::binary_operation(lhs.column_view(),
-                             *rhs.get_cudf(ctx.stream(), ctx.mr()),
-                             op,
-                             output.cudf_type(),
-                             ctx.stream(),
-                             ctx.mr());
-    output.move_into(std::move(ret));
-  }
-};
-
-class BinaryOpScalarColTask : public Task<BinaryOpScalarColTask, OpCode::BinaryOpScalarCol> {
- public:
-  static void gpu_variant(legate::TaskContext context)
-  {
-    GPUTaskContext ctx{context};
-    auto op        = argument::get_next_scalar<cudf::binary_operator>(ctx);
-    const auto lhs = argument::get_next_scalar<ScalarArg>(ctx);
     const auto rhs = argument::get_next_input<PhysicalColumn>(ctx);
     auto output    = argument::get_next_output<PhysicalColumn>(ctx);
-    std::unique_ptr<cudf::column> ret =
-      cudf::binary_operation(*lhs.get_cudf(ctx.stream(), ctx.mr()),
-                             rhs.column_view(),
-                             op,
-                             output.cudf_type(),
-                             ctx.stream(),
-                             ctx.mr());
+
+    std::unique_ptr<cudf::column> ret;
+    /*
+     * If one (not both) are length 1, use scalars as cudf doesn't allow
+     * broadcast binary operations.
+     */
+    if (lhs.num_rows() == 1 && rhs.num_rows() != 1) {
+      auto lhs_scalar = lhs.cudf_scalar();
+      ret             = cudf::binary_operation(
+        *lhs_scalar, rhs.column_view(), op, output.cudf_type(), ctx.stream(), ctx.mr());
+    } else if (rhs.num_rows() == 1 && lhs.num_rows() != 1) {
+      auto rhs_scalar = rhs.cudf_scalar();
+      ret             = cudf::binary_operation(
+        lhs.column_view(), *rhs_scalar, op, output.cudf_type(), ctx.stream(), ctx.mr());
+    } else {
+      ret = cudf::binary_operation(
+        lhs.column_view(), rhs.column_view(), op, output.cudf_type(), ctx.stream(), ctx.mr());
+    }
     output.move_into(std::move(ret));
   }
 };
@@ -91,8 +67,6 @@ namespace {
 void __attribute__((constructor)) register_tasks()
 {
   legate::dataframe::task::BinaryOpColColTask::register_variants();
-  legate::dataframe::task::BinaryOpColScalarTask::register_variants();
-  legate::dataframe::task::BinaryOpScalarColTask::register_variants();
 }
 
 }  // namespace
@@ -104,47 +78,18 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
                                cudf::binary_operator op,
                                cudf::data_type output_type)
 {
-  auto runtime          = legate::Runtime::get_runtime();
-  bool nullable         = lhs.nullable() || rhs.nullable();
-  auto ret              = LogicalColumn::empty_like(std::move(output_type), nullable);
+  auto runtime  = legate::Runtime::get_runtime();
+  bool nullable = lhs.nullable() || rhs.nullable();
+
+  auto scalar_result = lhs.scalar() && rhs.scalar();
+  auto ret           = LogicalColumn::empty_like(std::move(output_type), nullable, scalar_result);
   legate::AutoTask task = runtime->create_task(get_library(), task::BinaryOpColColTask::TASK_ID);
   argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::binary_operator>>(op));
-  argument::add_next_input(task, lhs);
-  argument::add_next_input(task, rhs);
-  argument::add_next_output(task, ret);
-  runtime->submit(std::move(task));
-  return ret;
-}
 
-LogicalColumn binary_operation(const LogicalColumn& lhs,
-                               const ScalarArg& rhs,
-                               cudf::binary_operator op,
-                               cudf::data_type output_type)
-{
-  auto runtime          = legate::Runtime::get_runtime();
-  bool nullable         = lhs.nullable() || rhs.is_null();
-  auto ret              = LogicalColumn::empty_like(std::move(output_type), nullable);
-  legate::AutoTask task = runtime->create_task(get_library(), task::BinaryOpColScalarTask::TASK_ID);
-  argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::binary_operator>>(op));
-  argument::add_next_input(task, lhs);
-  argument::add_next_scalar(task, rhs);
-  argument::add_next_output(task, ret);
-  runtime->submit(std::move(task));
-  return ret;
-}
-
-LogicalColumn binary_operation(const ScalarArg& lhs,
-                               const LogicalColumn& rhs,
-                               cudf::binary_operator op,
-                               cudf::data_type output_type)
-{
-  auto runtime          = legate::Runtime::get_runtime();
-  bool nullable         = lhs.is_null() || rhs.nullable();
-  auto ret              = LogicalColumn::empty_like(std::move(output_type), nullable);
-  legate::AutoTask task = runtime->create_task(get_library(), task::BinaryOpScalarColTask::TASK_ID);
-  argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::binary_operator>>(op));
-  argument::add_next_scalar(task, lhs);
-  argument::add_next_input(task, rhs);
+  /* Add the inputs, broadcast if scalar.  If both aren't scalar align them */
+  auto lhs_var = argument::add_next_input(task, lhs, /* broadcast */ lhs.scalar());
+  auto rhs_var = argument::add_next_input(task, rhs, /* broadcast */ rhs.scalar());
+  if (!rhs.scalar() && !lhs.scalar()) { task.add_constraint(legate::align(lhs_var, rhs_var)); }
   argument::add_next_output(task, ret);
   runtime->submit(std::move(task));
   return ret;

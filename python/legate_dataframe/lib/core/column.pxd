@@ -9,6 +9,7 @@ from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 
 from pylibcudf.libcudf.column.column cimport column, column_view
+from pylibcudf.libcudf.scalar.scalar cimport scalar
 from pylibcudf.types cimport data_type
 
 from legate_dataframe.lib.core.legate_task cimport cpp_AutoTask
@@ -20,6 +21,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         cpp_LogicalColumn() except +
         cpp_LogicalColumn(cpp_LogicalArray logical_array) except +
         cpp_LogicalColumn(column_view cudf_col) except +
+        cpp_LogicalColumn(scalar &cudf_scalar) except +
 
         @staticmethod
         cpp_LogicalColumn empty_like(const cpp_LogicalColumn& other) except +
@@ -27,7 +29,9 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         size_t num_rows() except +
         cpp_LogicalArray get_logical_array() except +
         unique_ptr[column] get_cudf() except +
+        unique_ptr[scalar] get_cudf_scalar() except +
         string repr(size_t max_num_items) except +
+        bool scalar() noexcept
         data_type cudf_type() except +
 
     void cpp_add_next_input "legate::dataframe::argument::add_next_input"(

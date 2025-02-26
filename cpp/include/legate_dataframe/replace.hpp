@@ -19,7 +19,6 @@
 #include <legate.h>
 
 #include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/scalar.hpp>
 
 namespace legate::dataframe {
 
@@ -27,11 +26,11 @@ namespace legate::dataframe {
  * @brief Replace nulls in a column with a scalar
  *
  *
- * @param col Logical column as input
- * @param scalar value to fill with
+ * @param col Logical column as input.
+ * @param scalar value to fill with. Must be a LogicalColumn marked as scalar.
  *
  * @returns Logical column where nulls have been replaced with `value`
  */
-LogicalColumn replace_nulls(const LogicalColumn& col, const ScalarArg& value);
+LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& value);
 
 }  // namespace legate::dataframe
