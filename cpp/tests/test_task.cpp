@@ -79,14 +79,14 @@ struct TaskArgumentMix : public legate::LegateTask<TaskArgumentMix> {
     auto output = argument::get_next_output<task::PhysicalColumn>(ctx);
     {
       auto [scalar_idx, input_idx, output_idx] = ctx.get_task_argument_indices();
-      EXPECT_EQ(scalar_idx, 2);
+      EXPECT_EQ(scalar_idx, 3);
       EXPECT_EQ(input_idx, 1);
       EXPECT_EQ(output_idx, 1);
     }
     auto scalar = argument::get_next_scalar<int32_t>(ctx);
     {
       auto [scalar_idx, input_idx, output_idx] = ctx.get_task_argument_indices();
-      EXPECT_EQ(scalar_idx, 3);
+      EXPECT_EQ(scalar_idx, 4);
       EXPECT_EQ(input_idx, 1);
       EXPECT_EQ(output_idx, 1);
     }

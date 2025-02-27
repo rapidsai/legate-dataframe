@@ -17,6 +17,7 @@
 #include <legate.h>
 
 #include <cudf/filling.hpp>
+#include <cudf/scalar/scalar.hpp>
 
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/task_argument.hpp>

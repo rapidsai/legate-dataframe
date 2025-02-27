@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,8 +48,10 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
 LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
 {
   auto runtime          = legate::Runtime::get_runtime();
-  auto ret              = LogicalColumn::empty_like(col);
   legate::AutoTask task = runtime->create_task(get_library(), task::UnaryOpTask::TASK_ID);
+
+  // Unary ops can return a scalar column for a scalar column input.
+  auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable(), col.scalar());
   argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::unary_operator>>(op));
   argument::add_next_input(task, col);
   argument::add_next_output(task, ret);

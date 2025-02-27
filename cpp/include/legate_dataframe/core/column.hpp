@@ -17,10 +17,12 @@
 #pragma once
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_view.hpp>
+#include <cudf/scalar/scalar.hpp>
 #include <cudf/types.hpp>
 
 #include <legate.h>
@@ -37,6 +39,11 @@ namespace legate::dataframe {
  * Underlying a logical column is a logical array. The column doesn't own the array,
  * a logical array can be part of multiple columns.
  *
+ * Note that the columns have a `scalar()` attribute.  If true the column is always
+ * length 1 and will be treated as a scalar, i.e. with broadcast semantics, in
+ * some contexts.
+ * We do not allow broadcast semantics more generally, because checking for
+ * length 1 may be a blocking operation and we need this information at task launch.
  */
 class LogicalColumn {
  public:
@@ -53,12 +60,19 @@ class LogicalColumn {
    * @param array The logical array (zero copy)
    * @param cudf_type The cudf data type of the column. If `EMPTY` (default), the cudf data type is
    * derived from the data type of `array`.
+   * @param scalar Whether to consider this column scalar.  WARNING: currently
+   * it is the callers responsibility to ensure the array is length 1 as this
+   * check could be blocking.
    */
   LogicalColumn(legate::LogicalArray array,
-                cudf::data_type cudf_type = cudf::data_type{cudf::type_id::EMPTY})
-    : array_{std::move(array)}
+                cudf::data_type cudf_type = cudf::data_type{cudf::type_id::EMPTY},
+                bool scalar               = false)
+    : array_{std::move(array)}, scalar_{scalar}
   {
     if (array_->dim() != 1) { throw std::invalid_argument("array must be 1-D"); }
+    // Note: Checking the volume could be blocking, so assume that this is fine.
+    assert(!scalar || array_->volume() != 1);
+
     if (cudf_type.id() == cudf::type_id::EMPTY) {
       cudf_type_ = cudf::data_type{to_cudf_type_id(array_->type().code())};
     } else {
@@ -79,7 +93,24 @@ class LogicalColumn {
                 rmm::cuda_stream_view stream = cudf::get_default_stream());
 
   /**
+   * @brief Create a scalar column from a local cudf scalar
+   *
+   * This call blocks the client's control flow and scatter the data to all
+   * legate nodes.
+   * This column will be marked and treated as scalar.
+   *
+   * @param cudf_scalar The local cuDF scalar to copy into a logical column
+   * @param stream CUDA stream used for device memory operations
+   */
+  LogicalColumn(const cudf::scalar& cudf_scalar,
+                rmm::cuda_stream_view stream = cudf::get_default_stream());
+
+  /**
    * @brief Create a new unbounded column from an existing column
+   *
+   * This function always returns a non-scalar column, even if the input was
+   * considered scalar.  Functions that wish to propagate scalar information
+   * must use the long signature.
    *
    * @param other The prototype column
    * @return The new unbounded column with the type and nullable equal `other`
@@ -88,7 +119,8 @@ class LogicalColumn {
   {
     return LogicalColumn(legate::Runtime::get_runtime()->create_array(
                            other.array_->type(), other.array_->dim(), other.array_->nullable()),
-                         other.cudf_type());
+                         other.cudf_type(),
+                         false);
   }
 
   /**
@@ -111,7 +143,7 @@ class LogicalColumn {
    * @param nullable The nullable of the new column
    * @return The new unbounded column
    */
-  static LogicalColumn empty_like(const legate::Type& dtype, bool nullable)
+  static LogicalColumn empty_like(const legate::Type& dtype, bool nullable, bool scalar = false)
   {
     return LogicalColumn(legate::Runtime::get_runtime()->create_array(dtype, 1, nullable));
   }
@@ -121,12 +153,15 @@ class LogicalColumn {
    *
    * @param dtype The data type of the new column
    * @param nullable The nullable of the new column
+   * @param scalar Whether the result is a scalar column.
    * @return The new unbounded column
    */
-  static LogicalColumn empty_like(cudf::data_type dtype, bool nullable)
+  static LogicalColumn empty_like(cudf::data_type dtype, bool nullable, bool scalar = false)
   {
     return LogicalColumn(
-      legate::Runtime::get_runtime()->create_array(to_legate_type(dtype.id()), 1, nullable), dtype);
+      legate::Runtime::get_runtime()->create_array(to_legate_type(dtype.id()), 1, nullable),
+      dtype,
+      scalar);
   }
 
  public:
@@ -155,7 +190,7 @@ class LogicalColumn {
 
   /**
    * @brief Copy the logical column into a local cudf column
-
+   *
    * This call blocks the client's control flow and fetches the data for the
    * whole column to the current node.
    *
@@ -164,6 +199,21 @@ class LogicalColumn {
    * @return cudf column, which own the data
    */
   std::unique_ptr<cudf::column> get_cudf(
+    rmm::cuda_stream_view stream        = cudf::get_default_stream(),
+    rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
+
+  /**
+   * @brief Copy the logical column into a local cudf scalar
+   *
+   * This call blocks the client's control flow and fetches the data for the
+   * whole column to the current node.
+   *
+   * @param stream CUDA stream used for device memory operations.
+   * @param mr Device memory resource to use for all device memory allocations.
+   * @throws std::invalid_argument if this is not a length 1/scalar column.
+   * @return cudf scalar, which own the data
+   */
+  std::unique_ptr<cudf::scalar> get_cudf_scalar(
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
@@ -200,7 +250,8 @@ class LogicalColumn {
   /**
    * @brief Returns the number of rows
    *
-   * @throw std::runtime_error if column is unbound.
+   * @throw std::runtime_error if column is unbound. std::logic_error if a scalar
+   * but the number of rows isn't one.
    * @return The number of rows
    */
   [[nodiscard]] size_t num_rows() const
@@ -208,8 +259,23 @@ class LogicalColumn {
     if (unbound()) {
       throw std::runtime_error("Cannot call `.num_rows()` on a unbound LogicalColumn");
     }
-    return array_->volume();
+    auto rows = array_->volume();
+    if (scalar() && rows != 1) {
+      throw std::logic_error("PhysicalColumn is scalar but doesn't have one row.");
+    }
+    return rows;
   }
+
+  /**
+   * @brief Return true if the column is considered scalar.
+   *
+   * A scalar column always has a size of one.  Scalar columns are mostly supported
+   * for binary operations and have scalar/broadcast semantics if supported.
+   * (For unsupported operations they may work, but behave like a length 1 column).
+   *
+   * @return true if scalar, otherwise false.
+   */
+  bool scalar() const { return scalar_; };
 
   /**
    * @brief Return a printable representational string
@@ -220,10 +286,11 @@ class LogicalColumn {
   std::string repr(size_t max_num_items = 30) const;
 
  private:
-  // In order to support a default ctor (used by Cython),
-  // we make the legate array optional.
+  // In order to support a default ctor and assignment (used by Cython),
+  // we make the legate array optional and the rest non-const.
   std::optional<legate::LogicalArray> array_;
   cudf::data_type cudf_type_{cudf::type_id::EMPTY};
+  bool scalar_{false};
 };
 
 namespace task {
@@ -239,11 +306,19 @@ class PhysicalColumn {
    * @param ctx The context of the calling task
    * @param array The logical array (zero copy)
    * @param cudf_type The cudf data type of the column
+   * @param scalar_out Indicate that the result must be scalar (so cannot bind
+   * more data).
    * column is part of. Use a negative value to indicate that the number of rows is
    * unknown.
    */
-  PhysicalColumn(GPUTaskContext& ctx, legate::PhysicalArray array, cudf::data_type cudf_type)
-    : ctx_{&ctx}, array_{std::move(array)}, cudf_type_{std::move(cudf_type)}
+  PhysicalColumn(GPUTaskContext& ctx,
+                 legate::PhysicalArray array,
+                 cudf::data_type cudf_type,
+                 bool scalar_out = false)
+    : ctx_{&ctx},
+      array_{std::move(array)},
+      cudf_type_{std::move(cudf_type)},
+      scalar_out_{scalar_out}
   {
   }
 
@@ -293,7 +368,8 @@ class PhysicalColumn {
   /**
    * @brief Returns the number of rows
    *
-   * @throw std::runtime_error if column is unbound.
+   * @throw std::runtime_error if column is unbound. std::logic_error if a scalar
+   * but the number of rows isn't one.
    * @return The number of rows
    */
   [[nodiscard]] cudf::size_type num_rows() const
@@ -303,7 +379,11 @@ class PhysicalColumn {
         "Cannot call `.num_rows()` on a unbound PhysicalColumn, please bind it using "
         "`.move_into()`");
     }
-    return array_.shape<1>().volume();
+    auto rows = array_.shape<1>().volume();
+    if (scalar_out_ && rows != 1) {
+      throw std::logic_error("PhysicalColumn is scalar but doesn't have one row.");
+    }
+    return rows;
   }
 
   /**
@@ -349,6 +429,20 @@ class PhysicalColumn {
   cudf::column_view column_view() const;
 
   /**
+   * @brief Return a cudf scalar for physical column
+   *
+   * NB: The physical column MUST outlive the returned scalar thus it is UB to do some-
+   *     thing like `argument::get_next_input<PhysicalColumn>(ctx).cudf_scalar();`
+   *
+   * Note that the above should be considered true even if currently the scalar
+   * may not view the memory (you must consider the scalar immutable).
+   *
+   * @throw cudf::logic_error if column is unbound or the size is not one.
+   * @return A new cudf scalar.
+   */
+  std::unique_ptr<cudf::scalar> cudf_scalar() const;
+
+  /**
    * @brief Return a printable representational string
    *
    * @param max_num_items Maximum number of items to include before items are abbreviated.
@@ -366,6 +460,13 @@ class PhysicalColumn {
   void move_into(std::unique_ptr<cudf::column> column);
 
   /**
+   * @brief Move local cudf scalar into this unbound physical column
+   *
+   * @param scalar The cudf scalar to move
+   */
+  void move_into(std::unique_ptr<cudf::scalar> scalar);
+
+  /**
    * @brief Makes the unbound column empty. Valid only when the column is unbound.
    */
   void bind_empty_data() const;
@@ -376,6 +477,7 @@ class PhysicalColumn {
   const cudf::data_type cudf_type_;
   mutable std::vector<std::unique_ptr<cudf::column>> tmp_cols_;
   mutable std::vector<rmm::device_buffer> tmp_null_masks_;
+  const bool scalar_out_;  // scalar output checks binding has size 1.
 };
 }  // namespace task
 
@@ -424,7 +526,9 @@ inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(GPUTaskContext
 {
   auto cudf_type_id = static_cast<cudf::type_id>(
     argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
-  return task::PhysicalColumn(ctx, ctx.get_next_output_arg(), cudf::data_type{cudf_type_id});
+  auto scalar = argument::get_next_scalar<bool>(ctx);
+  return task::PhysicalColumn(
+    ctx, ctx.get_next_output_arg(), cudf::data_type{cudf_type_id}, scalar);
 }
 
 }  // namespace argument

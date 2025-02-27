@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,19 +18,20 @@
 
 #include <legate.h>
 
+#include <cudf/aggregation.hpp>
+
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/scalar.hpp>
 
 namespace legate::dataframe {
 
 /**
- * @brief Replace nulls in a column with a scalar
+ * @brief Reduce a column given a libcudf reduction.
  *
- *
- * @param col Logical column as input.
- * @param scalar value to fill with. Must be a LogicalColumn marked as scalar.
- *
- * @returns Logical column where nulls have been replaced with `value`
+ * @param col Logical column to reduce
+ * @param agg The reduction to perform
+ * @returns A LogicalColumn marked as scalar.
  */
-LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& value);
+LogicalColumn reduce(const LogicalColumn& col, const cudf::reduce_aggregation& agg);
 
 }  // namespace legate::dataframe
