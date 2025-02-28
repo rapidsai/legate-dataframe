@@ -5,7 +5,7 @@
 # cython: language_level=3
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
-from legate_dataframe.lib.core.scalar cimport cpp_scalar_arg_from_python, cpp_ScalarArg
+from legate_dataframe.lib.core.scalar cimport cpp_scalar_col_from_python
 
 from legate_dataframe.lib.core.scalar import ScalarLike
 from legate_dataframe.utils import _track_provenance
@@ -14,7 +14,7 @@ from legate_dataframe.utils import _track_provenance
 cdef extern from "<legate_dataframe/replace.hpp>" nogil:
     cpp_LogicalColumn cpp_replace_nulls "replace_nulls"(
         const cpp_LogicalColumn& col,
-        const cpp_ScalarArg& value,
+        const cpp_LogicalColumn& value,
     ) except +
 
 
@@ -41,6 +41,7 @@ def replace_nulls(
     ValueError: if the value is not of the correct scalar type.
 
     """
+    cdef LogicalColumn repl_col = cpp_scalar_col_from_python(replacement)
     return LogicalColumn.from_handle(
-        cpp_replace_nulls(col._handle, cpp_scalar_arg_from_python(replacement))
+        cpp_replace_nulls(col._handle, repl_col._handle)
     )
