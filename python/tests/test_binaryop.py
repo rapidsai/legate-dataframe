@@ -93,4 +93,4 @@ def test_scalar_input(cudf_column, op, scalar):
     assert_frame_equal(res, expect)
 
     result = binary_operation(scalar, scalar, op, cudf_column.dtype)
-    assert result.scalar()  # if both inputs are scalar, the result is also
+    assert result.is_scalar()  # if both inputs are scalar, the result is also

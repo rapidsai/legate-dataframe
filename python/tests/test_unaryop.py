@@ -42,5 +42,5 @@ def test_unary_operation_scalar():
     scalar_col = LogicalColumn.from_cudf(scalar)
     res = unary_operation(scalar_col, UnaryOperator.ABS)
 
-    assert res.scalar()
+    assert res.is_scalar()
     assert res.to_cudf_scalar().value == 3

@@ -51,7 +51,7 @@ LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
   legate::AutoTask task = runtime->create_task(get_library(), task::UnaryOpTask::TASK_ID);
 
   // Unary ops can return a scalar column for a scalar column input.
-  auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable(), col.scalar());
+  auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable(), col.is_scalar());
   argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::unary_operator>>(op));
   argument::add_next_input(task, col);
   argument::add_next_output(task, ret);

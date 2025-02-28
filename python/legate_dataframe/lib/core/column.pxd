@@ -31,7 +31,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         unique_ptr[column] get_cudf() except +
         unique_ptr[scalar] get_cudf_scalar() except +
         string repr(size_t max_num_items) except +
-        bool scalar() noexcept
+        bool is_scalar() noexcept
         data_type cudf_type() except +
 
     void cpp_add_next_input "legate::dataframe::argument::add_next_input"(

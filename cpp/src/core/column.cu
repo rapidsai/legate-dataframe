@@ -252,7 +252,7 @@ std::string LogicalColumn::repr(size_t max_num_items) const
     ss << legate::dataframe::repr(
       ary, max_num_items, legate::Memory::Kind::SYSTEM_MEM, cudaStream_t{0});
   }
-  if (unbound() || num_rows() == 1) { ss << ", scalar=" << (scalar() ? "True" : "False"); }
+  if (unbound() || num_rows() == 1) { ss << ", is_scalar=" << (is_scalar() ? "True" : "False"); }
   ss << ")";
   return ss.str();
 }
@@ -486,11 +486,11 @@ legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& co
   add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
   // While we don't care much for reading from a scalar column, pass scalar information
   // for outputs to enforce the result having the right size.
-  add_next_scalar(task, col.scalar());
+  add_next_scalar(task, col.is_scalar());
   auto variable = task.add_output(col.get_logical_array());
   // Output scalars must be broadcast (for inputs alignment should enforce reasonable things).
   // (If needed, we could enforce that only rank 0 can bind a result instead.)
-  if (col.scalar()) { task.add_constraint(legate::broadcast(variable, {0})); }
+  if (col.is_scalar()) { task.add_constraint(legate::broadcast(variable, {0})); }
   return variable;
 }
 

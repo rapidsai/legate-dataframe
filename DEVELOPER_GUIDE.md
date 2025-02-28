@@ -46,7 +46,7 @@ An individual data item within a column. Also known as a row.
 #### Scalar
 
 A type representing a single element of a data type. In `legate-dataframe`
-a scalar is represented by a `LogicalColumn` for which `LogicalColumn.scalar()`
+a scalar is represented by a `LogicalColumn` for which `LogicalColumn.is_scalar()`
 returns true.
 
 ## Task Implementation

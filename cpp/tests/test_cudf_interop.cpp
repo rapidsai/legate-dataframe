@@ -158,8 +158,8 @@ TYPED_TEST(CudfInterOp, ScalarConversion)
   auto converted       = legate::dataframe::LogicalColumn(scalar);
   auto converted_null  = legate::dataframe::LogicalColumn(scalar_null);
 
-  EXPECT_TRUE(converted.scalar());
-  EXPECT_TRUE(converted_null.scalar());
+  EXPECT_TRUE(converted.is_scalar());
+  EXPECT_TRUE(converted_null.is_scalar());
 
   auto result =
     converted.get_cudf_scalar(cudf::get_default_stream(), rmm::mr::get_current_device_resource());

@@ -59,7 +59,7 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
   if (col.cudf_type() != scalar.cudf_type()) {
     throw std::invalid_argument("Scalar type does not match column type.");
   }
-  if (!scalar.scalar()) {
+  if (!scalar.is_scalar()) {
     // NOTE: We could be graceful here and check if it has 1 rows.
     throw std::invalid_argument("Scalar column must be marked as scalar.");
   }

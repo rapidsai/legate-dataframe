@@ -14,14 +14,14 @@ def test_column_round_trip(cudf_col):
     col = LogicalColumn.from_cudf(cudf_col)
     cudf_res = col.to_cudf()
 
-    assert not col.scalar()
+    assert not col.is_scalar()
     assert_column_equal(cudf_col, cudf_res)
 
 
 def test_scalar_column_round_trip():
     cudf_scalar = cudf.Scalar(3).device_value
     col = LogicalColumn.from_cudf(cudf_scalar)
-    assert col.scalar()
+    assert col.is_scalar()
 
     cudf_res = col.to_cudf_scalar()
     assert cudf_res.value == cudf_scalar.value

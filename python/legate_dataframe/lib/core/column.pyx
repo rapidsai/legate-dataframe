@@ -136,6 +136,9 @@ cdef class LogicalColumn:
         """
         return cpp_cudf_type_to_cudf_dtype(self._handle.cudf_type())
 
+    def is_scalar(self):
+        return self._handle.is_scalar()
+
     def get_logical_array(self) -> LogicalArray:
         """Return the underlying logical array
 
@@ -205,9 +208,6 @@ cdef class LogicalColumn:
 
     def __repr__(self) -> str:
         return self.repr()
-
-    def scalar(self):
-        return self._handle.scalar()
 
     def add_as_next_task_input(self, task: AutoTask) -> None:
         """Add a logical column to the next input task argument

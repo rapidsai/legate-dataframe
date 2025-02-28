@@ -81,15 +81,17 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
   auto runtime  = legate::Runtime::get_runtime();
   bool nullable = lhs.nullable() || rhs.nullable();
 
-  auto scalar_result = lhs.scalar() && rhs.scalar();
+  auto scalar_result = lhs.is_scalar() && rhs.is_scalar();
   auto ret           = LogicalColumn::empty_like(std::move(output_type), nullable, scalar_result);
   legate::AutoTask task = runtime->create_task(get_library(), task::BinaryOpColColTask::TASK_ID);
   argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::binary_operator>>(op));
 
   /* Add the inputs, broadcast if scalar.  If both aren't scalar align them */
-  auto lhs_var = argument::add_next_input(task, lhs, /* broadcast */ lhs.scalar());
-  auto rhs_var = argument::add_next_input(task, rhs, /* broadcast */ rhs.scalar());
-  if (!rhs.scalar() && !lhs.scalar()) { task.add_constraint(legate::align(lhs_var, rhs_var)); }
+  auto lhs_var = argument::add_next_input(task, lhs, /* broadcast */ lhs.is_scalar());
+  auto rhs_var = argument::add_next_input(task, rhs, /* broadcast */ rhs.is_scalar());
+  if (!rhs.is_scalar() && !lhs.is_scalar()) {
+    task.add_constraint(legate::align(lhs_var, rhs_var));
+  }
   argument::add_next_output(task, ret);
   runtime->submit(std::move(task));
   return ret;

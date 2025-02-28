@@ -260,7 +260,7 @@ class LogicalColumn {
       throw std::runtime_error("Cannot call `.num_rows()` on a unbound LogicalColumn");
     }
     auto rows = array_->volume();
-    if (scalar() && rows != 1) {
+    if (is_scalar() && rows != 1) {
       throw std::logic_error("PhysicalColumn is scalar but doesn't have one row.");
     }
     return rows;
@@ -275,7 +275,7 @@ class LogicalColumn {
    *
    * @return true if scalar, otherwise false.
    */
-  bool scalar() const { return scalar_; };
+  bool is_scalar() const { return scalar_; };
 
   /**
    * @brief Return a printable representational string
