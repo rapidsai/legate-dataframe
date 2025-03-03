@@ -433,9 +433,8 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
     throw std::invalid_argument(
       "move_into(): the cudf column is nullable while the PhysicalArray isn't");
   }
-  if (scalar_out_ && (column->size() != 1 || is_partitioned())) {
-    throw std::logic_error(
-      "move_into(): for scalar, column must have size one and result must be partitioned.");
+  if (scalar_out_ && column->size() != 1) {
+    throw std::logic_error("move_into(): for scalar, column must have size one.");
   }
   cudf::type_dispatcher(
     column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
