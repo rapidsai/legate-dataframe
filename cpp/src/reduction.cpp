@@ -118,9 +118,7 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
 
     // Note: cudf has no helper to go to a column view right now, but we could
     // specialize this in principle.
-    auto ret = cudf::make_column_from_scalar(*scalar_res, 1, ctx.stream(), ctx.mr());
-
-    output.move_into(std::move(ret));
+    output.move_into(cudf::make_column_from_scalar(*scalar_res, 1, ctx.stream(), ctx.mr()));
   }
 };
 
@@ -386,7 +384,6 @@ class AggregationHelper final {
       }
       default: {
         auto first_pass_res = get_first_pass_result(agg, output_type);
-        // TODO: Use initial here (we may need it, e.g. for sums).
         return perform_simple_reduce(
           first_pass_res, agg.kind, /* finalize */ true, output_type, initial);
       }
