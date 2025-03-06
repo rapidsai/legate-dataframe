@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -219,6 +219,25 @@ cdef class LogicalTable:
             ``legate.core.StoreTarget.SYSMEM``.
         """
         self._handle.offload_to(target_mem)
+
+    def to_array(self, *, out=None):
+        """Convert the table or a set of columns to a cupynumeric array.
+
+        The returned array is always a copy.
+
+        Parameters
+        ----------
+        out
+            If given an output cupynumeric array.
+
+        Returns
+        -------
+        array
+            A cupynumeric array of shape ``(num_rows, num_cols)``.
+        """
+        from cupynumeric import stack
+
+        return stack([self[n] for n in range(self.num_columns())], axis=1, out=out)
 
     def to_cudf(self) -> cudf.DataFrame:
         """Copy the logical table into a local cudf table

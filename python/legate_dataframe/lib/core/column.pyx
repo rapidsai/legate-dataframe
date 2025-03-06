@@ -23,7 +23,10 @@ from typing import Any
 from cudf._typing import DtypeObj
 from legate.core import AutoTask, Field, LogicalArray
 
-from legate_dataframe.lib.core.data_type cimport cpp_cudf_type_to_cudf_dtype
+from legate_dataframe.lib.core.data_type cimport (
+    cpp_cudf_type_to_cudf_dtype,
+    is_legate_compatible,
+)
 
 from legate_dataframe.utils import get_logical_array
 
@@ -144,19 +147,36 @@ cdef class LogicalColumn:
     def is_scalar(self):
         return self._handle.is_scalar()
 
-    def get_logical_array(self) -> LogicalArray:
+    def get_logical_array(self, *, check_dtype=False) -> LogicalArray:
         """Return the underlying logical array
+
+        Parameters
+        ----------
+        check_dtype
+            If ``True`` check that the dtype round-trips.  Default's to False.
 
         Returns
         -------
             The underlying logical array
+
+        Raises
+        ------
+        TypeError
+            If ``check_dtype=True`` and the column dtype is not a native legate
+            data type.
         """
+        if check_dtype and not is_legate_compatible(self._handle.cudf_type()):
+            raise TypeError(
+                f"column datatype {self.dtype} not a basic legate type. "
+                "Use `col.get_logical_array()` to get the underlying raw array."
+            )
+
         cdef cpp_LogicalArray ary = self._handle.get_logical_array()
         return LogicalArray.from_raw_handle(<uintptr_t> &ary)
 
     @property
     def __legate_data_interface__(self):
-        array = self.get_logical_array()
+        array = self.get_logical_array(check_dtype=True)
         return {
             "version": 1,
             "data": {Field("LogicalColumn", array.type): array},
@@ -177,6 +197,52 @@ cdef class LogicalColumn:
             ``legate.core.StoreTarget.SYSMEM``.
         """
         self._handle.offload_to(target_mem)
+
+    def to_array(self, *, writeable=False):
+        """Return a view into the column data.
+
+        This method returns a cupynumeric array viewing the columns data.
+        For non-nullable columns ``cupynumeric.asarray(column)`` should also
+        work directly.
+
+        Parameters
+        ----------
+        writeable : bool
+            By default sets the cupynumeric array not not writeable since
+            columns are normally immutable.  This can be overridden by passing ``True``.
+
+        Returns
+        -------
+        array
+            A 1-d cupynumeric array.
+
+        Raises
+        ------
+        TypeError
+            If the dtype is unsupported by cupynumeric.
+        ValueError
+            If the column has a mask and there are masked values.
+        """
+        # Delay import of cupynumeric.
+        from cupynumeric import asarray
+
+        array = self.get_logical_array(check_dtype=True)
+        if array.num_children != 0:
+            raise TypeError(
+                "cupynumeric doesn't support arrays with children (e.g. strings)."
+            )
+
+        if array.nullable:
+            null_mask = asarray(LogicalArray.from_store(array.null_mask))
+            if not null_mask.all():
+                raise ValueError(
+                    "Can't convert a column that contains NULLs to cupynumeric."
+                )
+
+        arr = asarray(LogicalArray.from_store(array.data))
+        if not writeable:
+            arr.flags.writeable = False
+        return arr
 
     def to_cudf(self) -> cudfColumn:
         """Copy the logical column into a local cudf column
