@@ -7,7 +7,7 @@ from legate.core import StoreTarget, get_legate_runtime
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
-from legate_dataframe.testing import guess_available_mem
+from legate_dataframe.testing import assert_frame_equal, guess_available_mem
 
 
 def test_offload_to():
@@ -39,3 +39,41 @@ def test_offload_to():
     # Not sure if helpful, but delete and wait.
     del col_lg, tbl, results
     get_legate_runtime().issue_execution_fence(block=True)
+
+
+@pytest.mark.parametrize(
+    "cols", [["a", "b"], ["c", "a"], ["c", "b"], ["c"], [2, 1], [2, 0], [1]]
+)
+def test_select_and_getitem_table(cols):
+    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_cudf(cudf_df)
+
+    if isinstance(cols[0], str):
+        expected_names = cols
+    else:
+        expected_names = [["a", "b", "c"][i] for i in cols]
+
+    res = tbl.select(cols)
+    assert res.get_column_names() == expected_names
+    assert_frame_equal(res, cudf_df[expected_names])
+
+    res = tbl[cols]
+    assert res.get_column_names() == expected_names
+    assert_frame_equal(res, cudf_df[expected_names])
+
+
+def test_select_and_getitem_table_empty():
+    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_cudf(cudf_df)
+
+    assert tbl[[]].num_columns() == 0
+
+
+@pytest.mark.parametrize("cols", [(1, 2), ["a", 1], [None]])
+def test_select_and_getitem_table_errors(cols):
+    # Test type errors (via `[]` indexing, which also rejects non-lists).
+    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_cudf(cudf_df)
+
+    with pytest.raises(TypeError):
+        tbl[cols]

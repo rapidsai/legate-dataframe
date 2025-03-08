@@ -167,27 +167,61 @@ cdef class LogicalTable:
             )
         return self.get_column_by_index(column)
 
-    def __getitem__(self, column: int | str) -> LogicalColumn:
+    def select(self, columns) -> LogicalTable:
+        """Select a subset of columns from this table.
+
+        Similar to ``table[columns]`` but accepts any iterable.
+
+        Parameter
+        ---------
+        columns
+            Iterable of column names or indices.
+
+        Returns
+        -------
+        table
+            A table with only the selected columns.
+        """
+        cdef vector[string] col_names
+        cdef vector[size_t] col_indices
+
+        columns = list(columns)
+        if len(columns) > 0 and isinstance(columns[0], str):
+            for name in columns:
+                # Check for string, error is an AttributeError otherwise.
+                if not isinstance(name, str):
+                    raise TypeError(
+                        "column names must be an iterable of str or int and not mixed")
+                col_names.push_back(name.encode('UTF-8'))
+            return LogicalTable.from_handle(self._handle.select(col_names))
+        else:
+            col_indices = columns
+            return LogicalTable.from_handle(self._handle.select(col_indices))
+
+    def __getitem__(self, column):
         """Returns a reference to the specified column
 
         Parameters
         ----------
-        column : int or str
-            Index or name of the desired column
+        column : int, str, or list of them
+            Index or name of the desired column.  If a list the return
+            will be a new table with the selected columns.
 
         Returns
         -------
-            The desired column
+            The desired column or a table if a list.
 
         Raises
         ------
         IndexError
             If `column` doesn't exist
         TypeError
-            If `column` isn't a string or integer
+            If `column` isn't a string or integer, or list of these.
         OverflowError
-            If `column` is a negative integer
+            If a negative integer is encountered.
         """
+        if isinstance(column, list):
+            return self.select(column)
         return self.get_column(column)
 
     def get_column_names(self) -> List[str]:

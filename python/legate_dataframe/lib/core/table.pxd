@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -25,6 +25,8 @@ cdef extern from "<legate_dataframe/core/table.hpp>" nogil:
         cpp_LogicalColumn& get_column(size_t column_index) except +
         cpp_LogicalColumn& get_column(const string& column_index) except +
         vector[string] get_column_name_vector() except +
+        cpp_LogicalTable select(vector[string] columns) except +
+        cpp_LogicalTable select(vector[size_t] columns) except +
         void offload_to(cpp_StoreTarget target_mem) except +
         string repr(size_t max_num_items) except +
 
