@@ -153,7 +153,7 @@ cdef class LogicalColumn:
         Parameters
         ----------
         check_dtype
-            If ``True`` check that the dtype round-trips.  Default's to False.
+            If ``True`` check that the dtype round-trips.  Defaults to False.
 
         Returns
         -------
