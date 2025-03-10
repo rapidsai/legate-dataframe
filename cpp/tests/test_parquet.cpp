@@ -34,7 +34,7 @@ TYPED_TEST_SUITE(NumericParquetTest, cudf::test::NumericTypes);
 
 TYPED_TEST(NumericParquetTest, ReadWrite)
 {
-  TempDir tmp_dir{false};
+  TempDir tmp_dir;
   auto filepath = tmp_dir.path() / "parquet_file";
   cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3});
   cudf::test::fixed_width_column_wrapper<TypeParam> b({4, 5, 6, 7});
@@ -55,7 +55,7 @@ TYPED_TEST(NumericParquetTest, ReadWrite)
 
 TYPED_TEST(NumericParquetTest, ReadColumnSubset)
 {
-  TempDir tmp_dir{false};
+  TempDir tmp_dir;
   auto filepath = tmp_dir.path() / "parquet_file";
   cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3});
   cudf::test::fixed_width_column_wrapper<TypeParam> b({4, 5, 6, 7});
@@ -78,7 +78,7 @@ TYPED_TEST(NumericParquetTest, ReadColumnSubset)
 
 TYPED_TEST(NumericParquetTest, ReadWriteSingleItem)
 {
-  TempDir tmp_dir{false};
+  TempDir tmp_dir;
   auto filepath = tmp_dir.path() / "parquet_file";
   cudf::test::fixed_width_column_wrapper<TypeParam> a({1});
   const std::vector<std::string> column_names({"a"});

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ TYPED_TEST_SUITE(NumericCSVTest, cudf::test::NumericTypes);
 
 TYPED_TEST(NumericCSVTest, ReadWrite)
 {
-  TempDir tmp_dir{false};
+  TempDir tmp_dir;
   // NB: Columns are explicitly not null as the csv returns them as null
   cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3}, {1, 1, 1, 1});
   cudf::test::fixed_width_column_wrapper<TypeParam> b({4, 5, 6, 7}, {1, 1, 1, 1});
@@ -59,7 +59,7 @@ TYPED_TEST(NumericCSVTest, ReadWrite)
 
 TYPED_TEST(NumericCSVTest, ReadWriteSingleItem)
 {
-  TempDir tmp_dir{false};
+  TempDir tmp_dir;
   // NB: Columns are explicitly not null as the csv returns them as null
   // (we cannot roundtrip a single null without additional parameters).
   cudf::test::fixed_width_column_wrapper<TypeParam> a({1}, {1});
@@ -104,7 +104,7 @@ TEST(StringsCSVTest, ReadWrite)
 
 TYPED_TEST(NumericCSVTest, ReadNulls)
 {
-  TempDir tmp_dir{false};
+  TempDir tmp_dir;
   cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3}, {0, 0, 1, 1});
   cudf::test::fixed_width_column_wrapper<TypeParam> b({4, 5, 6, 7}, {0, 1, 1, 0});
   const std::vector<std::string> column_names({"a", "b"});
@@ -125,7 +125,7 @@ TYPED_TEST(NumericCSVTest, ReadNulls)
 
 TYPED_TEST(NumericCSVTest, ReadUseCols)
 {
-  TempDir tmp_dir{false};
+  TempDir tmp_dir;
   cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3}, {0, 0, 1, 1});
   cudf::test::fixed_width_column_wrapper<TypeParam> b({4, 5, 6, 7}, {0, 1, 1, 0});
   const std::vector<std::string> column_names({"a", "b"});
