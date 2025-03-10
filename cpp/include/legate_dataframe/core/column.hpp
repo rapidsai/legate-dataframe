@@ -71,7 +71,7 @@ class LogicalColumn {
   {
     if (array_->dim() != 1) { throw std::invalid_argument("array must be 1-D"); }
     // Note: Checking the volume could be blocking, so assume that this is fine.
-    assert(!scalar || array_->volume() == 1);
+    assert(!scalar || array_->unbound() || array_->volume() == 1);
 
     if (cudf_type.id() == cudf::type_id::EMPTY) {
       cudf_type_ = cudf::data_type{to_cudf_type_id(array_->type().code())};

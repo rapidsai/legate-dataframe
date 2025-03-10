@@ -193,9 +193,8 @@ def guess_available_mem():
     args, _ = parser.parse_known_args(config.split())
 
     ngpus = legate.core.get_machine().count(legate.core.TaskTarget.GPU)
-    ncpus = legate.core.get_machine().count(legate.core.TaskTarget.CPU)
 
     fbmem = args.fbmem * ngpus if args.fbmem is not None else None
-    sysmem = args.sysmem * ncpus if args.sysmem is not None else None
+    sysmem = args.sysmem if args.sysmem is not None else None
 
     return fbmem, sysmem

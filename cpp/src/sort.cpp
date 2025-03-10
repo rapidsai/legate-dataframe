@@ -401,9 +401,10 @@ LogicalTable sort(const LogicalTable& tbl,
 
   const auto& name_to_idx = tbl.get_column_names();
   for (size_t i = 0; i < keys.size(); i++) {
-    keys_idx[i]           = name_to_idx.at(keys[i]);
-    column_order_lg[i]    = static_cast<std::underlying_type_t<cudf::order>>(column_order[i]);
-    null_precedence_lg[i] = static_cast<std::underlying_type_t<cudf::order>>(null_precedence[i]);
+    keys_idx[i]        = name_to_idx.at(keys[i]);
+    column_order_lg[i] = static_cast<std::underlying_type_t<cudf::order>>(column_order[i]);
+    null_precedence_lg[i] =
+      static_cast<std::underlying_type_t<cudf::null_order>>(null_precedence[i]);
   }
 
   legate::AutoTask task = runtime->create_task(get_library(), task::SortTask::TASK_ID);

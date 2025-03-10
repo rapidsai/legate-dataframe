@@ -234,7 +234,7 @@ class AggregationDescriptor final {
   {
     // TODO(seberg): The dtype equality should be fine right now, but it is not
     // strictly correct for complicated dtypes (structs, lists).
-    assert(output_type.id() != cudf::type_id::STRUCT && output_type_id() != cudf::type_id::LIST);
+    assert(output_type.id() != cudf::type_id::STRUCT && output_type.id() != cudf::type_id::LIST);
     return (agg->is_equal(*other.agg) && output_type.id() == other.output_type.id() &&
             output_type.scale() == other.output_type.scale() &&
             initial_.has_value() == other.initial_.has_value() &&
