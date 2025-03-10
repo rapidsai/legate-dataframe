@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,12 +61,41 @@ inline void add_next_scalar<legate::Scalar>(legate::AutoTask& task, const legate
  * @param items The vector of scalars.
  */
 template <typename T>
-void add_next_scalar_vector(AutoTask& task, const std::vector<T>& scalars)
+inline void add_next_scalar_vector(AutoTask& task, const std::vector<T>& scalars)
 {
-  add_next_scalar(task, scalars.size());
-  for (const T& scalar : scalars) {
-    add_next_scalar(task, scalar);
+  // Temporary work-around 2025-03.  Legate may assert on data even for 0-size
+  // so we build the scalar manually and do not copy if it is zero size.
+  auto arr_type =
+    legate::fixed_array_type(legate::primitive_type(legate::type_code_of_v<T>), scalars.size());
+  add_next_scalar(task, legate::Scalar(arr_type, scalars.data(), /* copy */ scalars.size() > 0));
+}
+
+template <>
+inline void add_next_scalar_vector(AutoTask& task, const std::vector<bool>& scalars)
+{
+  // Bool vectors don't work directly (because of bit-storage), so for simplicity
+  // allow them via an overload here.  (This is as of 2025-03.)
+  // Also do not copy if empty (see general vector code above).
+  auto arr_type = legate::fixed_array_type(legate::bool_(), scalars.size());
+  std::vector<char> tmp;
+  tmp.assign(scalars.begin(), scalars.end());
+
+  add_next_scalar(task, legate::Scalar(arr_type, tmp.data(), /* copy */ scalars.size() > 0));
+}
+
+template <>
+inline void add_next_scalar_vector(AutoTask& task, const std::vector<std::string>& scalars)
+{
+  // String vectors don't work as scalars directly in legate as of 2025-03.
+  std::stringstream ss;
+  std::vector<size_t> lengths;
+  lengths.reserve(scalars.size());
+  for (auto& string : scalars) {
+    ss << string;
+    lengths.emplace_back(string.length());
   }
+  add_next_scalar_vector(task, lengths);
+  add_next_scalar(task, ss.str());
 }
 
 /**
@@ -95,18 +124,38 @@ T get_next_scalar(GPUTaskContext& ctx)
  * NB: the order of "add_next_*" calls must match the order of the
  * corresponding "get_next_*" calls.
  *
+ * Note: In the future we may change this to not be a vector, but quite a few
+ * places expect a vector (of non const values).
+ *
  * @tparam T The type of the scalar values.
  * @param ctx The task context active in the calling task.
  * @return The vector of scalar values.
  */
 template <typename T>
-std::vector<T> get_next_scalar_vector(GPUTaskContext& ctx)
+std::vector<T> inline get_next_scalar_vector(GPUTaskContext& ctx)
 {
-  size_t num_items = get_next_scalar<size_t>(ctx);
+  auto items = ctx.get_next_scalar_arg().values<T>();
   std::vector<T> ret;
-  ret.reserve(num_items);
-  for (size_t i = 0; i < num_items; ++i) {
-    ret.emplace_back(get_next_scalar<T>(ctx));
+  ret.reserve(items.size());
+  for (auto& item : items) {
+    ret.emplace_back(item);
+  }
+  return ret;
+}
+
+template <>
+std::vector<std::string> inline get_next_scalar_vector(GPUTaskContext& ctx)
+{
+  std::vector<std::string> ret;
+  auto lengths = get_next_scalar_vector<std::size_t>(ctx);
+  auto strings = ctx.get_next_scalar_arg().value<std::string>();
+
+  ret.reserve(lengths.size());
+  size_t start = 0;
+  for (auto& len : lengths) {
+    std::string substr(strings, start, len);
+    ret.emplace_back(substr);
+    start += len;
   }
   return ret;
 }
