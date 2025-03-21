@@ -35,6 +35,9 @@ namespace task {
 
 class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::GroupByAggregation> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::GroupByAggregation}};
+
   static constexpr auto GPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
 
@@ -227,7 +230,7 @@ LogicalTable groupby_aggregation(
 
   auto runtime = legate::Runtime::get_runtime();
   legate::AutoTask task =
-    runtime->create_task(get_library(), task::GroupByAggregationTask::TASK_ID);
+    runtime->create_task(get_library(), task::GroupByAggregationTask::TASK_CONFIG.task_id());
   argument::add_next_input(task, table);
   argument::add_next_output(task, output);
   argument::add_next_scalar_vector(task, key_col_idx);
@@ -249,9 +252,9 @@ LogicalTable groupby_aggregation(
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::GroupByAggregationTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

@@ -309,6 +309,8 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
 
 class SortTask : public Task<SortTask, OpCode::Sort> {
  public:
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Sort}};
+
   static constexpr auto GPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
 
@@ -407,7 +409,8 @@ LogicalTable sort(const LogicalTable& tbl,
       static_cast<std::underlying_type_t<cudf::null_order>>(null_precedence[i]);
   }
 
-  legate::AutoTask task = runtime->create_task(get_library(), task::SortTask::TASK_ID);
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::SortTask::TASK_CONFIG.task_id());
   argument::add_next_input(task, tbl);
   argument::add_next_scalar_vector(task, keys_idx);
   argument::add_next_scalar_vector(task, column_order_lg);
@@ -425,9 +428,9 @@ LogicalTable sort(const LogicalTable& tbl,
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::SortTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

@@ -76,6 +76,9 @@ std::unique_ptr<cudf::reduce_aggregation> make_reduce_aggregation(cudf::aggregat
 
 class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::ReduceLocal}};
+
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
 
   static void gpu_variant(legate::TaskContext context)
@@ -166,7 +169,8 @@ LogicalColumn perform_simple_reduce(
   }
   auto ret = LogicalColumn::empty_like(output_type, nullable, /* scalar */ finalize);
 
-  legate::AutoTask task = runtime->create_task(get_library(), task::ReduceLocalTask::TASK_ID);
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::ReduceLocalTask::TASK_CONFIG.task_id());
 
   // If we "finalize", gather all data to one worker via a broadcast constraint
   auto var = argument::add_next_input(task, col, /* broadcast */ finalize);
@@ -422,9 +426,9 @@ LogicalColumn reduce(const LogicalColumn& col,
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::ReduceLocalTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

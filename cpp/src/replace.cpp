@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,9 @@ namespace task {
 
 class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::ReplaceNullsWithScalar> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::ReplaceNullsWithScalar}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -63,7 +66,8 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
     // NOTE: We could be graceful here and check if it has 1 rows.
     throw std::invalid_argument("Scalar column must be marked as scalar.");
   }
-  legate::AutoTask task = runtime->create_task(get_library(), task::ReplaceNullScalarTask::TASK_ID);
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::ReplaceNullScalarTask::TASK_CONFIG.task_id());
 
   argument::add_next_input(task, col);
   argument::add_next_input(task, scalar, /* broadcast */ true);
@@ -76,9 +80,9 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::ReplaceNullScalarTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

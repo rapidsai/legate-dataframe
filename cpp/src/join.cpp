@@ -199,6 +199,8 @@ bool is_repartition_not_needed(const GPUTaskContext& ctx,
 
 class JoinTask : public Task<JoinTask, OpCode::Join> {
  public:
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Join}};
+
   static constexpr auto GPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
 
@@ -331,7 +333,8 @@ LogicalTable join(const LogicalTable& lhs,
   auto ret_names = concat(lhs_out.get_column_name_vector(), rhs_out.get_column_name_vector());
   auto ret       = LogicalTable(std::move(ret_cols), std::move(ret_names));
 
-  legate::AutoTask task = runtime->create_task(get_library(), task::JoinTask::TASK_ID);
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::JoinTask::TASK_CONFIG.task_id());
   // TODO: While legate may broadcast some arrays, it would be good to add
   //       a heuristic (e.g. based on the fact that we need to do copies
   //       anyway, so the broadcast may actually copy less).
@@ -429,9 +432,9 @@ LogicalTable join(const LogicalTable& lhs,
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::JoinTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

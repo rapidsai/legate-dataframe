@@ -31,6 +31,9 @@ namespace legate::dataframe::task {
 
 class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCol> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::BinaryOpColCol}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -64,10 +67,10 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::BinaryOpColColTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace
 
@@ -83,7 +86,8 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
 
   auto scalar_result = lhs.is_scalar() && rhs.is_scalar();
   auto ret           = LogicalColumn::empty_like(std::move(output_type), nullable, scalar_result);
-  legate::AutoTask task = runtime->create_task(get_library(), task::BinaryOpColColTask::TASK_ID);
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::BinaryOpColColTask::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::binary_operator>>(op));
 
   /* Add the inputs, broadcast if scalar.  If both aren't scalar align them */

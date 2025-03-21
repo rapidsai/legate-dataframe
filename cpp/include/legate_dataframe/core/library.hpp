@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,8 +50,7 @@ struct Registry {
 
 template <typename T, int ID>
 struct Task : public legate::LegateTask<T> {
-  using Registrar               = Registry;
-  static constexpr auto TASK_ID = legate::LocalTaskID{ID};
+  using Registrar = Registry;
 };
 
 }  // namespace task

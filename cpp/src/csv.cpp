@@ -34,6 +34,8 @@ namespace legate::dataframe::task {
 
 class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
  public:
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::CSVWrite}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -54,6 +56,8 @@ class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
 
 class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
  public:
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::CSVRead}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -145,11 +149,11 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::CSVWrite::register_variants();
   legate::dataframe::task::CSVRead::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace
 
@@ -161,8 +165,9 @@ void csv_write(LogicalTable& tbl, const std::string& dirpath, char delimiter)
   if (!std::filesystem::is_empty(dirpath)) {
     throw std::invalid_argument("if path exist, it must be an empty directory");
   }
-  auto runtime          = legate::Runtime::get_runtime();
-  legate::AutoTask task = runtime->create_task(get_library(), task::CSVWrite::TASK_ID);
+  auto runtime = legate::Runtime::get_runtime();
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::CSVWrite::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, dirpath);
   argument::add_next_scalar_vector(task, tbl.get_column_name_vector());
   argument::add_next_input(task, tbl);
@@ -287,7 +292,7 @@ LogicalTable csv_read(const std::string& glob_string,
   }
 
   auto runtime          = legate::Runtime::get_runtime();
-  legate::AutoTask task = runtime->create_task(get_library(), task::CSVRead::TASK_ID);
+  legate::AutoTask task = runtime->create_task(get_library(), task::CSVRead::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, file_paths);
   argument::add_next_scalar_vector(task, column_names);
   argument::add_next_scalar_vector(task, use_cols_indexes);
