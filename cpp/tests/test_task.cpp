@@ -29,7 +29,7 @@ namespace {
 static const char* library_name = "test.global_row_offset";
 
 struct GlobalRowOffsetTask : public legate::LegateTask<GlobalRowOffsetTask> {
-  static constexpr auto TASK_ID             = legate::LocalTaskID{0};
+  static inline const auto TASK_CONFIG      = legate::TaskConfig{legate::LocalTaskID{0}};
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
 
   static void gpu_variant(legate::TaskContext context)
@@ -51,7 +51,7 @@ struct GlobalRowOffsetTask : public legate::LegateTask<GlobalRowOffsetTask> {
 };
 
 struct TaskArgumentMix : public legate::LegateTask<TaskArgumentMix> {
-  static constexpr auto TASK_ID             = legate::LocalTaskID{1};
+  static inline const auto TASK_CONFIG      = legate::TaskConfig{legate::LocalTaskID{1}};
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
 
   static void gpu_variant(legate::TaskContext context)
@@ -110,7 +110,7 @@ legate::Library get_library()
 void check_global_row_offset(LogicalTable& input)
 {
   auto runtime = legate::Runtime::get_runtime();
-  auto task    = runtime->create_task(get_library(), GlobalRowOffsetTask::TASK_ID);
+  auto task    = runtime->create_task(get_library(), GlobalRowOffsetTask::TASK_CONFIG.task_id());
 
   // Launch task
   LogicalColumn res = LogicalColumn::empty_like(legate::int64(), /* nullable = */ false);
@@ -172,7 +172,7 @@ TEST(TaskTest, GlobalRowOffsetEmpty)
 TEST(TaskTest, TaskArgumentMix)
 {
   auto runtime = legate::Runtime::get_runtime();
-  auto task    = runtime->create_task(get_library(), TaskArgumentMix::TASK_ID);
+  auto task    = runtime->create_task(get_library(), TaskArgumentMix::TASK_CONFIG.task_id());
 
   auto input     = sequence(100, 0);
   auto output    = LogicalColumn::empty_like(input);

@@ -35,6 +35,9 @@ namespace legate::dataframe::task {
 
 class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetWrite}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -59,6 +62,9 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
 
 class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetRead}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -122,11 +128,11 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::ParquetWrite::register_variants();
   legate::dataframe::task::ParquetRead::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace
 
@@ -138,8 +144,9 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath)
   if (!std::filesystem::is_empty(dirpath)) {
     throw std::invalid_argument("if path exist, it must be an empty directory");
   }
-  auto runtime          = legate::Runtime::get_runtime();
-  legate::AutoTask task = runtime->create_task(get_library(), task::ParquetWrite::TASK_ID);
+  auto runtime = legate::Runtime::get_runtime();
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::ParquetWrite::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, dirpath);
   argument::add_next_scalar_vector(task, tbl.get_column_name_vector());
   argument::add_next_input(task, tbl);
@@ -189,8 +196,9 @@ LogicalTable parquet_read(const std::string& glob_string,
     throw std::invalid_argument("not all columns found in parquet file.");
   }
 
-  auto runtime          = legate::Runtime::get_runtime();
-  legate::AutoTask task = runtime->create_task(get_library(), task::ParquetRead::TASK_ID);
+  auto runtime = legate::Runtime::get_runtime();
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::ParquetRead::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, file_paths);
   argument::add_next_scalar_vector(task, ret.get_column_name_vector());
   argument::add_next_scalar_vector(task, nrows);

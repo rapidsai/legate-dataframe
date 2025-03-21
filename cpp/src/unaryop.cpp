@@ -31,6 +31,8 @@ namespace task {
 
 class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  public:
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::UnaryOp}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -47,8 +49,9 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
 
 LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
 {
-  auto runtime          = legate::Runtime::get_runtime();
-  legate::AutoTask task = runtime->create_task(get_library(), task::UnaryOpTask::TASK_ID);
+  auto runtime = legate::Runtime::get_runtime();
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::UnaryOpTask::TASK_CONFIG.task_id());
 
   // Unary ops can return a scalar column for a scalar column input.
   auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable(), col.is_scalar());
@@ -62,9 +65,9 @@ LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::UnaryOpTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

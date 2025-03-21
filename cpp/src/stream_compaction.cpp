@@ -31,6 +31,9 @@ namespace task {
 
 class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBooleanMask> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::ApplyBooleanMask}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -55,7 +58,8 @@ LogicalTable apply_boolean_mask(const LogicalTable& tbl, const LogicalColumn& bo
     throw std::invalid_argument("boolean mask column must have a bool dtype.");
   }
 
-  legate::AutoTask task = runtime->create_task(get_library(), task::ApplyBooleanMaskTask::TASK_ID);
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::ApplyBooleanMaskTask::TASK_CONFIG.task_id());
 
   argument::add_next_input(task, tbl);
   argument::add_next_input(task, boolean_mask);
@@ -68,9 +72,9 @@ LogicalTable apply_boolean_mask(const LogicalTable& tbl, const LogicalColumn& bo
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::ApplyBooleanMaskTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

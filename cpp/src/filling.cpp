@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,8 @@ namespace task {
 
 class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
  public:
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Sequence}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -56,9 +58,10 @@ class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
 
 LogicalColumn sequence(size_t size, int64_t init)
 {
-  auto runtime          = legate::Runtime::get_runtime();
-  auto ret              = LogicalColumn::empty_like(legate::int64(), false);
-  legate::AutoTask task = runtime->create_task(get_library(), task::SequenceTask::TASK_ID);
+  auto runtime = legate::Runtime::get_runtime();
+  auto ret     = LogicalColumn::empty_like(legate::int64(), false);
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::SequenceTask::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, size);
   argument::add_next_scalar(task, init);
   argument::add_next_output(task, ret);
@@ -71,9 +74,9 @@ LogicalColumn sequence(size_t size, int64_t init)
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::SequenceTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

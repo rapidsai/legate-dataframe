@@ -30,6 +30,9 @@ namespace task {
 
 class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::ToTimestamps}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -46,6 +49,9 @@ class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
 class ExtractTimestampComponentTask
   : public Task<ExtractTimestampComponentTask, OpCode::ExtractTimestampComponent> {
  public:
+  static inline const auto TASK_CONFIG =
+    legate::TaskConfig{legate::LocalTaskID{OpCode::ExtractTimestampComponent}};
+
   static void gpu_variant(legate::TaskContext context)
   {
     GPUTaskContext ctx{context};
@@ -67,9 +73,10 @@ LogicalColumn to_timestamps(const LogicalColumn& input,
                             cudf::data_type timestamp_type,
                             std::string format)
 {
-  auto runtime          = legate::Runtime::get_runtime();
-  auto ret              = LogicalColumn::empty_like(timestamp_type, input.nullable());
-  legate::AutoTask task = runtime->create_task(get_library(), task::ToTimestampsTask::TASK_ID);
+  auto runtime = legate::Runtime::get_runtime();
+  auto ret     = LogicalColumn::empty_like(timestamp_type, input.nullable());
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::ToTimestampsTask::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, std::move(format));
   argument::add_next_input(task, input);
   argument::add_next_output(task, ret);
@@ -86,7 +93,7 @@ LogicalColumn extract_timestamp_component(const LogicalColumn& input,
   auto runtime = legate::Runtime::get_runtime();
   auto ret     = LogicalColumn::empty_like(cudf::data_type{cudf::type_id::INT16}, input.nullable());
   legate::AutoTask task =
-    runtime->create_task(get_library(), task::ExtractTimestampComponentTask::TASK_ID);
+    runtime->create_task(get_library(), task::ExtractTimestampComponentTask::TASK_CONFIG.task_id());
   argument::add_next_scalar(
     task, static_cast<std::underlying_type_t<cudf::datetime::datetime_component>>(component));
   argument::add_next_input(task, input);
@@ -99,10 +106,10 @@ LogicalColumn extract_timestamp_component(const LogicalColumn& input,
 
 namespace {
 
-void __attribute__((constructor)) register_tasks()
-{
+const auto reg_id_ = []() -> char {
   legate::dataframe::task::ToTimestampsTask::register_variants();
   legate::dataframe::task::ExtractTimestampComponentTask::register_variants();
-}
+  return 0;
+}();
 
 }  // namespace

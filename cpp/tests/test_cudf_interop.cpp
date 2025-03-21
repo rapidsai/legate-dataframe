@@ -38,8 +38,8 @@ namespace {
 static const char* library_name = "test.cudf_interop";
 
 struct RoundTripTableTask : public legate::LegateTask<RoundTripTableTask> {
-  static constexpr auto TASK_ID             = legate::LocalTaskID{0};
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
+  static inline const auto TASK_CONFIG      = legate::TaskConfig{legate::LocalTaskID{0}};
 
   static void gpu_variant(legate::TaskContext context)
   {
@@ -66,7 +66,7 @@ void round_trip(const LogicalTable& input, const LogicalTable& output)
   register_tasks();
   auto runtime = legate::Runtime::get_runtime();
   auto context = runtime->find_library(library_name);
-  auto task    = runtime->create_task(context, RoundTripTableTask::TASK_ID);
+  auto task    = runtime->create_task(context, RoundTripTableTask::TASK_CONFIG.task_id());
 
   // Launch task
   argument::add_next_input(task, input);

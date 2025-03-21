@@ -38,7 +38,7 @@ namespace {
 static const char* library_name = "test.repartition_by_hash";
 
 struct CheckHash : public legate::LegateTask<CheckHash> {
-  static constexpr auto TASK_ID = legate::LocalTaskID{0};
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{0}};
   static constexpr auto GPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
 
@@ -88,7 +88,7 @@ TEST(RepartitionByHash, NoNull)
   register_tasks();
   auto runtime = legate::Runtime::get_runtime();
   auto context = runtime->find_library(library_name);
-  auto task    = runtime->create_task(context, CheckHash::TASK_ID);
+  auto task    = runtime->create_task(context, CheckHash::TASK_CONFIG.task_id());
 
   // Create a three column cudf and legate table
   cudf::test::fixed_width_column_wrapper<int32_t> col0{{3, 1, 2, 0, 2}};
@@ -123,7 +123,7 @@ TEST(RepartitionByHash, WithNullInNumericColumn)
   register_tasks();
   auto runtime = legate::Runtime::get_runtime();
   auto context = runtime->find_library(library_name);
-  auto task    = runtime->create_task(context, CheckHash::TASK_ID);
+  auto task    = runtime->create_task(context, CheckHash::TASK_CONFIG.task_id());
 
   // Create a three column cudf and legate table
   cudf::test::fixed_width_column_wrapper<int32_t> col0{{3, 1, 2, 0, 2}, {1, 0, 1, 1, 1}};
@@ -158,7 +158,7 @@ TEST(RepartitionByHash, WithNullInStringsColumn)
   register_tasks();
   auto runtime = legate::Runtime::get_runtime();
   auto context = runtime->find_library(library_name);
-  auto task    = runtime->create_task(context, CheckHash::TASK_ID);
+  auto task    = runtime->create_task(context, CheckHash::TASK_CONFIG.task_id());
 
   // Create a three column cudf and legate table
   cudf::test::fixed_width_column_wrapper<int32_t> col0{{3, 1, 2, 0, 2}};
