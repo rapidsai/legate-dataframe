@@ -38,7 +38,7 @@ def test_python_launched_tasks():
 
     # Then, we can create the task and provide the task arguments using the
     # exact same order as in the task implementation ("unaryop.cpp").
-    task = runtime.create_auto_task(lib, 7)  # TODO: get the enum of `UnaryOperator`
+    task = runtime.create_auto_task(lib, 8)  # TODO: get the enum of `UnaryOperator`
     task.add_scalar_arg(UnaryOperator.ABS.value, dtype=lg_type.int32)
     col.add_as_next_task_input(task)
     result = LogicalColumn.empty_like_logical_column(col)

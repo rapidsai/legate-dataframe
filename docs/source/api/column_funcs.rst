@@ -2,6 +2,9 @@ Column functions
 ================
 
 .. autofunction::
+    legate_dataframe.lib.unaryop.cast
+
+.. autofunction::
     legate_dataframe.lib.unaryop.unary_operation
 
 .. autofunction::
@@ -9,6 +12,9 @@ Column functions
 
 .. autofunction::
     legate_dataframe.lib.timestamps.to_timestamps
+
+.. autofunction::
+    legate_dataframe.lib.timestamps.extract_timestamp_component
 
 .. autofunction::
     legate_dataframe.lib.reduction.reduce

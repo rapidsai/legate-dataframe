@@ -27,6 +27,7 @@ enum : int {
   ApplyBooleanMask,
   CSVWrite,
   CSVRead,
+  Cast,
   ParquetWrite,
   ParquetRead,
   ParquetReadArray,

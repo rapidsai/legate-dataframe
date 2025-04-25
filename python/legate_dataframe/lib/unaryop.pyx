@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -6,7 +6,10 @@
 
 from libc.stdint cimport int32_t
 
+from pylibcudf.types cimport data_type
+
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
+from legate_dataframe.lib.core.data_type cimport as_data_type
 from legate_dataframe.utils import _track_provenance
 
 
@@ -43,6 +46,10 @@ cdef extern from "<legate_dataframe/unaryop.hpp>" nogil:
         const cpp_LogicalColumn& col, unary_operator op
     ) except +
 
+    cpp_LogicalColumn cpp_cast "legate::dataframe::cast"(
+        const cpp_LogicalColumn& col, data_type dtype
+    ) except +
+
 
 @_track_provenance
 def unary_operation(LogicalColumn col, unary_operator op) -> LogicalColumn:
@@ -63,4 +70,24 @@ def unary_operation(LogicalColumn col, unary_operator op) -> LogicalColumn:
     """
     return LogicalColumn.from_handle(
         cpp_unary_operation(col._handle, op)
+    )
+
+
+@_track_provenance
+def cast(LogicalColumn col, dtype) -> LogicalColumn:
+    """Cast a logical column to the desired data type.
+
+    Parameters
+    ----------
+    col
+        Logical column as input
+    dtype
+        The cudf data type of the result.
+
+    Returns
+    -------
+        Logical column of same size as `col` but with new data type.
+    """
+    return LogicalColumn.from_handle(
+        cpp_cast(col._handle, as_data_type(dtype))
     )

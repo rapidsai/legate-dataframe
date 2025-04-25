@@ -5,12 +5,14 @@ This is **not** a drop-in replacement of [Pandas](https://pandas.pydata.org/), i
 
 In the future, we plan to introduce a high-level pure Python package that implements all the nice-to-have features known from Pandas using the low-level API's primitives.
 
+[Python API and further documentation](https://rapidsai.github.io/legate-dataframe/).
+
 ## Install
 
 You can install `legate-dataframe` packages from the [conda legate channel](https://anaconda.org/legate/)
 using
 ```bash
-conda -c legate -c rapidsai -c conda-forge legate-dataframe
+conda install -c legate -c rapidsai -c conda-forge legate-dataframe
 ```
 To include development releases add the `legate/label/experimental` channel.
 

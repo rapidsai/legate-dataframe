@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+#include <cstdint>
 #include <legate.h>
 
 #include <cudf/unary.hpp>
+#include <cudf/utilities/type_dispatcher.hpp>
 #include <cudf_test/base_fixture.hpp>
 #include <cudf_test/column_utilities.hpp>
 #include <cudf_test/column_wrapper.hpp>
@@ -50,5 +52,24 @@ TYPED_TEST(UnaryOpsTest, AbsWithNull)
   std::unique_ptr<cudf::column> expect = cudf::unary_operation(a, op);
 
   LogicalColumn res = unary_operation(LogicalColumn{a}, op);
+  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+}
+
+TYPED_TEST(UnaryOpsTest, CastFromAnyToFloat32)
+{
+  cudf::test::fixed_width_column_wrapper<TypeParam> a({-1, -2, -3, -4});
+  std::unique_ptr<cudf::column> expect = cudf::cast(a, cudf::data_type{cudf::type_id::FLOAT32});
+
+  LogicalColumn res = cast(LogicalColumn{a}, cudf::data_type{cudf::type_id::FLOAT32});
+  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+}
+
+TYPED_TEST(UnaryOpsTest, CastFromInt16ToAny)
+{
+  cudf::test::fixed_width_column_wrapper<int16_t> a({-1, -2, -3, -4});
+  auto to_dtype                        = cudf::data_type{cudf::type_to_id<TypeParam>()};
+  std::unique_ptr<cudf::column> expect = cudf::cast(a, to_dtype);
+
+  LogicalColumn res = cast(LogicalColumn{a}, to_dtype);
   CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
 }

@@ -29,6 +29,21 @@
 namespace legate::dataframe {
 namespace task {
 
+class CastTask : public Task<CastTask, OpCode::Cast> {
+ public:
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Cast}};
+
+  static void gpu_variant(legate::TaskContext context)
+  {
+    GPUTaskContext ctx{context};
+    const auto input                  = argument::get_next_input<PhysicalColumn>(ctx);
+    auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
+    cudf::column_view col             = input.column_view();
+    std::unique_ptr<cudf::column> ret = cudf::cast(col, output.cudf_type(), ctx.stream(), ctx.mr());
+    output.move_into(std::move(ret));
+  }
+};
+
 class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  public:
   static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::UnaryOp}};
@@ -47,6 +62,24 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
 
 }  // namespace task
 
+LogicalColumn cast(const LogicalColumn& col, cudf::data_type to_type)
+{
+  if (!cudf::is_supported_cast(col.cudf_type(), to_type)) {
+    throw std::invalid_argument("Cannot cast column to specified type");
+  }
+
+  auto runtime = legate::Runtime::get_runtime();
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::CastTask::TASK_CONFIG.task_id());
+
+  // Unary ops can return a scalar column for a scalar column input.
+  auto ret = LogicalColumn::empty_like(to_type, col.nullable(), col.is_scalar());
+  argument::add_next_input(task, col);
+  argument::add_next_output(task, ret);
+  runtime->submit(std::move(task));
+  return ret;
+}
+
 LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
 {
   auto runtime = legate::Runtime::get_runtime();
@@ -61,11 +94,13 @@ LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
   runtime->submit(std::move(task));
   return ret;
 }
+
 }  // namespace legate::dataframe
 
 namespace {
 
 const auto reg_id_ = []() -> char {
+  legate::dataframe::task::CastTask::register_variants();
   legate::dataframe::task::UnaryOpTask::register_variants();
   return 0;
 }();

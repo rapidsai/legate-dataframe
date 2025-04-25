@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,16 @@
 #include <legate_dataframe/core/column.hpp>
 
 namespace legate::dataframe {
+
+/**
+ * @brief Cast column to a new data type.
+ *
+ * @param col Logical column as input
+ * @param dtype The desired data type of the output column
+ *
+ * @returns Logical column of same size as `col` of the new data type
+ */
+LogicalColumn cast(const LogicalColumn& col, cudf::data_type dtype);
 
 /**
  * @brief Performs unary operation on all values in column
