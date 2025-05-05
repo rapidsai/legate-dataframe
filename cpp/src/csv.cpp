@@ -30,6 +30,8 @@
 
 #include <legate_dataframe/csv.hpp>
 
+#include <iostream>
+
 namespace legate::dataframe::task {
 
 class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
@@ -102,6 +104,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       auto file_bytes_offset  = my_bytes_offset - total_bytes_seen;
       auto file_bytes_to_read = std::min(file_bytes - file_bytes_offset, my_num_bytes);
 
+      std::cout << "reading: " << file_paths[i] << std::endl;
       auto src = cudf::io::source_info(file_paths[i]);
       auto opt = cudf::io::csv_reader_options::builder(src);
       if (file_bytes_offset != 0 || !read_header) {
@@ -286,6 +289,7 @@ LogicalTable csv_read(const std::string& glob_string,
   size_t nbytes_total = 0;
   nbytes.reserve(file_paths.size());
   for (const auto& path : file_paths) {
+    std::cout << "preparing to read from: " << path << std::endl;
     auto file_size = std::filesystem::file_size(path);
     nbytes.push_back(file_size);
     nbytes_total += file_size;
