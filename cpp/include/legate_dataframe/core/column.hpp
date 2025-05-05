@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <arrow/api.h>
+
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_view.hpp>
 #include <cudf/scalar/scalar.hpp>
@@ -480,6 +482,13 @@ class PhysicalColumn {
    * @param scalar The cudf scalar to move
    */
   void move_into(std::unique_ptr<cudf::scalar> scalar);
+
+  /**
+   * @brief Move arrow array into this unbound physical column
+   *
+   * @param scalar The arrow array to move
+   */
+  void move_into(std::unique_ptr<arrow::Array> column);
 
   /**
    * @brief Makes the unbound column empty. Valid only when the column is unbound.
