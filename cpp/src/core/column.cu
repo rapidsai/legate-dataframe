@@ -442,6 +442,58 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
   move_into(std::move(col));
 }
 
+template <typename F>
+class Visitor {
+ public:
+  template <typename Type>
+  arrow::Status Visit(const arrow::NumericArray<Type>& array, F&& fn)
+  {
+    fn(array);
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::Array& array, F&& fn)
+  {
+    return arrow::Status::NotImplemented("Not implemented for array of type ",
+                                         array.type()->ToString());
+  }
+};
+
+template <typename F>
+void DispatchArrowType(const arrow::Array& array, F&& fn)
+{
+  Visitor<F> visitor;
+  auto status = arrow::VisitArrayInline(array, &visitor, std::forward<F>(fn));
+}
+
+void PhysicalColumn::move_into(std::unique_ptr<arrow::Array> column)
+{
+  if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
+  auto null_count = column->null_count();
+  if (null_count > 0 && !array_.nullable()) {
+    throw std::invalid_argument(
+      "move_into(): the arrow column is nullable while the PhysicalArray isn't");
+  }
+  if (scalar_out_ && column->length() != 1) {
+    throw std::logic_error("move_into(): for scalar, column must have size one.");
+  }
+
+  // Dispatch types
+  DispatchArrowType(*column, [&](const auto& arrow_array) {
+    using T = typename std::decay_t<decltype(arrow_array)>::TypeClass::c_type;
+    if (null_count > 0) {
+      auto null_mask =
+        array_.null_mask().create_output_buffer<bool, 1>(legate::Point<1>(arrow_array.length()),
+                                                         /* bind_buffer = */ true);
+      for (size_t i = 0; i < arrow_array.length(); ++i) {
+        null_mask[i] = arrow_array.IsNull(i);
+      }
+    }
+    auto out = array_.data().create_output_buffer<T, 1>(legate::Point<1>(arrow_array.length()),
+                                                        true /* bind_buffer */);
+    std::memcpy(out.ptr(0), arrow_array.raw_values(), arrow_array.length() * sizeof(T));
+  });
+}
+
 void PhysicalColumn::bind_empty_data() const
 {
   if (!unbound()) {

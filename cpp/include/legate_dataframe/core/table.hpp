@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include <arrow/api.h>
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
 
@@ -361,6 +362,23 @@ class PhysicalTable {
    * @param columns The cudf columns to move
    */
   void move_into(std::vector<std::unique_ptr<cudf::column>> columns)
+  {
+    if (columns.size() != columns_.size()) {
+      throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
+                               std::to_string(columns_.size()) +
+                               " != " + std::to_string(columns.size()));
+    }
+    for (size_t i = 0; i < columns.size(); ++i) {
+      columns_[i].move_into(std::move(columns[i]));
+    }
+  }
+
+  /**
+   * @brief Move local arrow arrays into this unbound physical table
+   *
+   * @param columns The arrow arrays to move
+   */
+  void move_into(std::vector<std::unique_ptr<arrow::Array>> columns)
   {
     if (columns.size() != columns_.size()) {
       throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
