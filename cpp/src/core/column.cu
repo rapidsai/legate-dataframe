@@ -53,17 +53,11 @@ namespace {
   legate::Runtime* runtime = legate::Runtime::get_runtime();
 
   if (nelem == 0) { return runtime->create_store({nelem}, dtype); }
-
-  // For now, we copy the device buffer to host memory and hand it over to legate with the
-  // `std::free()` function.
-  // TODO: avoid this copy: <https://github.com/rapidsai/legate-dataframe/issues/80>
   const size_t nbytes = nelem * dtype.size();
-  void* host_buffer   = std::malloc(nbytes);
-  if (host_buffer == nullptr) { throw std::bad_alloc(); }
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(host_buffer, buffer, nbytes, cudaMemcpyDeviceToHost, stream));
+  auto ret            = runtime->create_store({nelem}, dtype, false);
+  auto accessor       = ret.get_physical_store().write_accessor<uint8_t, 1, false>();
+  LEGATE_CHECK_CUDA(cudaMemcpyAsync(accessor.ptr(0), buffer, nbytes, cudaMemcpyDefault, stream));
   LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
-  auto alloc = legate::ExternalAllocation::create_sysmem(host_buffer, nbytes, std::free);
-  auto ret   = runtime->create_store({nelem}, dtype, alloc);
   return ret;
 }
 
