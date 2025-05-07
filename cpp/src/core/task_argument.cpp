@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,6 +61,5 @@ void add_parallel_launch_task(legate::AutoTask& task)
   add_parallel_launch_task(task, num_gpus);
 }
 
-void get_parallel_launch_task(GPUTaskContext& ctx) { get_next_input<task::PhysicalColumn>(ctx); }
-
+void get_parallel_launch_task(TaskContext& ctx) { get_next_input<task::PhysicalColumn>(ctx); }
 }  // namespace legate::dataframe::argument

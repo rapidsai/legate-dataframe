@@ -44,21 +44,22 @@ struct CheckHash : public legate::LegateTask<CheckHash> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto table      = argument::get_next_input<task::PhysicalTable>(ctx);
     auto result           = argument::get_next_output<task::PhysicalTable>(ctx);
     const auto table_keys = argument::get_next_scalar_vector<int32_t>(ctx);
     std::unique_ptr<cudf::table> cudf_result =
-      task::repartition_by_hash(ctx, table.table_view(), table_keys);
+      task::repartition_by_hash(ctx, mr, table.table_view(mr), table_keys);
 
     auto [partition_table, partition_offsets] = cudf::hash_partition(cudf_result->view(),
                                                                      table_keys,
                                                                      ctx.nranks,
                                                                      cudf::hash_id::HASH_MURMUR3,
                                                                      cudf::DEFAULT_HASH_SEED,
-                                                                     ctx.stream(),
-                                                                     ctx.mr());
-    result.move_into(std::move(cudf_result));
+                                                                     context.get_task_stream(),
+                                                                     &mr);
+    result.move_into(std::move(cudf_result), mr);
 
     // Check that the partition assigned to our rank gets all the rows.
     partition_offsets.push_back(partition_table->num_rows());
