@@ -43,12 +43,13 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
     const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
     const auto table           = argument::get_next_input<PhysicalTable>(ctx);
     const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".parquet";
-    const auto tbl             = table.table_view();
+    const auto tbl             = table.table_view(mr);
 
     auto dest    = cudf::io::sink_info(filepath);
     auto options = cudf::io::parquet_writer_options::builder(dest, tbl);
@@ -59,7 +60,7 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
       metadata.column_metadata.at(i).set_name(column_names.at(i));
     }
     options.metadata(metadata);
-    cudf::io::write_parquet(options, ctx.stream());
+    cudf::io::write_parquet(options, context.get_task_stream());
   }
 };
 
@@ -70,7 +71,8 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto file_paths  = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns     = argument::get_next_scalar_vector<std::string>(ctx);
     const auto nrows       = argument::get_next_scalar_vector<size_t>(ctx);
@@ -105,7 +107,8 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       opt.columns(columns);
       opt.skip_rows(file_rows_offset);
       opt.num_rows(file_rows_to_read);
-      tables.emplace_back(std::move(cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl));
+      tables.emplace_back(
+        std::move(cudf::io::read_parquet(opt, context.get_task_stream(), &mr).tbl));
 
       my_num_rows -= file_rows_to_read;
       my_rows_offset += file_rows_to_read;
@@ -116,13 +119,13 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     if (tables.size() == 0) {
       tbl_arg.bind_empty_data();
     } else if (tables.size() == 1) {
-      tbl_arg.move_into(std::move(tables.back()));
+      tbl_arg.move_into(std::move(tables.back()), mr);
     } else {
       std::vector<cudf::table_view> table_views;
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()));
+      tbl_arg.move_into(cudf::concatenate(table_views, context.get_task_stream()), mr);
     }
   }
 };
@@ -134,7 +137,8 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto file_paths = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns    = argument::get_next_scalar_vector<std::string>(ctx);
     const auto nrows      = argument::get_next_scalar_vector<size_t>(ctx);
@@ -182,13 +186,13 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
         opt.skip_rows(start);
         opt.num_rows(nrows_to_read);
 
-        auto tbl = cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl;
+        auto tbl = cudf::io::read_parquet(opt, context.get_task_stream(), &mr).tbl;
         /* Check if all columns are of the right type and cast them if not. */
         auto column_vec = tbl->release();
         for (auto& col : column_vec) {
           if (col->type().id() != expected_type_id) {
-            col =
-              cudf::cast(col->view(), cudf::data_type{expected_type_id}, ctx.stream(), ctx.mr());
+            col = cudf::cast(
+              col->view(), cudf::data_type{expected_type_id}, context.get_task_stream(), &mr);
           }
         }
         auto cast_tbl = cudf::table(std::move(column_vec));

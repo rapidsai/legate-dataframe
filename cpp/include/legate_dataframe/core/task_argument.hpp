@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,10 +81,10 @@ void add_next_scalar_vector(AutoTask& task, const std::vector<T>& scalars)
  * @param ctx The task context active in the calling task.
  * @return The value of the scalar argument.
  */
-template <typename T>
-T get_next_scalar(GPUTaskContext& ctx)
+template <typename T, typename ContextT>
+T get_next_scalar(ContextT& ctx)
 {
-  return ctx.get_next_scalar_arg().value<T>();
+  return ctx.get_next_scalar_arg().template value<T>();
 }
 
 /**
@@ -99,8 +99,8 @@ T get_next_scalar(GPUTaskContext& ctx)
  * @param ctx The task context active in the calling task.
  * @return The vector of scalar values.
  */
-template <typename T>
-std::vector<T> get_next_scalar_vector(GPUTaskContext& ctx)
+template <typename T, typename ContextT>
+std::vector<T> get_next_scalar_vector(ContextT& ctx)
 {
   size_t num_items = get_next_scalar<size_t>(ctx);
   std::vector<T> ret;
@@ -125,8 +125,8 @@ std::vector<T> get_next_scalar_vector(GPUTaskContext& ctx)
  * @param ctx The task context active in the calling task.
  * @return The input task argument.
  */
-template <typename T>
-T get_next_input(GPUTaskContext& ctx) = delete;
+template <typename T, typename ContextT>
+T get_next_input(ContextT& ctx) = delete;
 
 /**
  * @brief Get next output task argument
@@ -142,8 +142,8 @@ T get_next_input(GPUTaskContext& ctx) = delete;
  * @param ctx The task context active in the calling task.
  * @return The output task argument.
  */
-template <typename T>
-T get_next_output(GPUTaskContext& ctx) = delete;
+template <typename T, typename ContextT>
+T get_next_output(ContextT& ctx) = delete;
 
 /**
  * @brief Adding alignment constraints to a task
@@ -189,6 +189,6 @@ void add_parallel_launch_task(legate::AutoTask& task);
 /**
  * @brief Handle of task launched using `add_parallel_launch_task()`
  */
-void get_parallel_launch_task(GPUTaskContext& ctx);
+void get_parallel_launch_task(TaskContext& ctx);
 
 }  // namespace legate::dataframe::argument

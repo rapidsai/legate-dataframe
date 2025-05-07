@@ -341,17 +341,17 @@ class PhysicalTable {
    * @brief Return a cudf table view of this physical table
    *
    * NB: The physical table MUST outlive the returned view thus it is UB to do some-
-   *     thing like `argument::get_next_input<PhysicalTable>(ctx).table_view();`
+   *     thing like `argument::get_next_input<PhysicalTable>(ctx).table_view(mr);`
    *
    * @throw std::runtime_error if table is unbound.
    * @return A new table view
    */
-  cudf::table_view table_view() const
+  cudf::table_view table_view(TaskMemoryResource& mr) const
   {
     std::vector<cudf::column_view> cols;
     cols.reserve(columns_.size());
     for (const auto& col : columns_) {
-      cols.push_back(col.column_view());
+      cols.push_back(col.column_view(mr));
     }
     return cudf::table_view(std::move(cols));
   }
@@ -361,7 +361,7 @@ class PhysicalTable {
    *
    * @param columns The cudf columns to move
    */
-  void move_into(std::vector<std::unique_ptr<cudf::column>> columns)
+  void move_into(std::vector<std::unique_ptr<cudf::column>> columns, TaskMemoryResource& mr)
   {
     if (columns.size() != columns_.size()) {
       throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
@@ -369,7 +369,7 @@ class PhysicalTable {
                                " != " + std::to_string(columns.size()));
     }
     for (size_t i = 0; i < columns.size(); ++i) {
-      columns_[i].move_into(std::move(columns[i]));
+      columns_[i].move_into(std::move(columns[i]), mr);
     }
   }
 
@@ -378,15 +378,21 @@ class PhysicalTable {
    *
    * @param columns The arrow arrays to move
    */
-  void move_into(std::vector<std::unique_ptr<arrow::Array>> columns)
+  void move_into(std::shared_ptr<arrow::Table> table)
   {
-    if (columns.size() != columns_.size()) {
+    if (static_cast<std::size_t>(table->num_columns()) != columns_.size()) {
       throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
                                std::to_string(columns_.size()) +
-                               " != " + std::to_string(columns.size()));
+                               " != " + std::to_string(table->num_columns()));
     }
-    for (size_t i = 0; i < columns.size(); ++i) {
-      columns_[i].move_into(std::move(columns[i]));
+    // Component chunked arrays must be converted to contiguous arrays
+    auto combined = table->CombineChunks().ValueOrDie();
+    for (int i = 0; i < combined->num_columns(); ++i) {
+      auto chunked_array = combined->column(i);
+      if (chunked_array->num_chunks() != 1) {
+        throw std::runtime_error("LogicalTable.move_into(): expected an array with 1 chunk.");
+      }
+      columns_[i].move_into(chunked_array->chunk(0));
     }
   }
 
@@ -395,7 +401,10 @@ class PhysicalTable {
    *
    * @param table The cudf table to move
    */
-  void move_into(std::unique_ptr<cudf::table> table) { move_into(table->release()); }
+  void move_into(std::unique_ptr<cudf::table> table, TaskMemoryResource& mr)
+  {
+    move_into(table->release(), mr);
+  }
 
   /**
    * @brief Makes the unbound table empty. Valid only when the table is unbound.
@@ -487,7 +496,7 @@ std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
 std::vector<legate::Variable> add_next_output(legate::AutoTask& task, const LogicalTable& tbl);
 
 template <>
-inline task::PhysicalTable get_next_input<task::PhysicalTable>(GPUTaskContext& ctx)
+inline task::PhysicalTable get_next_input<task::PhysicalTable>(TaskContext& ctx)
 {
   auto num_columns = get_next_scalar<int32_t>(ctx);
   std::vector<task::PhysicalColumn> cols;
@@ -499,7 +508,7 @@ inline task::PhysicalTable get_next_input<task::PhysicalTable>(GPUTaskContext& c
 }
 
 template <>
-inline task::PhysicalTable get_next_output<task::PhysicalTable>(GPUTaskContext& ctx)
+inline task::PhysicalTable get_next_output<task::PhysicalTable>(TaskContext& ctx)
 {
   auto num_columns = get_next_scalar<int32_t>(ctx);
   std::vector<task::PhysicalColumn> cols;
