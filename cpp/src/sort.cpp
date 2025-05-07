@@ -55,7 +55,8 @@ namespace {
  * @param include_start Whether to include the starting 0.
  * @returns cudf column selecting containing nsplits indices.
  */
-std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
+std::unique_ptr<cudf::column> get_split_ind(TaskContext& ctx,
+                                            TaskMemoryResource& mr,
                                             cudf::size_type nvalues,
                                             int nsplits,
                                             bool include_start)
@@ -93,14 +94,15 @@ std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
   std::cout << splits_points_oss.str() << std::endl;
 #endif
 
-  auto ncopy = split_values.size();
-  rmm::device_uvector<cudf::size_type> split_ind(ncopy, ctx.stream(), ctx.mr());
+  auto ncopy  = split_values.size();
+  auto stream = ctx.get_legate_context().get_task_stream();
+  rmm::device_uvector<cudf::size_type> split_ind(ncopy, stream, &mr);
   LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_ind.data(),
                                     split_values.data(),
                                     ncopy * sizeof(cudf::size_type),
                                     cudaMemcpyHostToDevice,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
+                                    stream));
+  LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
 
   return std::make_unique<cudf::column>(std::move(split_ind), std::move(rmm::device_buffer()), 0);
 }
@@ -128,7 +130,8 @@ std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
  * depending on whether it came from an earlier or later rank.
  */
 std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
-  GPUTaskContext& ctx,
+  TaskContext& ctx,
+  TaskMemoryResource& mr,
   const cudf::table_view& my_sorted_tbl,
   const std::vector<cudf::size_type>& keys_idx,
   const std::vector<cudf::order>& column_order,
@@ -142,18 +145,19 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
    * the last step.
    */
   auto my_split_ind_col =
-    get_split_ind(ctx, my_sorted_tbl.num_rows(), ctx.nranks, /* include_start */ true);
+    get_split_ind(ctx, mr, my_sorted_tbl.num_rows(), ctx.nranks, /* include_start */ true);
   auto nsplits = my_split_ind_col->size();
 
   auto my_split_rank_col = cudf::sequence(nsplits,
                                           *cudf::make_fixed_width_scalar(int32_t{ctx.rank}),
                                           *cudf::make_fixed_width_scalar(int32_t{0}));
 
+  auto stream            = ctx.get_legate_context().get_task_stream();
   auto my_split_cols_tbl = cudf::gather(my_sorted_tbl.select(keys_idx),
                                         my_split_ind_col->view(),
                                         cudf::out_of_bounds_policy::DONT_CHECK,
-                                        ctx.stream(),
-                                        ctx.mr());
+                                        stream,
+                                        &mr);
 
   auto my_split_cols_view = my_split_cols_tbl->view();
   auto my_split_cols_vector =
@@ -177,7 +181,7 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   for (int i = 0; i < ctx.nranks; i++) {
     exchange_tables.push_back(my_splits);
   }
-  auto [split_candidates_shared, owners_split] = shuffle(ctx, exchange_tables, nullptr);
+  auto [split_candidates_shared, owners_split] = shuffle(ctx, mr, exchange_tables, nullptr);
   if (my_split_cols_tbl->num_rows() == 0) {
     // All nodes need to take part in the shuffle (no data here), but the below
     // cannot search a length 0 table, so return immediately.
@@ -190,20 +194,20 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
                           {cudf::null_order::AFTER, cudf::null_order::AFTER});
 
   // Merge is stable as it includes the rank and index in the keys:
-  auto split_candidates = cudf::merge(
-    split_candidates_shared, all_keysx, column_orderx, null_precedencex, ctx.stream(), ctx.mr());
+  auto split_candidates =
+    cudf::merge(split_candidates_shared, all_keysx, column_orderx, null_precedencex, stream, &mr);
   owners_split.reset();  // copied into split_candidates
 
   /*
    * Step 3: Find the best splitting points from all candidates
    */
   auto split_value_inds =
-    get_split_ind(ctx, split_candidates->num_rows(), ctx.nranks, /* include_start */ false);
+    get_split_ind(ctx, mr, split_candidates->num_rows(), ctx.nranks, /* include_start */ false);
   auto split_values_tbl  = cudf::gather(split_candidates->view(),
                                        split_value_inds->view(),
                                        cudf::out_of_bounds_policy::DONT_CHECK,
-                                       ctx.stream(),
-                                       ctx.mr());
+                                       stream,
+                                       &mr);
   auto split_values_view = split_values_tbl->view();
 
   /*
@@ -223,15 +227,15 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
                                                       split_values_view.select(value_keysx),
                                                       column_order,
                                                       null_precedence,
-                                                      ctx.stream(),
-                                                      ctx.mr());
+                                                      stream,
+                                                      &mr);
   auto split_candidates_first_view = split_candidates_first_col->view();
   auto split_candidates_last_col   = cudf::upper_bound(my_sorted_tbl.select(keys_idx),
                                                      split_values_view.select(value_keysx),
                                                      column_order,
                                                      null_precedence,
-                                                     ctx.stream(),
-                                                     ctx.mr());
+                                                     stream,
+                                                     &mr);
   auto split_candidates_last_view  = split_candidates_last_col->view();
 
   // The local index and rank of the split value, we'll use the rank if it came from this rank
@@ -252,24 +256,24 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
                                     split_candidates_first_view.data<cudf::size_type>(),
                                     nsplitpoints * sizeof(cudf::size_type),
                                     cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
+                                    stream));
   LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_last.data(),
                                     split_candidates_last_view.data<cudf::size_type>(),
                                     nsplitpoints * sizeof(cudf::size_type),
                                     cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
+                                    stream));
   LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_equal.data(),
                                     split_candidates_equal_view.data<cudf::size_type>(),
                                     nsplitpoints * sizeof(cudf::size_type),
                                     cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
+                                    stream));
   LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_rank.data(),
                                     split_candiates_rank_view.data<int32_t>(),
                                     nsplitpoints * sizeof(int32_t),
                                     cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
+                                    stream));
 
-  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
+  LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
 
   auto splits_host = std::make_unique<std::vector<cudf::size_type>>();
   for (int i = 0; i < nsplitpoints; i++) {
@@ -316,7 +320,8 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
     const auto keys_idx        = argument::get_next_scalar_vector<cudf::size_type>(ctx);
     const auto column_order    = argument::get_next_scalar_vector<cudf::order>(ctx);
@@ -325,45 +330,50 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     auto output                = argument::get_next_output<PhysicalTable>(ctx);
 
     // Create a new locally sorted table (we always need this)
-    auto cudf_tbl  = tbl.table_view();
+    auto cudf_tbl  = tbl.table_view(mr);
     auto key       = cudf_tbl.select(keys_idx);
     auto sort_func = stable ? cudf::stable_sort_by_key : cudf::sort_by_key;
     auto my_sorted_tbl =
-      sort_func(cudf_tbl, key, column_order, null_precedence, ctx.stream(), ctx.mr());
+      sort_func(cudf_tbl, key, column_order, null_precedence, context.get_task_stream(), &mr);
 
     if (ctx.nranks == 1) {
-      output.move_into(my_sorted_tbl->release());
+      output.move_into(my_sorted_tbl->release(), mr);
       return;
     }
 
     auto split_indices = find_splits_for_distribution(
-      ctx, my_sorted_tbl->view(), keys_idx, column_order, null_precedence);
+      ctx, mr, my_sorted_tbl->view(), keys_idx, column_order, null_precedence);
 
     // If the local table has zero rows we cannot split it for sharing and
     // split_indices will be null.  Exchange the (empty) table instead.
     std::vector<cudf::table_view> partitions;
     if (split_indices) {
-      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
+      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, context.get_task_stream());
     } else {
       assert(my_sorted_tbl->num_rows() == 0);
       for (int i = 0; i < ctx.nranks; i++) {
         partitions.push_back(my_sorted_tbl->view());
       }
     }
-    auto [parts, owners] = shuffle(ctx, partitions, std::move(my_sorted_tbl));
+    auto [parts, owners] = shuffle(ctx, mr, partitions, std::move(my_sorted_tbl));
 
     std::unique_ptr<cudf::table> result;
     if (!stable) {
-      result = cudf::merge(parts, keys_idx, column_order, null_precedence, ctx.stream(), ctx.mr());
+      result =
+        cudf::merge(parts, keys_idx, column_order, null_precedence, context.get_task_stream(), &mr);
     } else {
       // This is not good, but libcudf has no stable merge:
       // https://github.com/rapidsai/cudf/issues/16010
       // https://github.com/rapidsai/cudf/issues/7379
-      result = cudf::concatenate(parts, ctx.stream(), ctx.mr());
+      result = cudf::concatenate(parts, context.get_task_stream(), &mr);
       owners.reset();  // we created a copy.
       auto res_view = result->view();
-      result        = sort_func(
-        res_view, res_view.select(keys_idx), column_order, null_precedence, ctx.stream(), ctx.mr());
+      result        = sort_func(res_view,
+                         res_view.select(keys_idx),
+                         column_order,
+                         null_precedence,
+                         context.get_task_stream(),
+                         &mr);
     }
 
 #if DEBUG_SPLITS
@@ -376,7 +386,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     }
     std::cout << result_size_oss.str() << std::endl;
 #endif
-    output.move_into(std::move(result));
+    output.move_into(std::move(result), mr);
   }
 };
 

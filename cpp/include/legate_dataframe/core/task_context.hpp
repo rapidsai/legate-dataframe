@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,11 +37,9 @@ namespace dataframe {
  * This is because they might block the _whole_ device. Instead use the
  * task's RMM resource `.mr()` or `legate::create_buffer()`.
  */
-class GPUTaskContext {
- private:
-  TaskMemoryResource _mr{};
+class TaskContext {
+ protected:
   legate::TaskContext& _context;
-  std::unique_ptr<rmm::cuda_stream> _tmp_stream;
   size_t _arg_scalar_idx{0};
   size_t _arg_input_idx{0};
   size_t _arg_output_idx{0};
@@ -51,7 +49,7 @@ class GPUTaskContext {
   const int nranks;
 
   /**
-   * @brief Create a new GPU task context from a legate task context
+   * @brief Create a new task context from a legate task context
    *
    * @param context The legate task context
    * @param arg_scalar_idx The initial task argument index for scalars. If this task was launched
@@ -64,10 +62,10 @@ class GPUTaskContext {
    * with output arguments unknown to legate-dataframe (e.g. by using `AutoTask::add_output()`),
    * set this to the number of such output arguments used.
    */
-  GPUTaskContext(legate::TaskContext& context,
-                 size_t arg_scalar_idx = 0,
-                 size_t arg_input_idx  = 0,
-                 size_t arg_output_idx = 0);
+  TaskContext(legate::TaskContext& context,
+              size_t arg_scalar_idx = 0,
+              size_t arg_input_idx  = 0,
+              size_t arg_output_idx = 0);
 
   /**
    * @brief Get the current indices of the task arguments
@@ -83,24 +81,6 @@ class GPUTaskContext {
   std::tuple<size_t, size_t, size_t> get_task_argument_indices() const
   {
     return {_arg_scalar_idx, _arg_input_idx, _arg_output_idx};
-  }
-
-  TaskMemoryResource* mr() { return &_mr; }
-
-  /**
-   * @brief Get the CUDA stream to be used in this task context.
-   *
-   * All legate tasks should use this stream.  The function is mainly for
-   * convenience to mirror easy access to `mr()`.
-   *
-   * @return The tasks CUDA stream
-   */
-  cudaStream_t stream() { return _context.get_task_stream(); }
-
-  cudaStream_t tmp_stream()
-  {
-    if (!_tmp_stream) { _tmp_stream.reset(new rmm::cuda_stream()); }
-    return _tmp_stream->value();
   }
 
   legate::Scalar get_next_scalar_arg() { return _context.scalars().at(_arg_scalar_idx++); }

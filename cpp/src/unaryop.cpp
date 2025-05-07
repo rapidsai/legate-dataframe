@@ -35,12 +35,14 @@ class CastTask : public Task<CastTask, OpCode::Cast> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
-    const auto input                  = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
-    cudf::column_view col             = input.column_view();
-    std::unique_ptr<cudf::column> ret = cudf::cast(col, output.cudf_type(), ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
+    const auto input      = argument::get_next_input<PhysicalColumn>(ctx);
+    auto output           = argument::get_next_output<PhysicalColumn>(ctx);
+    cudf::column_view col = input.column_view(mr);
+    std::unique_ptr<cudf::column> ret =
+      cudf::cast(col, output.cudf_type(), context.get_task_stream(), &mr);
+    output.move_into(std::move(ret), mr);
   }
 };
 
@@ -50,13 +52,15 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
-    auto op                           = argument::get_next_scalar<cudf::unary_operator>(ctx);
-    const auto input                  = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
-    cudf::column_view col             = input.column_view();
-    std::unique_ptr<cudf::column> ret = cudf::unary_operation(col, op, ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
+    auto op               = argument::get_next_scalar<cudf::unary_operator>(ctx);
+    const auto input      = argument::get_next_input<PhysicalColumn>(ctx);
+    auto output           = argument::get_next_output<PhysicalColumn>(ctx);
+    cudf::column_view col = input.column_view(mr);
+    std::unique_ptr<cudf::column> ret =
+      cudf::unary_operation(col, op, context.get_task_stream(), &mr);
+    output.move_into(std::move(ret), mr);
   }
 };
 

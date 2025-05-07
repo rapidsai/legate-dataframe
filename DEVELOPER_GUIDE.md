@@ -54,9 +54,9 @@ Currently, we only implement GPU task variants.
 
 ### Context
 
-To reduce boilerplate code, standardize the retrieval of task arguments, and ensure correct use of CUDA streams and allocations, each task creates a `GPUTaskContext` instance as its very first thing. Task arguments such as `PhysicalTable`, `PhysicalColumn`, and scalars can then be retrieved using this context instance.
+To reduce boilerplate code, standardize the retrieval of task arguments, and ensure correct use of CUDA streams and allocations, each task creates a `TaskContext` instance as its very first thing. Task arguments such as `PhysicalTable`, `PhysicalColumn`, and scalars can then be retrieved using this context instance.
 
-In the following code snippets, we have a task that retrieve its arguments using `GPUTaskContext`. Notice, the order of the argument retrieval **must** match the order the arguments are added to the task.
+In the following code snippets, we have a task that retrieve its arguments using `TaskContext`. Notice, the order of the argument retrieval **must** match the order the arguments are added to the task.
 
 ```c++
 namespace legate::dataframe {  // The public namespace
@@ -67,12 +67,12 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  public:
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
     auto op                           = argument::get_next_scalar<cudf::unary_operator>(ctx);
     const auto input                  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
-    cudf::column_view col             = input.column_view();
-    std::unique_ptr<cudf::column> ret = cudf::unary_operation(col, op, ctx.stream(), ctx.mr());
+    cudf::column_view col             = input.column_view(mr);
+    std::unique_ptr<cudf::column> ret = cudf::unary_operation(col, op, context.get_task_stream(), &mr);
     output.move_into(std::move(ret));
   }
 };
@@ -95,13 +95,13 @@ LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
 ```
 
 Notice, it is possible to mix the task argument API from legate-dataframe and legate.core but it requires that the legate-dataframe API is used continuously either before or after legate.core API.
-To do this, use ``GPUTaskContext.get_task_argument_indices`` or initialize it with the correct offsets.
+To do this, use ``TaskContext.get_task_argument_indices`` or initialize it with the correct offsets.
 
 
 
 ### CUDA Stream and Memory Allocation
 
-Always use the CUDA stream from `stream()` and `mr()` RMM resource from `GPUTaskContext`. This is because Legate may run multiple tasks on the same GPU and calls to CUDA functions such as `cudaMalloc()` might block **all** CUDA kernels on the same device. By using `GPUTaskContext::stream()` and `GPUTaskContext::mr()` exclusively, we use [`Legion::DeferredBuffer`](https://github.com/StanfordLegion/legion/blob/9ed6f4d6b579c4f17e0298462e89548a4f0ed6e5/runtime/legion.h#L3509-L3609) and `get_cached_stream()` under the hood:
+Always use the CUDA stream from `stream()` and `mr()` RMM resource from `TaskContext`. This is because Legate may run multiple tasks on the same GPU and calls to CUDA functions such as `cudaMalloc()` might block **all** CUDA kernels on the same device. By using `TaskContext::stream()` and `TaskContext::mr()` exclusively, we use [`Legion::DeferredBuffer`](https://github.com/StanfordLegion/legion/blob/9ed6f4d6b579c4f17e0298462e89548a4f0ed6e5/runtime/legion.h#L3509-L3609) and `get_cached_stream()` under the hood:
 
 > We use Legion `DeferredBuffer`, whose lifetime is not connected with the CUDA stream(s) used to launch kernels. The buffer is allocated immediately at the point when `create_buffer` is called, whereas the kernel that uses it is placed on a stream, and may run at a later point. Normally a `DeferredBuffer` is deallocated automatically by Legion once all the kernels launched in the task are complete. However, a `DeferredBuffer` can also be deallocated immediately using `destroy()`, which is useful for operations that want to deallocate intermediate memory as soon as possible. This deallocation is not synchronized with the task stream, i.e. it may happen before a kernel which uses the buffer has actually completed. This is safe as long as we use the same stream on all GPU tasks running on the same device (which is guaranteed by the current implementation of `get_cached_stream`), because then all the actual uses of the buffer are done in order on the one stream. It is important that all library CUDA code uses `get_cached_stream()`, and all CUDA operations (including library calls) are enqueued on that stream exclusively. This analysis additionally assumes that no code outside of Legate is concurrently allocating from the eager pool, and that it's OK for kernels to access a buffer even after it's technically been deallocated.
 

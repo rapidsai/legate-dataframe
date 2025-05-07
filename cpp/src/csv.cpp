@@ -28,6 +28,9 @@
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/core/task_context.hpp>
 
+#include <arrow/api.h>
+#include <arrow/csv/api.h>
+#include <arrow/io/api.h>
 #include <legate_dataframe/csv.hpp>
 
 namespace legate::dataframe::task {
@@ -38,7 +41,8 @@ class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
     const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
     const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
@@ -46,11 +50,11 @@ class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
     const auto delimiter       = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
 
     auto dest    = cudf::io::sink_info(filepath);
-    auto options = cudf::io::csv_writer_options::builder(dest, tbl.table_view());
+    auto options = cudf::io::csv_writer_options::builder(dest, tbl.table_view(mr));
     options.names(column_names);
     options.inter_column_delimiter(delimiter);
 
-    cudf::io::write_csv(options, ctx.stream());
+    cudf::io::write_csv(options, context.get_task_stream());
   }
 };
 
@@ -58,9 +62,58 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
  public:
   static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::CSVRead}};
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    const auto launch_domain    = context.get_launch_domain();
+    const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_names     = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
+    const auto na_filter        = argument::get_next_scalar<bool>(ctx);
+    const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
+    const auto nbytes           = argument::get_next_scalar_vector<size_t>(ctx);
+    const auto nbytes_total     = argument::get_next_scalar<size_t>(ctx);
+    const auto read_header      = argument::get_next_scalar<bool>(ctx);
+    PhysicalTable tbl_arg       = argument::get_next_output<PhysicalTable>(ctx);
+    argument::get_parallel_launch_task(ctx);
+
+    if (file_paths.size() != nbytes.size()) {
+      throw std::runtime_error("internal error: file path and nbytes size mismatch");
+    }
+
+    auto dtypes = tbl_arg.cudf_types();
+
+    std::map<std::string, cudf::data_type> dtypes_map;
+    for (size_t i = 0; i < dtypes.size(); i++) {
+      dtypes_map[column_names[i]] = dtypes[i];
+    }
+    // Assign one file to each rank for now
+    auto [file_offset, num_files] = evenly_partition_work(file_paths.size(), ctx.rank, ctx.nranks);
+    std::vector<std::shared_ptr<arrow::Table>> tables;
+    for (size_t i = file_offset; i < file_offset + num_files; i++) {
+      auto input = *arrow::io::ReadableFile::Open(file_paths[i]);
+
+      auto read_options    = arrow::csv::ReadOptions::Defaults();
+      auto parse_options   = arrow::csv::ParseOptions::Defaults();
+      auto convert_options = arrow::csv::ConvertOptions::Defaults();
+
+      // Instantiate TableReader from input stream and options
+      arrow::io::IOContext io_context                 = arrow::io::default_io_context();
+      std::shared_ptr<arrow::csv::TableReader> reader = *arrow::csv::TableReader::Make(
+        io_context, input, read_options, parse_options, convert_options);
+
+      // Read table from CSV file
+      tables.push_back(*reader->Read());
+    }
+
+    // Concatenate tables
+    tbl_arg.move_into(*arrow::ConcatenateTables(tables));
+  }
+
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
     const auto column_names     = argument::get_next_scalar_vector<std::string>(ctx);
     const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
@@ -117,7 +170,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       opt.use_cols_indexes(use_cols_indexes);
       opt.names(column_names);
 
-      auto read_table = cudf::io::read_csv(opt, ctx.stream(), ctx.mr()).tbl;
+      auto read_table = cudf::io::read_csv(opt, context.get_task_stream(), &mr).tbl;
 
       // Only add if we read something (otherwise number of cols may be off)
       if (read_table->num_rows() != 0) { tables.emplace_back(std::move(read_table)); }
@@ -134,13 +187,13 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     if (tables.size() == 0) {
       tbl_arg.bind_empty_data();
     } else if (tables.size() == 1) {
-      tbl_arg.move_into(std::move(tables.back()));
+      tbl_arg.move_into(std::move(tables.back()), mr);
     } else {
       std::vector<cudf::table_view> table_views;
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()));
+      tbl_arg.move_into(cudf::concatenate(table_views, context.get_task_stream(), mr), mr);
     }
   }
 };

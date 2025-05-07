@@ -43,7 +43,8 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     auto table        = argument::get_next_input<PhysicalTable>(ctx);
     auto output       = argument::get_next_output<PhysicalTable>(ctx);
     auto _key_col_idx = argument::get_next_scalar_vector<size_t>(ctx);
@@ -60,7 +61,7 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
     }
 
     // Repartition `table` based on the keys such that each node can do a local groupby.
-    auto repartitioned = repartition_by_hash(ctx, table.table_view(), key_col_idx);
+    auto repartitioned = repartition_by_hash(ctx, mr, table.table_view(mr), key_col_idx);
 
     // In order to create the aggregation requests, we walk through `column_aggs` and for
     // each unique input-column-index, we create an aggregation request and append the
@@ -93,7 +94,7 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
 
     // Do a local groupby
     cudf::groupby::groupby gb_obj(repartitioned->select(key_col_idx));
-    auto [unique_keys, agg_result] = gb_obj.aggregate(requests, ctx.stream(), ctx.mr());
+    auto [unique_keys, agg_result] = gb_obj.aggregate(requests, context.get_task_stream(), &mr);
 
     // Gather the output columns. The key columns goes first.
     auto output_columns = unique_keys->release();
@@ -105,7 +106,7 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
       auto [request_idx, agg_idx]    = request_and_agg_idx;
       output_columns.at(out_col_idx) = std::move(agg_result.at(request_idx).results.at(agg_idx));
     }
-    output.move_into(std::move(output_columns));
+    output.move_into(std::move(output_columns), mr);
   }
 };
 

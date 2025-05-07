@@ -263,11 +263,11 @@ std::string PhysicalColumn::repr(legate::Memory::Kind mem_kind,
   return ss.str();
 }
 
-cudf::column_view PhysicalColumn::column_view() const
+cudf::column_view PhysicalColumn::column_view(TaskMemoryResource& mr) const
 {
   if (unbound()) {
     throw std::runtime_error(
-      "Cannot call `.column_view()` on a unbound LogicalColumn, please bind it using "
+      "Cannot call `.column_view(mr)` on a unbound LogicalColumn, please bind it using "
       "`.move_into()`");
   }
 
@@ -276,6 +276,7 @@ cudf::column_view PhysicalColumn::column_view() const
   cudf::size_type null_count          = 0;
   cudf::size_type offset              = 0;
   std::vector<cudf::column_view> children;
+  auto stream = ctx_->get_legate_context().get_task_stream();
 
   if (array_.nested()) {
     if (array_.type().code() == legate::Type::Code::STRING) {
@@ -284,7 +285,7 @@ cudf::column_view PhysicalColumn::column_view() const
       const auto num_chars                = chars.data().shape<1>().volume();
 
       std::unique_ptr<cudf::column> cudf_offsets = global_ranges_to_cudf_offsets(
-        a.ranges(), num_chars, legate::Memory::Kind::GPU_FB_MEM, ctx_->stream(), ctx_->mr());
+        a.ranges(), num_chars, legate::Memory::Kind::GPU_FB_MEM, stream, &mr);
 
       // To keep the offsets alive beyond this function, we push it to temporaries before
       // adding it as the first child.
@@ -300,27 +301,28 @@ cudf::column_view PhysicalColumn::column_view() const
     data = read_accessor_as_1d_bytes(array_.data());
   }
   if (array_.nullable()) {
-    tmp_null_masks_.push_back(null_mask_bools_to_bits(
-      array_.null_mask(), legate::Memory::Kind::GPU_FB_MEM, ctx_->stream(), ctx_->mr()));
+    tmp_null_masks_.push_back(
+      null_mask_bools_to_bits(array_.null_mask(), legate::Memory::Kind::GPU_FB_MEM, stream, &mr));
     null_mask  = static_cast<const cudf::bitmask_type*>(tmp_null_masks_.back().data());
-    null_count = cudf::null_count(null_mask, 0, num_rows(), ctx_->stream());
+    null_count = cudf::null_count(null_mask, 0, num_rows(), stream);
   }
   return cudf::column_view(cudf_type_, num_rows(), data, null_mask, null_count, offset, children);
 }
 
-std::unique_ptr<cudf::scalar> PhysicalColumn::cudf_scalar() const
+std::unique_ptr<cudf::scalar> PhysicalColumn::cudf_scalar(TaskMemoryResource& mr) const
 {
   if (num_rows() != 1) {
     throw std::invalid_argument("can only convert length one columns to scalar.");
   }
-  return cudf::get_element(column_view(), 0);
+  return cudf::get_element(column_view(mr), 0);
 }
 
 namespace {
 
 struct move_into_fn {
   template <typename T, std::enable_if_t<cudf::is_rep_layout_compatible<T>()>* = nullptr>
-  void operator()(GPUTaskContext* ctx,
+  void operator()(TaskContext* ctx,
+                  TaskMemoryResource& mr,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
@@ -340,10 +342,7 @@ struct move_into_fn {
       }
     }
 
-    MemAlloc mem_alloc = ctx->mr()->release_buffer(cudf_col);
-    // std::cout << "mem_alloc.valid: " << mem_alloc.valid()
-    //           << ", mem_alloc.nbytes: " << mem_alloc.nbytes()
-    //           << ", cudf_col.nbytes: " << cudf_col.size() * sizeof(T) << std::endl;
+    auto mem_alloc = mr.release_buffer(cudf_col);
     if (mem_alloc.valid()) {
       array.data().bind_untyped_data(mem_alloc.buffer(), cudf_col.size());
     } else {
@@ -358,7 +357,8 @@ struct move_into_fn {
   }
 
   template <typename T, std::enable_if_t<std::is_same_v<T, cudf::string_view>>* = nullptr>
-  void operator()(GPUTaskContext* ctx,
+  void operator()(TaskContext* ctx,
+                  TaskMemoryResource& mr,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
@@ -391,7 +391,7 @@ struct move_into_fn {
     auto ranges      = ary.ranges().data().create_output_buffer<legate::Rect<1>, 1>(
       ranges_size, true /* bind_buffer */);
 
-    cudf_offsets_to_local_ranges(ranges_size, ranges.ptr(0), str_col.offsets(), ctx->stream());
+    cudf_offsets_to_local_ranges(ranges_size, ranges.ptr(0), str_col.offsets(), stream);
 
     if (str_col.offsets().offset() != 0) {
       throw std::runtime_error("string column seems sliced, which is currently not supported.");
@@ -406,7 +406,8 @@ struct move_into_fn {
   template <typename T,
             std::enable_if_t<!(cudf::is_rep_layout_compatible<T>() ||
                                std::is_same_v<T, cudf::string_view>)>* = nullptr>
-  void operator()(GPUTaskContext* ctx,
+  void operator()(TaskContext* ctx,
+                  TaskMemoryResource& mr,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
@@ -418,7 +419,7 @@ struct move_into_fn {
 
 }  // namespace
 
-void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
+void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column, TaskMemoryResource& mr)
 {
   if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
@@ -430,16 +431,22 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
   if (scalar_out_ && column->size() != 1) {
     throw std::logic_error("move_into(): for scalar, column must have size one.");
   }
-  cudf::type_dispatcher(
-    column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
+  cudf::type_dispatcher(column->type(),
+                        move_into_fn{},
+                        ctx_,
+                        mr,
+                        array_,
+                        std::move(column),
+                        ctx_->get_legate_context().get_task_stream());
 }
 
-void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
+void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar, TaskMemoryResource& mr)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be
   // preferable (although libcudf could also grow a way to get a column view).
-  auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream(), ctx_->mr());
-  move_into(std::move(col));
+  auto col =
+    cudf::make_column_from_scalar(*scalar, 1, ctx_->get_legate_context().get_task_stream(), mr);
+  move_into(std::move(col), mr);
 }
 
 template <typename F>
@@ -465,7 +472,7 @@ void DispatchArrowType(const arrow::Array& array, F&& fn)
   auto status = arrow::VisitArrayInline(array, &visitor, std::forward<F>(fn));
 }
 
-void PhysicalColumn::move_into(std::unique_ptr<arrow::Array> column)
+void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column)
 {
   if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
   auto null_count = column->null_count();
