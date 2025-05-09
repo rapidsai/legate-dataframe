@@ -31,6 +31,7 @@
 #include <arrow/api.h>
 #include <arrow/csv/api.h>
 #include <arrow/io/api.h>
+#include <arrow/ipc/api.h>
 #include <legate_dataframe/csv.hpp>
 
 namespace legate::dataframe::task {
@@ -38,6 +39,29 @@ namespace legate::dataframe::task {
 class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
  public:
   static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::CSVWrite}};
+
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
+    const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
+    const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".csv";
+    const auto delimiter       = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
+
+    auto arrow_table        = tbl.arrow_table_view(column_names);
+    auto outfile            = arrow::io::FileOutputStream::Open(filepath).ValueOrDie();
+    auto write_options      = arrow::csv::WriteOptions::Defaults();
+    write_options.delimiter = delimiter;
+
+    auto csv_writer =
+      arrow::csv::MakeCSVWriter(outfile, arrow_table->schema(), write_options).ValueOrDie();
+    auto status = csv_writer->WriteTable(*arrow_table);
+    status      = csv_writer->Close();
+    if (!status.ok()) {
+      throw std::runtime_error("Failed to write CSV file: " + status.ToString());
+    }
+  }
 
   static void gpu_variant(legate::TaskContext context)
   {
@@ -67,7 +91,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     TaskContext ctx{context};
     const auto launch_domain    = context.get_launch_domain();
     const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto column_names     = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto all_column_names = argument::get_next_scalar_vector<std::string>(ctx);
     const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
     const auto na_filter        = argument::get_next_scalar<bool>(ctx);
     const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
@@ -81,9 +105,18 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       throw std::runtime_error("internal error: file path and nbytes size mismatch");
     }
 
-    auto dtypes = tbl_arg.cudf_types();
+    auto dtypes = tbl_arg.arrow_types();
 
-    std::map<std::string, cudf::data_type> dtypes_map;
+    std::vector<std::string> column_names;
+    for (auto index : use_cols_indexes) {
+      column_names.push_back(all_column_names[index]);
+    }
+    std::vector<std::string> include_columns;
+    for (std::size_t i = 0; i < use_cols_indexes.size(); i++) {
+      include_columns.push_back(column_names[i]);
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<arrow::DataType>> dtypes_map;
     for (size_t i = 0; i < dtypes.size(); i++) {
       dtypes_map[column_names[i]] = dtypes[i];
     }
@@ -93,9 +126,16 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     for (size_t i = file_offset; i < file_offset + num_files; i++) {
       auto input = *arrow::io::ReadableFile::Open(file_paths[i]);
 
-      auto read_options    = arrow::csv::ReadOptions::Defaults();
-      auto parse_options   = arrow::csv::ParseOptions::Defaults();
-      auto convert_options = arrow::csv::ConvertOptions::Defaults();
+      auto read_options         = arrow::csv::ReadOptions::Defaults();
+      read_options.use_threads  = false;
+      read_options.column_names = all_column_names;
+      read_options.skip_rows    = 1;
+
+      auto parse_options              = arrow::csv::ParseOptions::Defaults();
+      parse_options.delimiter         = delimiter;
+      auto convert_options            = arrow::csv::ConvertOptions::Defaults();
+      convert_options.column_types    = dtypes_map;
+      convert_options.include_columns = include_columns;
 
       // Instantiate TableReader from input stream and options
       arrow::io::IOContext io_context                 = arrow::io::default_io_context();
@@ -106,8 +146,10 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       tables.push_back(*reader->Read());
     }
 
+    auto table = *arrow::ConcatenateTables(tables);
+
     // Concatenate tables
-    tbl_arg.move_into(*arrow::ConcatenateTables(tables));
+    tbl_arg.move_into(table);
   }
 
   static void gpu_variant(legate::TaskContext context)
@@ -115,7 +157,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     TaskContext ctx{context};
     TaskMemoryResource mr;
     const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto column_names     = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto all_column_names = argument::get_next_scalar_vector<std::string>(ctx);
     const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
     const auto na_filter        = argument::get_next_scalar<bool>(ctx);
     const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
@@ -134,6 +176,10 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
     auto dtypes = tbl_arg.cudf_types();
 
+    std::vector<std::string> column_names;
+    for (auto index : use_cols_indexes) {
+      column_names.push_back(all_column_names[index]);
+    }
     std::map<std::string, cudf::data_type> dtypes_map;
     for (size_t i = 0; i < dtypes.size(); i++) {
       dtypes_map[column_names[i]] = dtypes[i];
@@ -347,7 +393,7 @@ LogicalTable csv_read(const std::string& glob_string,
   auto runtime          = legate::Runtime::get_runtime();
   legate::AutoTask task = runtime->create_task(get_library(), task::CSVRead::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, file_paths);
-  argument::add_next_scalar_vector(task, column_names);
+  argument::add_next_scalar_vector(task, all_column_names);
   argument::add_next_scalar_vector(task, use_cols_indexes);
   argument::add_next_scalar(task, na_filter);
   // legate doesn't accept char so we use int32_t instead

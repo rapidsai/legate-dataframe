@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,8 @@ namespace legate::dataframe {
                                                          rmm::cuda_stream_view stream,
                                                          rmm::mr::device_memory_resource* mr);
 
+[[nodiscard]] std::shared_ptr<arrow::Buffer> null_mask_bools_to_bits(
+  const legate::PhysicalStore& bools);
 /**
  * @brief Convert a null mask of bits (cudf) to booleans (legate)
  *
