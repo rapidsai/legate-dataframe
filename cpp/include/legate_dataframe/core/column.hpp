@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <arrow/api.h>
+
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_view.hpp>
 #include <cudf/scalar/scalar.hpp>
@@ -202,6 +204,8 @@ class LogicalColumn {
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
+  std::shared_ptr<arrow::Array> get_arrow() const;
+
   /**
    * @brief Copy the logical column into a local cudf scalar
    *
@@ -254,6 +258,15 @@ class LogicalColumn {
    */
   [[nodiscard]] cudf::data_type cudf_type() const { return cudf_type_; }
 
+  /**
+   * @brief Get the cudf data type of the column
+   *
+   * @return The cudf data type
+   */
+  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const
+  {
+    return to_arrow_type(cudf_type_.id());
+  }
   /**
    * @brief Indicates whether the array is nullable
    *
@@ -326,7 +339,7 @@ class PhysicalColumn {
    * column is part of. Use a negative value to indicate that the number of rows is
    * unknown.
    */
-  PhysicalColumn(GPUTaskContext& ctx,
+  PhysicalColumn(TaskContext& ctx,
                  legate::PhysicalArray array,
                  cudf::data_type cudf_type,
                  bool scalar_out = false)
@@ -371,6 +384,11 @@ class PhysicalColumn {
    * @return The cudf data type
    */
   [[nodiscard]] cudf::data_type cudf_type() const { return cudf_type_; }
+
+  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const
+  {
+    return to_arrow_type(cudf_type_.id());
+  }
 
   /**
    * @brief Indicates whether the column is nullable
@@ -436,13 +454,14 @@ class PhysicalColumn {
    * @brief Return a cudf column view of this physical column
    *
    * NB: The physical column MUST outlive the returned view thus it is UB to do some-
-   *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view();`
+   *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view(mr);`
    *
    * @throw cudf::logic_error if column is unbound.
    * @return A new column view.
    */
-  cudf::column_view column_view() const;
+  cudf::column_view column_view(TaskMemoryResource& mr) const;
 
+  std::shared_ptr<arrow::Array> arrow_array_view() const;
   /**
    * @brief Return a cudf scalar for physical column
    *
@@ -455,7 +474,7 @@ class PhysicalColumn {
    * @throw cudf::logic_error if column is unbound or the size is not one.
    * @return A new cudf scalar.
    */
-  std::unique_ptr<cudf::scalar> cudf_scalar() const;
+  std::unique_ptr<cudf::scalar> cudf_scalar(TaskMemoryResource& mr) const;
 
   /**
    * @brief Return a printable representational string
@@ -472,14 +491,21 @@ class PhysicalColumn {
    *
    * @param column The cudf column to move
    */
-  void move_into(std::unique_ptr<cudf::column> column);
+  void move_into(std::unique_ptr<cudf::column> column, TaskMemoryResource& mr);
 
   /**
    * @brief Move local cudf scalar into this unbound physical column
    *
    * @param scalar The cudf scalar to move
    */
-  void move_into(std::unique_ptr<cudf::scalar> scalar);
+  void move_into(std::unique_ptr<cudf::scalar> scalar, TaskMemoryResource& mr);
+
+  /**
+   * @brief Move arrow array into this unbound physical column
+   *
+   * @param scalar The arrow array to move
+   */
+  void move_into(std::shared_ptr<arrow::Array> column);
 
   /**
    * @brief Makes the unbound column empty. Valid only when the column is unbound.
@@ -487,7 +513,7 @@ class PhysicalColumn {
   void bind_empty_data() const;
 
  private:
-  GPUTaskContext* ctx_;
+  TaskContext* ctx_;
   legate::PhysicalArray array_;
   const cudf::data_type cudf_type_;
   mutable std::vector<std::unique_ptr<cudf::column>> tmp_cols_;
@@ -529,7 +555,7 @@ legate::Variable add_next_input(legate::AutoTask& task,
 legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& col);
 
 template <>
-inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(GPUTaskContext& ctx)
+inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(TaskContext& ctx)
 {
   auto cudf_type_id = static_cast<cudf::type_id>(
     argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
@@ -537,7 +563,7 @@ inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(GPUTaskContext&
 }
 
 template <>
-inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(GPUTaskContext& ctx)
+inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(TaskContext& ctx)
 {
   auto cudf_type_id = static_cast<cudf::type_id>(
     argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));

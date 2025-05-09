@@ -23,7 +23,7 @@
 
 namespace legate::dataframe {
 
-void copy_into_tranposed(GPUTaskContext& ctx,
+void copy_into_tranposed(TaskContext& ctx,
                          legate::PhysicalArray& array,
                          cudf::table_view tbl,
                          size_t offset,

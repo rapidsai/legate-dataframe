@@ -36,14 +36,15 @@ class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBool
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto tbl    = argument::get_next_input<PhysicalTable>(ctx);
     auto boolean_mask = argument::get_next_input<PhysicalColumn>(ctx);
     auto output       = argument::get_next_output<PhysicalTable>(ctx);
 
     auto ret = cudf::apply_boolean_mask(
-      tbl.table_view(), boolean_mask.column_view(), ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
+      tbl.table_view(mr), boolean_mask.column_view(mr), context.get_task_stream(), &mr);
+    output.move_into(std::move(ret), mr);
   }
 };
 
