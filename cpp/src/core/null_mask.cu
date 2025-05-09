@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 
 #include <legate/cuda/cuda.h>
 
+#include <arrow/api.h>
 #include <cudf/null_mask.hpp>
 #include <cudf/utilities/bit.hpp>
 
@@ -90,6 +91,21 @@ __global__ void bools_to_bitmask(int64_t bools_size,
     LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
   }
   return bitmask;
+}
+
+std::shared_ptr<arrow::Buffer> null_mask_bools_to_bits(const legate::PhysicalStore& bools)
+{
+  auto bools_acc   = bools.read_accessor<bool, 1>();
+  auto bools_shape = bools.shape<1>();
+  auto bools_size  = bools_shape.volume();
+  auto bitmap_size = arrow::bit_util::BytesForBits(bools_size);
+  auto buffer      = *arrow::AllocateBuffer(bitmap_size);
+  auto ptr         = buffer->mutable_data();
+  std::memset(ptr, 0, static_cast<size_t>(buffer->capacity()));
+  for (size_t i = 0; i < bools_size; ++i) {
+    if (bools_acc[i] > 0) { arrow::bit_util::SetBit(ptr, i); }
+  }
+  return buffer;
 }
 
 namespace {

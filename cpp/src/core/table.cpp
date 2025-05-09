@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,6 +108,24 @@ std::unique_ptr<cudf::table> LogicalTable::get_cudf(rmm::cuda_stream_view stream
     cols.push_back(col.get_cudf(stream, mr));
   }
   return std::make_unique<cudf::table>(std::move(cols));
+}
+
+std::shared_ptr<arrow::Table> LogicalTable::get_arrow() const
+{
+  if (unbound()) {
+    throw std::runtime_error("cannot get an arrow table from an unbound LogicalTable");
+  }
+  std::vector<std::shared_ptr<arrow::Array>> cols;
+  cols.reserve(columns_.size());
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+  auto names = this->get_column_name_vector();
+  for (auto i = 0; i < columns_.size(); i++) {
+    auto col = columns_[i];
+    cols.push_back(col.get_arrow());
+    fields.push_back(arrow::field(names[i], col.arrow_type()));
+  }
+
+  return arrow::Table::Make(arrow::schema(fields), std::move(cols));
 }
 
 std::string LogicalTable::repr(size_t max_num_items_ptr_column) const

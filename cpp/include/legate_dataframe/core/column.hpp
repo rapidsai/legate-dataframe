@@ -204,6 +204,8 @@ class LogicalColumn {
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
+  std::shared_ptr<arrow::Array> get_arrow() const;
+
   /**
    * @brief Copy the logical column into a local cudf scalar
    *
@@ -256,6 +258,15 @@ class LogicalColumn {
    */
   [[nodiscard]] cudf::data_type cudf_type() const { return cudf_type_; }
 
+  /**
+   * @brief Get the cudf data type of the column
+   *
+   * @return The cudf data type
+   */
+  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const
+  {
+    return to_arrow_type(cudf_type_.id());
+  }
   /**
    * @brief Indicates whether the array is nullable
    *
@@ -374,6 +385,11 @@ class PhysicalColumn {
    */
   [[nodiscard]] cudf::data_type cudf_type() const { return cudf_type_; }
 
+  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const
+  {
+    return to_arrow_type(cudf_type_.id());
+  }
+
   /**
    * @brief Indicates whether the column is nullable
    *
@@ -445,6 +461,7 @@ class PhysicalColumn {
    */
   cudf::column_view column_view(TaskMemoryResource& mr) const;
 
+  std::shared_ptr<arrow::Array> arrow_array_view() const;
   /**
    * @brief Return a cudf scalar for physical column
    *
