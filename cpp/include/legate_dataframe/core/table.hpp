@@ -301,6 +301,7 @@ class LogicalTable {
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
+  std::shared_ptr<arrow::Table> get_arrow() const;
   /**
    * @brief Return a printable representational string
    *
@@ -354,6 +355,19 @@ class PhysicalTable {
       cols.push_back(col.column_view(mr));
     }
     return cudf::table_view(std::move(cols));
+  }
+
+  std::shared_ptr<arrow::Table> arrow_table_view(const std::vector<std::string>& column_names) const
+  {
+    std::vector<std::shared_ptr<arrow::Array>> cols;
+    cols.reserve(columns_.size());
+    std::vector<std::shared_ptr<arrow::Field>> fields;
+    for (std::size_t i = 0; i < columns_.size(); i++) {
+      const auto& col = columns_[i];
+      cols.push_back(col.arrow_array_view());
+      fields.push_back(arrow::field(column_names[i], col.arrow_type()));
+    }
+    return arrow::Table::Make(arrow::schema(fields), std::move(cols));
   }
 
   /**
@@ -452,6 +466,15 @@ class PhysicalTable {
 
     for (const auto& col : columns_) {
       dtypes.push_back(col.cudf_type());
+    }
+    return dtypes;
+  }
+
+  [[nodiscard]] std::vector<std::shared_ptr<arrow::DataType>> arrow_types() const
+  {
+    std::vector<std::shared_ptr<arrow::DataType>> dtypes;
+    for (const auto& col : columns_) {
+      dtypes.push_back(col.arrow_type());
     }
     return dtypes;
   }
