@@ -204,8 +204,6 @@ class LogicalColumn {
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
-  std::shared_ptr<arrow::Array> get_arrow() const;
-
   /**
    * @brief Copy the logical column into a local cudf scalar
    *

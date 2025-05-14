@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <arrow/api.h>
 #include <cudf/column/column.hpp>
 #include <rmm/cuda_stream.hpp>
 #include <rmm/mr/device/device_memory_resource.hpp>
@@ -41,6 +42,10 @@ namespace legate::dataframe {
   rmm::cuda_stream_view stream,
   rmm::mr::device_memory_resource* mr);
 
+[[nodiscard]] std::shared_ptr<arrow::Buffer> global_ranges_to_arrow_offsets(
+  const legate::PhysicalStore& ranges);
+
+void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect<1>* ranges_acc);
 /**
  * @brief Convert local offsets (cudf) to local ranges (legate)
  *
