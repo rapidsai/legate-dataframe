@@ -301,7 +301,6 @@ class LogicalTable {
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
-  std::shared_ptr<arrow::Table> get_arrow() const;
   /**
    * @brief Return a printable representational string
    *
