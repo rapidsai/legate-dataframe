@@ -111,10 +111,6 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     for (auto index : use_cols_indexes) {
       column_names.push_back(all_column_names[index]);
     }
-    std::vector<std::string> include_columns;
-    for (std::size_t i = 0; i < use_cols_indexes.size(); i++) {
-      include_columns.push_back(column_names[i]);
-    }
 
     std::unordered_map<std::string, std::shared_ptr<arrow::DataType>> dtypes_map;
     for (size_t i = 0; i < dtypes.size(); i++) {
@@ -129,13 +125,13 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       auto read_options         = arrow::csv::ReadOptions::Defaults();
       read_options.use_threads  = false;
       read_options.column_names = all_column_names;
-      read_options.skip_rows    = 1;
+      read_options.skip_rows    = read_header ? 1 : 0;
 
       auto parse_options              = arrow::csv::ParseOptions::Defaults();
       parse_options.delimiter         = delimiter;
       auto convert_options            = arrow::csv::ConvertOptions::Defaults();
       convert_options.column_types    = dtypes_map;
-      convert_options.include_columns = include_columns;
+      convert_options.include_columns = column_names;
 
       // Instantiate TableReader from input stream and options
       arrow::io::IOContext io_context                 = arrow::io::default_io_context();
@@ -303,7 +299,6 @@ LogicalTable csv_read(const std::string& glob_string,
   auto source  = cudf::io::source_info(file_paths[0]);
   auto options = cudf::io::csv_reader_options::builder(source);
   if (usecols.has_value()) {
-    options.use_cols_indexes(usecols.value());
     options.header(-1);
     options.nrows(1);  // Try to read one row to error on a bad file.
   } else {
