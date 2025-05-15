@@ -38,7 +38,41 @@ jobs:
       script: "ci/build_all.sh"
     secrets: inherit
 
-  conda-python-tests:
+  conda-python-cpu-tests:
+    needs:
+      - pre-commit
+      - conda-python-build
+    strategy:
+      fail-fast: false
+      # Valid set of RAPIDS ci-conda image tags: https://hub.docker.com/r/rapidsai/ci-conda/tags
+      matrix:
+        include:
+          - ARCH: "amd64"
+            CUDA_VER: "12.5.1"
+            PY_VER: "3.10"
+          - ARCH: "amd64"
+            CUDA_VER: "12.5.1"
+            PY_VER: "3.12"
+    runs-on: linux-${{ matrix.ARCH }}-cpu16
+    container:
+      image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu22.04-py${{ matrix.PY_VER }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: download conda packages
+        uses: actions/download-artifact@v4
+        with:
+          name: legate-dataframe-conda-cuda${{ matrix.CUDA_VER }}-${{ matrix.ARCH }}-py${{ matrix.PY_VER }}
+          path: ${{ env.RAPIDS_LOCAL_CONDA_CHANNEL }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+      - name: test python and C++ interface
+        run: |
+          ci/test_cpu.sh
+
+  conda-python-gpu-tests:
     needs:
       - pre-commit
       - conda-python-build
@@ -78,8 +112,7 @@ jobs:
           run-id: ${{ github.run_id }}
       - name: test python and C++ interface
         run: |
-          ci/test_all.sh
-
+          ci/test_gpu.sh
   docs-build:
     needs:
       - conda-python-build
