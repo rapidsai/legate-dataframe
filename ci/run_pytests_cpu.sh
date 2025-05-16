@@ -3,7 +3,7 @@
 
 # [description]
 #
-#   Run (GPU) tests.
+#   Run (CPU) tests.
 #
 #   This is intended for use by both CI and local development,
 #   so shouldn't rely on any CI-specific details.

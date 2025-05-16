@@ -356,8 +356,22 @@ class PhysicalTable {
     return cudf::table_view(std::move(cols));
   }
 
+  /**
+   * @brief Creates an Arrow Table view using the specified column names.
+   *
+   * @param column_names
+   * @return std::shared_ptr<arrow::Table> A shared pointer to the newly created Arrow Table.
+   *
+   * @throws std::runtime_error If the number of provided column names does not match the number of
+   * columns.
+   */
   std::shared_ptr<arrow::Table> arrow_table_view(const std::vector<std::string>& column_names) const
   {
+    if (static_cast<std::size_t>(column_names.size()) != columns_.size()) {
+      throw std::runtime_error("LogicalTable.arrow_table_view(): number of columns mismatch " +
+                               std::to_string(columns_.size()) +
+                               " != " + std::to_string(column_names.size()));
+    }
     std::vector<std::shared_ptr<arrow::Array>> cols;
     cols.reserve(columns_.size());
     std::vector<std::shared_ptr<arrow::Field>> fields;
@@ -373,6 +387,7 @@ class PhysicalTable {
    * @brief Move local cudf columns into this unbound physical table
    *
    * @param columns The cudf columns to move
+   * @param mr Device memory resource to use for memory allocations.
    */
   void move_into(std::vector<std::unique_ptr<cudf::column>> columns, TaskMemoryResource& mr)
   {
@@ -413,6 +428,7 @@ class PhysicalTable {
    * @brief Move local cudf table into this unbound physical table
    *
    * @param table The cudf table to move
+   * @param mr Device memory resource to use for memory allocations.
    */
   void move_into(std::unique_ptr<cudf::table> table, TaskMemoryResource& mr)
   {

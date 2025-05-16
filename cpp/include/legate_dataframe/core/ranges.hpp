@@ -45,7 +45,15 @@ namespace legate::dataframe {
 [[nodiscard]] std::shared_ptr<arrow::Buffer> global_ranges_to_arrow_offsets(
   const legate::PhysicalStore& ranges);
 
+/**
+ * @brief Converts the offsets from an Arrow StringArray into local ranges.
+ *
+ * @param array The Arrow StringArray containing the string data and offsets.
+ * @param ranges_acc Pointer to an array of legate::Rect<1> where the computed ranges will be
+ * stored.
+ */
 void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect<1>* ranges_acc);
+
 /**
  * @brief Convert local offsets (cudf) to local ranges (legate)
  *

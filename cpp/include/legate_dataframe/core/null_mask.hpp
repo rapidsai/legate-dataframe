@@ -40,8 +40,19 @@ namespace legate::dataframe {
                                                          rmm::cuda_stream_view stream,
                                                          rmm::mr::device_memory_resource* mr);
 
+/**
+ * @brief Converts a boolean null mask stored in a PhysicalStore to an Arrow bit-packed buffer.
+ *
+ * This function takes a PhysicalStore containing boolean values representing a null mask,
+ * and converts it into a bit-packed Arrow buffer, where each bit corresponds to the validity
+ * of a value (1 for valid, 0 for null).
+ *
+ * @param bools The PhysicalStore containing boolean values representing the null mask.
+ * @return A shared pointer to an Arrow buffer containing the bit-packed null mask.
+ */
 [[nodiscard]] std::shared_ptr<arrow::Buffer> null_mask_bools_to_bits(
   const legate::PhysicalStore& bools);
+
 /**
  * @brief Convert a null mask of bits (cudf) to booleans (legate)
  *

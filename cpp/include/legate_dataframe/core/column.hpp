@@ -257,14 +257,15 @@ class LogicalColumn {
   [[nodiscard]] cudf::data_type cudf_type() const { return cudf_type_; }
 
   /**
-   * @brief Get the cudf data type of the column
+   * @brief Get the arrow data type of the column
    *
-   * @return The cudf data type
+   * @return The arrow data type
    */
   [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const
   {
     return to_arrow_type(cudf_type_.id());
   }
+
   /**
    * @brief Indicates whether the array is nullable
    *
@@ -454,6 +455,7 @@ class PhysicalColumn {
    * NB: The physical column MUST outlive the returned view thus it is UB to do some-
    *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view(mr);`
    *
+   * @param mr Device memory resource to use for any allocations.
    * @throw cudf::logic_error if column is unbound.
    * @return A new column view.
    */
@@ -469,6 +471,7 @@ class PhysicalColumn {
    * Note that the above should be considered true even if currently the scalar
    * may not view the memory (you must consider the scalar immutable).
    *
+   * @param mr Device memory resource to use for any allocations.
    * @throw cudf::logic_error if column is unbound or the size is not one.
    * @return A new cudf scalar.
    */
@@ -488,6 +491,7 @@ class PhysicalColumn {
    * @brief Move local cudf column into this unbound physical column
    *
    * @param column The cudf column to move
+   * @param mr Device memory resource to use for any allocations.
    */
   void move_into(std::unique_ptr<cudf::column> column, TaskMemoryResource& mr);
 
@@ -495,13 +499,14 @@ class PhysicalColumn {
    * @brief Move local cudf scalar into this unbound physical column
    *
    * @param scalar The cudf scalar to move
+   * @param mr Device memory resource to use for any allocations.
    */
   void move_into(std::unique_ptr<cudf::scalar> scalar, TaskMemoryResource& mr);
 
   /**
    * @brief Move arrow array into this unbound physical column
    *
-   * @param scalar The arrow array to move
+   * @param column The arrow array to move
    */
   void move_into(std::shared_ptr<arrow::Array> column);
 
