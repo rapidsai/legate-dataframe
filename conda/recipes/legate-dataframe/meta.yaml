@@ -82,7 +82,7 @@ outputs:
         - {{ stdlib("c") }}
       host:
         - cuda-version ={{ cuda_version }}
-        - legate {{ legate_version }} =*_gpu*
+        - legate {{ legate_version }}
         - cupynumeric {{ cupynumeric_version }}
         - python
         - pip
