@@ -25,7 +25,8 @@ namespace legate::dataframe::task {
 
 std::pair<std::vector<cudf::table_view>,
           std::unique_ptr<std::pair<std::map<int, rmm::device_buffer>, cudf::table>>>
-shuffle(GPUTaskContext& ctx,
+shuffle(TaskContext& ctx,
+        TaskMemoryResource& mr,
         std::vector<cudf::table_view>& tbl_partitioned,
         std::unique_ptr<cudf::table> owning_table);
 
@@ -45,7 +46,8 @@ shuffle(GPUTaskContext& ctx,
  * @return The repartitioned table where the partition of each task hashes to the same
  */
 std::unique_ptr<cudf::table> repartition_by_hash(
-  GPUTaskContext& ctx,
+  TaskContext& ctx,
+  TaskMemoryResource& mr,
   const cudf::table_view& table,
   const std::vector<cudf::size_type>& columns_to_hash);
 

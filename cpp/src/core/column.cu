@@ -53,17 +53,11 @@ namespace {
   legate::Runtime* runtime = legate::Runtime::get_runtime();
 
   if (nelem == 0) { return runtime->create_store({nelem}, dtype); }
-
-  // For now, we copy the device buffer to host memory and hand it over to legate with the
-  // `std::free()` function.
-  // TODO: avoid this copy: <https://github.com/rapidsai/legate-dataframe/issues/80>
   const size_t nbytes = nelem * dtype.size();
-  void* host_buffer   = std::malloc(nbytes);
-  if (host_buffer == nullptr) { throw std::bad_alloc(); }
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(host_buffer, buffer, nbytes, cudaMemcpyDeviceToHost, stream));
+  auto ret            = runtime->create_store({nelem}, dtype, false);
+  auto accessor       = ret.get_physical_store().write_accessor<uint8_t, 1, false>();
+  LEGATE_CHECK_CUDA(cudaMemcpyAsync(accessor.ptr(0), buffer, nbytes, cudaMemcpyDefault, stream));
   LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
-  auto alloc = legate::ExternalAllocation::create_sysmem(host_buffer, nbytes, std::free);
-  auto ret   = runtime->create_store({nelem}, dtype, alloc);
   return ret;
 }
 
@@ -269,11 +263,11 @@ std::string PhysicalColumn::repr(legate::Memory::Kind mem_kind,
   return ss.str();
 }
 
-cudf::column_view PhysicalColumn::column_view() const
+cudf::column_view PhysicalColumn::column_view(TaskMemoryResource& mr) const
 {
   if (unbound()) {
     throw std::runtime_error(
-      "Cannot call `.column_view()` on a unbound LogicalColumn, please bind it using "
+      "Cannot call `.column_view(mr)` on a unbound LogicalColumn, please bind it using "
       "`.move_into()`");
   }
 
@@ -282,6 +276,7 @@ cudf::column_view PhysicalColumn::column_view() const
   cudf::size_type null_count          = 0;
   cudf::size_type offset              = 0;
   std::vector<cudf::column_view> children;
+  auto stream = ctx_->get_legate_context().get_task_stream();
 
   if (array_.nested()) {
     if (array_.type().code() == legate::Type::Code::STRING) {
@@ -290,7 +285,7 @@ cudf::column_view PhysicalColumn::column_view() const
       const auto num_chars                = chars.data().shape<1>().volume();
 
       std::unique_ptr<cudf::column> cudf_offsets = global_ranges_to_cudf_offsets(
-        a.ranges(), num_chars, legate::Memory::Kind::GPU_FB_MEM, ctx_->stream(), ctx_->mr());
+        a.ranges(), num_chars, legate::Memory::Kind::GPU_FB_MEM, stream, &mr);
 
       // To keep the offsets alive beyond this function, we push it to temporaries before
       // adding it as the first child.
@@ -306,27 +301,68 @@ cudf::column_view PhysicalColumn::column_view() const
     data = read_accessor_as_1d_bytes(array_.data());
   }
   if (array_.nullable()) {
-    tmp_null_masks_.push_back(null_mask_bools_to_bits(
-      array_.null_mask(), legate::Memory::Kind::GPU_FB_MEM, ctx_->stream(), ctx_->mr()));
+    tmp_null_masks_.push_back(
+      null_mask_bools_to_bits(array_.null_mask(), legate::Memory::Kind::GPU_FB_MEM, stream, &mr));
     null_mask  = static_cast<const cudf::bitmask_type*>(tmp_null_masks_.back().data());
-    null_count = cudf::null_count(null_mask, 0, num_rows(), ctx_->stream());
+    null_count = cudf::null_count(null_mask, 0, num_rows(), stream);
   }
   return cudf::column_view(cudf_type_, num_rows(), data, null_mask, null_count, offset, children);
 }
 
-std::unique_ptr<cudf::scalar> PhysicalColumn::cudf_scalar() const
+std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
+{
+  if (unbound()) {
+    throw std::runtime_error(
+      "Cannot call `.arrow_array(mr)` on a unbound LogicalColumn, please bind it using "
+      "`.move_into()`");
+  }
+  if (array_.nested()) {
+    if (array_.type().code() == legate::Type::Code::STRING) {
+      const legate::StringPhysicalArray a = array_.as_string_array();
+      const legate::PhysicalArray chars   = a.chars();
+      const auto num_chars                = chars.data().shape<1>().volume();
+
+      auto data = std::make_shared<arrow::Buffer>(
+        reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(chars)), num_chars);
+
+      auto null_bitmask = null_mask_bools_to_bits(array_.null_mask());
+
+      auto offsets = global_ranges_to_arrow_offsets(a.ranges().data());
+
+      return std::make_shared<arrow::StringArray>(num_rows(), offsets, data, null_bitmask);
+
+    } else {
+      throw std::invalid_argument("nested dtype " + array_.type().to_string() + " isn't supported");
+    }
+  } else {
+    auto nbytes = array_.shape<1>().volume() * array_.type().size();
+    // 1. Wrap the data in an arrow buffer
+    auto buffer = std::make_shared<arrow::Buffer>(
+      reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(array_.data())), nbytes);
+    // 2. Handle null mask
+    std::shared_ptr<arrow::Buffer> null_bitmask;
+    if (array_.nullable()) { null_bitmask = null_mask_bools_to_bits(array_.null_mask()); }
+    // 3. Create ArrayData from buffer
+    auto array_data =
+      arrow::ArrayData::Make(to_arrow_type(cudf_type_.id()), num_rows(), {null_bitmask, buffer});
+    return arrow::MakeArray(array_data);
+  }
+}
+
+std::unique_ptr<cudf::scalar> PhysicalColumn::cudf_scalar(TaskMemoryResource& mr) const
 {
   if (num_rows() != 1) {
     throw std::invalid_argument("can only convert length one columns to scalar.");
   }
-  return cudf::get_element(column_view(), 0);
+  return cudf::get_element(column_view(mr), 0);
 }
 
 namespace {
 
 struct move_into_fn {
   template <typename T, std::enable_if_t<cudf::is_rep_layout_compatible<T>()>* = nullptr>
-  void operator()(GPUTaskContext* ctx,
+  void operator()(TaskContext* ctx,
+                  TaskMemoryResource& mr,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
@@ -346,10 +382,7 @@ struct move_into_fn {
       }
     }
 
-    MemAlloc mem_alloc = ctx->mr()->release_buffer(cudf_col);
-    // std::cout << "mem_alloc.valid: " << mem_alloc.valid()
-    //           << ", mem_alloc.nbytes: " << mem_alloc.nbytes()
-    //           << ", cudf_col.nbytes: " << cudf_col.size() * sizeof(T) << std::endl;
+    auto mem_alloc = mr.release_buffer(cudf_col);
     if (mem_alloc.valid()) {
       array.data().bind_untyped_data(mem_alloc.buffer(), cudf_col.size());
     } else {
@@ -364,7 +397,8 @@ struct move_into_fn {
   }
 
   template <typename T, std::enable_if_t<std::is_same_v<T, cudf::string_view>>* = nullptr>
-  void operator()(GPUTaskContext* ctx,
+  void operator()(TaskContext* ctx,
+                  TaskMemoryResource& mr,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
@@ -397,7 +431,7 @@ struct move_into_fn {
     auto ranges      = ary.ranges().data().create_output_buffer<legate::Rect<1>, 1>(
       ranges_size, true /* bind_buffer */);
 
-    cudf_offsets_to_local_ranges(ranges_size, ranges.ptr(0), str_col.offsets(), ctx->stream());
+    cudf_offsets_to_local_ranges(ranges_size, ranges.ptr(0), str_col.offsets(), stream);
 
     if (str_col.offsets().offset() != 0) {
       throw std::runtime_error("string column seems sliced, which is currently not supported.");
@@ -412,7 +446,8 @@ struct move_into_fn {
   template <typename T,
             std::enable_if_t<!(cudf::is_rep_layout_compatible<T>() ||
                                std::is_same_v<T, cudf::string_view>)>* = nullptr>
-  void operator()(GPUTaskContext* ctx,
+  void operator()(TaskContext* ctx,
+                  TaskMemoryResource& mr,
                   legate::PhysicalArray& array,
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
@@ -424,7 +459,7 @@ struct move_into_fn {
 
 }  // namespace
 
-void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
+void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column, TaskMemoryResource& mr)
 {
   if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
@@ -436,16 +471,102 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
   if (scalar_out_ && column->size() != 1) {
     throw std::logic_error("move_into(): for scalar, column must have size one.");
   }
-  cudf::type_dispatcher(
-    column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
+  cudf::type_dispatcher(column->type(),
+                        move_into_fn{},
+                        ctx_,
+                        mr,
+                        array_,
+                        std::move(column),
+                        ctx_->get_legate_context().get_task_stream());
 }
 
-void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
+void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar, TaskMemoryResource& mr)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be
   // preferable (although libcudf could also grow a way to get a column view).
-  auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream(), ctx_->mr());
-  move_into(std::move(col));
+  auto col =
+    cudf::make_column_from_scalar(*scalar, 1, ctx_->get_legate_context().get_task_stream(), mr);
+  move_into(std::move(col), mr);
+}
+
+struct MoveIntoVisitor {
+  MoveIntoVisitor(legate::PhysicalArray& array) : array_(array) {}
+  legate::PhysicalArray& array_;
+  template <typename Type>
+  arrow::Status Visit(const arrow::NumericArray<Type>& array)
+  {
+    using T = typename std::decay_t<decltype(array)>::TypeClass::c_type;
+    if (sizeof(T) != array_.type().size()) {
+      throw std::invalid_argument(
+        "move_into(): the arrow column type size doesn't match the PhysicalArray");
+    }
+    auto out = array_.data().create_output_buffer<T, 1>(legate::Point<1>(array.length()),
+                                                        true /* bind_buffer */);
+    std::memcpy(out.ptr(0), array.raw_values(), array.length() * sizeof(T));
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::StringArray& array)
+  {
+    auto legate_string_array = array_.as_string_array();
+    auto ranges_size         = array.length();
+    auto ranges = legate_string_array.ranges().data().create_output_buffer<legate::Rect<1>, 1>(
+      ranges_size, true /* bind_buffer */);
+    arrow_offsets_to_local_ranges(array, ranges.ptr(0));
+    auto nbytes = array.total_values_length();
+    // TODO: avoid copy and allocation?
+    auto chars = legate_string_array.chars().data().create_output_buffer<int8_t, 1>(
+      nbytes, true /* bind_buffer */);
+    std::memcpy(chars.ptr(0), array.value_data()->data(), nbytes);
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::BooleanArray& array)
+  {
+    // Boolean array is bit packed
+    auto out = array_.data().create_output_buffer<bool, 1>(legate::Point<1>(array.length()), true);
+    for (std::size_t i = 0; i < array.length(); ++i) {
+      out[i] = array.Value(i);
+    }
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::Array& array)
+  {
+    return arrow::Status::NotImplemented("Not implemented for array of type ",
+                                         array.type()->ToString());
+  }
+};
+
+void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column)
+{
+  if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
+  auto null_count = column->null_count();
+  if (null_count > 0 && !array_.nullable()) {
+    throw std::invalid_argument(
+      "move_into(): the arrow column is nullable while the PhysicalArray isn't");
+  }
+  if (scalar_out_ && column->length() != 1) {
+    throw std::logic_error("move_into(): for scalar, column must have size one.");
+  }
+
+  if (array_.nullable()) {
+    auto null_mask =
+      array_.null_mask().create_output_buffer<bool, 1>(legate::Point<1>(column->length()),
+                                                       /* bind_buffer = */ true);
+    if (null_count > 0) {
+      for (size_t i = 0; i < column->length(); ++i) {
+        null_mask[i] = !column->IsNull(i);
+      }
+    } else {
+      std::memset(
+        null_mask.ptr(0), std::numeric_limits<bool>::max(), column->length() * sizeof(bool));
+    }
+  }
+
+  // Dispatch arrow::Array types
+  MoveIntoVisitor visitor{array_};
+  auto status = arrow::VisitArrayInline(*column, &visitor);
+  if (!status.ok()) {
+    throw std::invalid_argument("move_into(): failed to copy arrow array: " + status.ToString());
+  }
 }
 
 void PhysicalColumn::bind_empty_data() const

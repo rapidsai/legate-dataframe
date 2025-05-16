@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2024, NVIDIA CORPORATION.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION.
 
 set -e -E -u -o pipefail
 
@@ -12,8 +12,8 @@ source ./ci/test_all_common.sh
 nvidia-smi
 
 rapids-logger "Running C++ tests"
-./ci/run_ctests.sh
+./ci/run_ctests_gpu.sh
 
 # run the tests
 rapids-logger "Running Python tests"
-./ci/run_pytests.sh
+./ci/run_pytests_gpu.sh

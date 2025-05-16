@@ -181,6 +181,10 @@ def test_usecols_and_names_no_header(tmp_path):
     assert_frame_equal(read_tbl, df[["b", "c"]].astype({"b": "float64"}))
 
 
+@pytest.mark.skipif(
+    get_machine().count(TaskTarget.GPU) == 0,
+    reason="Arrow does not support this na_filter option",
+)
 def test_na_filter_false(tmp_path):
     df = cudf.DataFrame({"a": [1, 2, 3, 4]})
     df.to_csv(tmp_path / "tmp.csv", index=False)
