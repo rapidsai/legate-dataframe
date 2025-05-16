@@ -88,10 +88,6 @@ outputs:
         - pip
       run:
         - python
-        # cuda-version is used to constrain __cuda
-        - {{ pin_compatible('cuda-version', max_pin='x', min_pin='x') }}
-        - cuda-cudart
-        - __cuda
         # Relying on run_exports from legate to pin an appropriate range of versions.
         #
         # legate uses {{ pin_subpackage(name, min_pin="x.x.x", max_pin="x.x.x") }}, which means
