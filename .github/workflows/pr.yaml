@@ -21,7 +21,8 @@ jobs:
     needs:
       - pre-commit
       - conda-python-build
-      - conda-python-tests
+      - conda-python-cpu-tests
+      - conda-python-gpu-tests
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@branch-24.12
 
   pre-commit:
