@@ -81,8 +81,8 @@ void add_next_scalar_vector(AutoTask& task, const std::vector<T>& scalars)
  * @param ctx The task context active in the calling task.
  * @return The value of the scalar argument.
  */
-template <typename T, typename ContextT>
-T get_next_scalar(ContextT& ctx)
+template <typename T>
+T get_next_scalar(TaskContext& ctx)
 {
   return ctx.get_next_scalar_arg().template value<T>();
 }
@@ -99,8 +99,8 @@ T get_next_scalar(ContextT& ctx)
  * @param ctx The task context active in the calling task.
  * @return The vector of scalar values.
  */
-template <typename T, typename ContextT>
-std::vector<T> get_next_scalar_vector(ContextT& ctx)
+template <typename T>
+std::vector<T> get_next_scalar_vector(TaskContext& ctx)
 {
   size_t num_items = get_next_scalar<size_t>(ctx);
   std::vector<T> ret;
@@ -125,8 +125,8 @@ std::vector<T> get_next_scalar_vector(ContextT& ctx)
  * @param ctx The task context active in the calling task.
  * @return The input task argument.
  */
-template <typename T, typename ContextT>
-T get_next_input(ContextT& ctx) = delete;
+template <typename T>
+T get_next_input(TaskContext& ctx) = delete;
 
 /**
  * @brief Get next output task argument
@@ -142,8 +142,8 @@ T get_next_input(ContextT& ctx) = delete;
  * @param ctx The task context active in the calling task.
  * @return The output task argument.
  */
-template <typename T, typename ContextT>
-T get_next_output(ContextT& ctx) = delete;
+template <typename T>
+T get_next_output(TaskContext& ctx) = delete;
 
 /**
  * @brief Adding alignment constraints to a task
