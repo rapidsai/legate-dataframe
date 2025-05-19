@@ -82,6 +82,36 @@ class LogicalColumn {
     }
   }
 
+  /*
+   * Convenience constructor for tests
+   */
+  template <typename T>
+  LogicalColumn(const std::vector<T>& data,
+                const std::vector<bool>& null_mask                  = {},
+                bool scalar                                         = false,
+                typename std::enable_if_t<std::is_arithmetic_v<T>>* = nullptr)
+  {
+    const size_t nbytes   = data.size() * sizeof(T);
+    auto runtime          = legate::Runtime::get_runtime();
+    auto legate_type_code = legate::type_code_of_v<T>;
+    auto data_store =
+      runtime->create_store({data.size()}, legate::primitive_type(legate_type_code), false);
+    auto ptr = data_store.get_physical_store().template write_accessor<T, 1, false>().ptr(0);
+    std::copy(data.begin(), data.end(), ptr);
+
+    if (null_mask.empty()) {
+      array_ = std::move(legate::LogicalArray(data_store));
+    } else {
+      auto null_mask_store = runtime->create_store({data.size()}, legate::bool_(), false);
+      auto null_mask_ptr =
+        null_mask_store.get_physical_store().template write_accessor<bool, 1, false>().ptr(0);
+      std::copy(null_mask.begin(), null_mask.end(), null_mask_ptr);
+      array_ = std::move(legate::LogicalArray(data_store, null_mask_store));
+    }
+    scalar_    = scalar;
+    cudf_type_ = cudf::data_type{to_cudf_type_id(legate_type_code)};
+  }
+
   /**
    * @brief Create a column from a local cudf column
    *
