@@ -23,8 +23,8 @@
 
 #include <cudf/copying.hpp>
 
+#include <legate.h>
 #include <legate/cuda/stream_pool.h>
-
 #include <legate_dataframe/utils.hpp>
 
 namespace legate::dataframe {
@@ -403,4 +403,35 @@ size_t linearize(const legate::DomainPoint& lo,
   return legate::dim_dispatch(point.dim, linearize_fn{}, lo, hi, point);
 }
 
+bool operator==(legate::PhysicalArray array, legate::PhysicalArray other_array)
+{
+  if (array.nullable() != other_array.nullable()) return false;
+  if (array.type() != other_array.type()) return false;
+  if (array.dim() != other_array.dim()) return false;
+  if (array.shape<1>() != other_array.shape<1>()) return false;
+  auto data       = array.data().template read_accessor<uint8_t, 1, false>().ptr(0);
+  auto type       = array.type();
+  auto other_data = other_array.data().template read_accessor<uint8_t, 1>().ptr(0);
+  auto shape      = array.shape<1>();
+  // If element is null, data need not be the same
+  if (array.nullable()) {
+    auto null_accessor       = array.null_mask().template read_accessor<bool, 1>();
+    auto other_null_accessor = other_array.null_mask().template read_accessor<bool, 1>();
+    for (size_t i = 0; i < shape.volume(); ++i) {
+      if (null_accessor[i] != other_null_accessor[i]) return false;
+      // Element exists, check data is the same
+      if (null_accessor[i]) {
+        for (size_t j = 0; j < type.size(); ++j) {
+          if (data[i * type.size() + j] != other_data[i * type.size() + j]) return false;
+        }
+      }
+    }
+  } else {
+    // No mask, expect data to be bitwise identical
+    for (size_t i = 0; i < shape.volume() * type.size(); ++i) {
+      if (data[i] != other_data[i]) return false;
+    }
+  }
+  return true;
+}
 }  // namespace legate::dataframe
