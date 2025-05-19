@@ -122,10 +122,6 @@ class Mapper : public legate::mapping::Mapper {
 
 legate::Library create_and_registrate_library()
 {
-  const char* env = std::getenv("LDF_DISABLE_GLOBAL_MEMORY_RESOURCE");
-  if (env == nullptr || std::string{env} == "0") {
-    GlobalMemoryResource::set_as_default_mmr_resource();
-  }
   // Set with_has_allocations globally since currently all tasks allocate (and libcudf may also)
   auto options = legate::VariantOptions{}.with_has_allocations(true);
   auto context =

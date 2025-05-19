@@ -11,7 +11,6 @@ else
     cd "${INSTALL_PREFIX:-${CONDA_PREFIX:-/usr}}/bin/gtests/liblegate_dataframe/"
 fi
 
-# Unless `LEGATE_CONFIG` is set, default to all available GPUs and set fbmem/sysmem.
 # LEGATE_TEST=1 to test broadcasting code paths (locally).
 LEGATE_CONFIG=${LEGATE_CONFIG:- --cpus 8 --sysmem=6000 --omps=0} \
 LEGATE_TEST=${LEGATE_TEST:-1} \

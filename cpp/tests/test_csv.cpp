@@ -35,14 +35,21 @@ struct NumericCSVTest : public cudf::test::BaseFixture {};
 
 TYPED_TEST_SUITE(NumericCSVTest, cudf::test::NumericTypes);
 
+template <typename T, typename in_T>
+std::vector<T> narrow(std::initializer_list<in_T> list)
+{
+  return std::vector<T>(list.begin(), list.end());
+}
+
 TYPED_TEST(NumericCSVTest, ReadWrite)
 {
   TempDir tmp_dir;
   // NB: Columns are explicitly not null as the csv returns them as null
-  cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3}, {1, 1, 1, 1});
-  cudf::test::fixed_width_column_wrapper<TypeParam> b({4, 5, 6, 7}, {1, 1, 1, 1});
   const std::vector<std::string> column_names({"a", "b"});
-  LogicalTable tbl_a({LogicalColumn{a}, LogicalColumn{b}}, column_names);
+
+  LogicalColumn a(narrow<TypeParam>({0, 1, 2, 3}), {1, 1, 1, 1});
+  LogicalColumn b(narrow<TypeParam>({4, 5, 6, 7}), {1, 1, 1, 1});
+  LogicalTable tbl_a({a, b}, column_names);
 
   csv_write(tbl_a, tmp_dir);
 
