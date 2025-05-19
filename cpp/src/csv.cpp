@@ -296,24 +296,53 @@ LogicalTable csv_read(const std::string& glob_string,
   // We read the column names from the first file.
   // At the moment users must pass in dtypes, otherwise one could read more
   // rows to make a guess (but especially with nullable data that can fail).
-  auto source  = cudf::io::source_info(file_paths[0]);
-  auto options = cudf::io::csv_reader_options::builder(source);
-  if (usecols.has_value()) {
-    options.header(-1);
-    options.nrows(1);  // Try to read one row to error on a bad file.
-  } else {
-    options.nrows(0);
-  }
-  options.delimiter(delimiter);
-  auto result = cudf::io::read_csv(options);
-
-  // To use byte-ranges without header parsing, usecols requires all column
-  // names to be set.
+  // If usecols is defined, assume we are given the column names
+  // Otherwise find them from the first file.
   std::vector<std::string> all_column_names;
-  all_column_names.reserve(result.metadata.schema_info.size());
-  for (const auto& column_name_info : result.metadata.schema_info) {
-    all_column_names.push_back(column_name_info.name);
+  if (!usecols.has_value()) {
+    // We need to read the first row to get the column names.
+    arrow::io::IOContext io_context = arrow::io::default_io_context();
+    auto input                      = *arrow::io::ReadableFile::Open(file_paths.at(0));
+    auto read_options               = arrow::csv::ReadOptions::Defaults();
+    read_options.block_size         = 100;
+    read_options.use_threads        = false;
+    auto parse_options              = arrow::csv::ParseOptions::Defaults();
+    parse_options.delimiter         = delimiter;
+    auto convert_options            = arrow::csv::ConvertOptions::Defaults();
+
+    // Instantiate StreamingReader from input stream and options
+    auto reader = *arrow::csv::StreamingReader::Make(
+      io_context, input, read_options, parse_options, convert_options);
+
+    std::shared_ptr<arrow::RecordBatch> batch;
+    // We could also infer the dtypes from the batch schema if we wanted
+    auto status = reader->ReadNext(&batch);
+
+    assert(batch->num_rows() <= 100);
+
+    all_column_names = batch->ColumnNames();
   }
+
+  /*
+ auto source  = cudf::io::source_info(file_paths[0]);
+ auto options = cudf::io::csv_reader_options::builder(source);
+ if (usecols.has_value()) {
+   options.header(-1);
+   options.nrows(1);  // Try to read one row to error on a bad file.
+ } else {
+   options.nrows(0);
+ }
+ options.delimiter(delimiter);
+ auto result = cudf::io::read_csv(options);
+
+ // To use byte-ranges without header parsing, usecols requires all column
+ // names to be set.
+ std::vector<std::string> all_column_names;
+ all_column_names.reserve(result.metadata.schema_info.size());
+ for (const auto& column_name_info : result.metadata.schema_info) {
+   all_column_names.push_back(column_name_info.name);
+ }
+ */
 
   // Get the column names, columns (with dtype), and the column indices.
   // If the user provided names we need to translate those to indices.
@@ -357,10 +386,10 @@ LogicalTable csv_read(const std::string& glob_string,
     }
 
     int column_index = 0;
-    for (const auto& column_name_info : result.metadata.schema_info) {
-      auto provided = provided_names.find(column_name_info.name);
+    for (const auto& name : all_column_names) {
+      auto provided = provided_names.find(name);
       if (provided != provided_names.end()) {
-        column_names.push_back(column_name_info.name);
+        column_names.push_back(name);
         columns.emplace_back(LogicalColumn::empty_like(dtypes[provided->second], true));
         use_cols_indexes.push_back(column_index);
         provided_names.erase(provided);

@@ -112,6 +112,50 @@ class LogicalColumn {
     cudf_type_ = cudf::data_type{to_cudf_type_id(legate_type_code)};
   }
 
+  /*
+   * Convenience constructor for tests
+   */
+  LogicalColumn(const std::vector<std::string>& data,
+                const std::vector<bool>& null_mask = {},
+                bool scalar                        = false)
+  {
+    auto runtime       = legate::Runtime::get_runtime();
+    std::size_t nbytes = 0;
+    std::vector<std::size_t> offsets(1);
+    for (const auto& str : data) {
+      nbytes += str.size();
+      offsets.push_back(nbytes);
+    }
+    // Create store for ranges
+    auto ranges_store = runtime->create_store({data.size()}, legate::rect_type(1), false);
+    auto data_store   = runtime->create_store({nbytes}, legate::int8(), false);
+
+    // Copy the data
+    auto data_ptr =
+      data_store.get_physical_store().template write_accessor<int8_t, 1, false>().ptr(0);
+    auto ranges_ptr =
+      ranges_store.get_physical_store().template write_accessor<legate::Rect<1>, 1, false>().ptr(0);
+    for (size_t i = 0; i < data.size(); ++i) {
+      std::copy(data[i].data(), data[i].data() + data[i].size(), data_ptr + offsets[i]);
+      ranges_ptr[i] = legate::Rect<1>(offsets[i], offsets[i + 1]);
+    }
+
+    if (null_mask.empty()) {
+      array_ = runtime->create_string_array(legate::LogicalArray(ranges_store),
+                                            legate::LogicalArray(data_store));
+    } else {
+      auto null_mask_store = runtime->create_store({data.size()}, legate::bool_(), false);
+
+      auto null_mask_ptr =
+        null_mask_store.get_physical_store().template write_accessor<bool, 1, false>().ptr(0);
+      std::copy(null_mask.begin(), null_mask.end(), null_mask_ptr);
+      array_ = runtime->create_string_array(legate::LogicalArray(ranges_store, null_mask_store),
+                                            legate::LogicalArray(data_store));
+    }
+    scalar_    = scalar;
+    cudf_type_ = cudf::data_type{cudf::type_id::STRING};
+  }
+
   /**
    * @brief Create a column from a local cudf column
    *
@@ -341,6 +385,19 @@ class LogicalColumn {
    * @return Printable representational string
    */
   std::string repr(size_t max_num_items = 30) const;
+
+  bool operator==(const LogicalColumn& other) const
+  {
+    if (this == &other) return true;
+    if (array_.has_value() != other.array_.has_value()) return false;
+    if (cudf_type_ != other.cudf_type_) return false;
+    if (scalar_ != other.scalar_) return false;
+    if (array_.has_value()) {
+      if (array_->unbound() != other.array_->unbound()) return false;
+      if (array_->get_physical_array() != other.array_->get_physical_array()) return false;
+    }
+    return true;
+  }
 
  private:
   // In order to support a default ctor and assignment (used by Cython),

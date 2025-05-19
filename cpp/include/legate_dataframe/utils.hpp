@@ -136,4 +136,10 @@ size_t linearize(const legate::DomainPoint& lo,
                  const legate::DomainPoint& hi,
                  const legate::DomainPoint& point);
 
+bool operator==(legate::PhysicalArray array, legate::PhysicalArray other_array);
+inline bool operator!=(legate::PhysicalArray array, legate::PhysicalArray other_array)
+{
+  return !(array == other_array);
+}
+
 }  // namespace legate::dataframe

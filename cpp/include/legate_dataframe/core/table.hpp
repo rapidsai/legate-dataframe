@@ -309,6 +309,14 @@ class LogicalTable {
    */
   std::string repr(size_t max_num_items_ptr_column = 30) const;
 
+  bool operator==(const LogicalTable& other) const
+  {
+    if (this == &other) return true;
+    if (column_names_ != other.column_names_) return false;
+    if (get_columns() != other.get_columns()) return false;
+    return true;
+  }
+
  private:
   std::vector<LogicalColumn> columns_;
   std::map<std::string, size_t> column_names_;
