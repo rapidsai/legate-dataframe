@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,9 @@
  * limitations under the License.
  */
 
-#include <numeric>
-
-#include <legate.h>
-
-#include <cudf_test/column_utilities.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/cudf_gtest.hpp>
-
+#include <gtest/gtest.h>
 #include <legate_dataframe/filling.hpp>
+#include <numeric>
 
 using namespace legate::dataframe;
 
@@ -32,8 +26,8 @@ TEST(FillingTest, int64)
     std::vector<int64_t> data(10);
     std::iota(data.begin(), data.end(), i);
 
-    cudf::test::fixed_width_column_wrapper<int64_t> expect(data.begin(), data.end());
+    LogicalColumn expect(data);
     LogicalColumn res = sequence(data.size(), i);
-    CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect);
+    EXPECT_EQ(res, expect);
   }
 }

@@ -413,6 +413,10 @@ bool operator==(legate::PhysicalArray array, legate::PhysicalArray other_array)
   auto type       = array.type();
   auto other_data = other_array.data().template read_accessor<uint8_t, 1>().ptr(0);
   auto shape      = array.shape<1>();
+  // TODO: string comparison
+  if (array.type().code() == legate::Type::Code::STRING) {
+    throw std::runtime_error("String comparison not implemented");
+  }
   // If element is null, data need not be the same
   if (array.nullable()) {
     auto null_accessor       = array.null_mask().template read_accessor<bool, 1>();
