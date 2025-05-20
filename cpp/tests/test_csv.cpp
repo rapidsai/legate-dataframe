@@ -17,29 +17,18 @@
 #include <cstdint>
 #include <iostream>
 
+#include "test_utils.hpp"
 #include <legate.h>
 
 #include <legate_dataframe/csv.hpp>
 #include <legate_dataframe/utils.hpp>
 
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/cudf_gtest.hpp>
-#include <cudf_test/table_utilities.hpp>
-#include <cudf_test/type_lists.hpp>
-
 using namespace legate::dataframe;
 
 template <typename T>
-struct NumericCSVTest : public cudf::test::BaseFixture {};
+struct NumericCSVTest : public testing::Test {};
 
-TYPED_TEST_SUITE(NumericCSVTest, cudf::test::NumericTypes);
-
-template <typename T, typename in_T>
-std::vector<T> narrow(std::initializer_list<in_T> list)
-{
-  return std::vector<T>(list.begin(), list.end());
-}
+TYPED_TEST_SUITE(NumericCSVTest, NumericTypes);
 
 TYPED_TEST(NumericCSVTest, ReadWrite)
 {
@@ -102,8 +91,7 @@ TEST(StringsCSVTest, ReadWrite)
   auto dtype = tbl_a.get_column(0).cudf_type();
   auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype}, false);
 
-  CUDF_TEST_EXPECT_TABLES_EQUAL(tbl_a.get_cudf()->view(), tbl_b.get_cudf()->view());
-  EXPECT_TRUE(tbl_a.get_column_names() == tbl_b.get_column_names());
+  EXPECT_EQ(tbl_a, tbl_b);
 }
 
 TYPED_TEST(NumericCSVTest, ReadNulls)
