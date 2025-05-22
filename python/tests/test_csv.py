@@ -25,7 +25,11 @@ from pyarrow import csv
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.csv import csv_read, csv_write
-from legate_dataframe.testing import assert_frame_equal, std_dataframe_set_cpu
+from legate_dataframe.testing import (
+    assert_arrow_table_equal,
+    assert_frame_equal,
+    std_dataframe_set_cpu,
+)
 
 
 def write_partitioned_csv(table, path, npartitions=1):
@@ -60,7 +64,7 @@ def test_read(tmp_path, df, npartitions=2):
     write_partitioned_csv(df, tmp_path, npartitions=npartitions)
     cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
     tbl = csv_read(filenames, dtypes=cudf_types)
-    assert_frame_equal(tbl, df)
+    assert_arrow_table_equal(tbl.to_arrow(), df)
 
 
 def test_read_single_rows(tmp_path):

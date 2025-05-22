@@ -5,9 +5,10 @@
 # cython: language_level=3
 
 from libcpp cimport bool
-from libcpp.memory cimport unique_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string
 
+from pyarrow cimport CArray
 from pylibcudf.libcudf.column.column cimport column, column_view
 from pylibcudf.libcudf.scalar.scalar cimport scalar
 from pylibcudf.types cimport data_type
@@ -29,7 +30,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
 
         size_t num_rows() except +
         cpp_LogicalArray get_logical_array() except +
-        shared_ptr[array] arrow_array_view() except +
+        shared_ptr[CArray] get_arrow() except +
         unique_ptr[column] get_cudf() except +
         unique_ptr[scalar] get_cudf_scalar() except +
         string repr(size_t max_num_items) except +
