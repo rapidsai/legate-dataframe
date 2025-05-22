@@ -4,6 +4,8 @@
 # distutils: language = c++
 # cython: language_level=3
 
+import pyarrow as pa
+
 from cython.operator cimport dereference
 from libc.stdint cimport uintptr_t
 from libcpp.memory cimport unique_ptr
@@ -243,6 +245,15 @@ cdef class LogicalColumn:
         if not writeable:
             arr.flags.writeable = False
         return arr
+
+    def arrow_array_view(self) -> pa.array:
+        """View of the column data as an arrow array
+        Returns
+        -------
+            An arrow array
+
+        """
+        return pa.lib.pyarrow_wrap_array(self._handle.arrow_array_view())
 
     def to_cudf(self) -> cudfColumn:
         """Copy the logical column into a local cudf column

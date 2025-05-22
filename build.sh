@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2023-2024, NVIDIA CORPORATION.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 
 # legate_dataframe build script
@@ -18,13 +18,14 @@ ARGS=$*
 # script, and that this script resides in the repo dir!
 REPODIR=$(cd $(dirname $0); pwd)
 
-VALIDARGS="clean liblegate_dataframe legate_dataframe test -v -g -n -s --ptds -h"
+VALIDARGS="clean liblegate_dataframe legate_dataframe test -v -g -n -s --ptds -h -e"
 HELP="$0 [clean] [liblegate_dataframe] [legate_dataframe] [legate] [-v] [-g] [-n] [-s] [--ptds] [--cmake-args=\"<args>\"] [-h]
    clean                       - remove all existing build artifacts and configuration (start over)
    liblegate_dataframe         - build and install the liblegate_dataframe C++ code (tests are build only)
    legate_dataframe            - build and install the legate_dataframe Python package
    test                        - test all of legate-dataframe (requires valgrind and compute-sanitizer)
    -v                          - verbose build mode
+   -e                          - build in editable mode (python only)
    -g                          - build for debug
    -n                          - no install step, also applies to python
    --cmake-args=\\\"<args>\\\" - pass arbitrary list of CMake configuration options (escape all quotes in argument)
@@ -38,6 +39,7 @@ BUILD_DIRS="${LIBLEGATE_DATAFRAME_BUILD_DIR} ${LEGATE_DATAFRAME_BUILD_DIR} ${LEG
 
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
+EDITABLE_FLAG=""
 BUILD_TYPE=Release
 INSTALL_TARGET=install
 RAN_CMAKE=0
@@ -96,6 +98,9 @@ fi
 if hasArg -v; then
     VERBOSE_FLAG=-v
     set -x
+fi
+if hasArg -e; then
+    EDITABLE_FLAG=--editable
 fi
 if hasArg -g; then
     BUILD_TYPE=Debug
@@ -161,7 +166,7 @@ if (( NUMARGS == 0 )) || hasArg legate_dataframe; then
     fi
     SKBUILD_CONFIGURE_OPTIONS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX} -DCMAKE_LIBRARY_PATH=${LIBLEGATE_DATAFRAME_BUILD_DIR} ${EXTRA_CMAKE_ARGS}" \
         SKBUILD_BUILD_OPTIONS="-j${PARALLEL_LEVEL:-1}" \
-        python -m pip ${PIP_COMMAND} --no-build-isolation --no-deps --config-settings rapidsai.disable-cuda=true ${VERBOSE_FLAG} .
+        python -m pip ${PIP_COMMAND} --no-build-isolation --no-deps --config-settings rapidsai.disable-cuda=true ${VERBOSE_FLAG} ${EDITABLE_FLAG} .
 fi
 
 

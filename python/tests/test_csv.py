@@ -13,19 +13,33 @@
 # limitations under the License.
 
 import glob
+import math
 
 import cudf
 import cupy
 import dask_cudf
+import pylibcudf
 import pytest
 from legate.core import TaskTarget, get_legate_runtime, get_machine
+from pyarrow import csv
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.csv import csv_read, csv_write
-from legate_dataframe.testing import assert_frame_equal, std_dataframe_set
+from legate_dataframe.testing import assert_frame_equal, std_dataframe_set_cpu
 
 
-@pytest.mark.parametrize("df", std_dataframe_set())
+def write_partitioned_csv(table, path, npartitions=1):
+    partition_size = int(math.ceil(table.num_rows / npartitions))
+    for i in range(npartitions):
+        start = i * partition_size
+        end = min((i + 1) * partition_size, table.num_rows)
+        if start >= end:
+            break
+        partition = table[start:end]
+        csv.write_csv(partition, f"{path}/part-{i}.csv")
+
+
+@pytest.mark.parametrize("df", std_dataframe_set_cpu())
 def test_write(tmp_path, df):
     tbl = LogicalTable.from_cudf(df)
 
@@ -40,12 +54,12 @@ def test_write(tmp_path, df):
     assert_frame_equal(res, df)
 
 
-@pytest.mark.parametrize("df", std_dataframe_set())
+@pytest.mark.parametrize("df", std_dataframe_set_cpu())
 def test_read(tmp_path, df, npartitions=2):
     filenames = str(tmp_path) + "/*.csv"
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_csv(filenames, index=False)
-    tbl = csv_read(filenames, dtypes=df.dtypes)
+    write_partitioned_csv(df, tmp_path, npartitions=npartitions)
+    cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
+    tbl = csv_read(filenames, dtypes=cudf_types)
     assert_frame_equal(tbl, df)
 
 
