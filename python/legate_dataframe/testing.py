@@ -49,6 +49,10 @@ def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> cudf.DataF
     return cudf.DataFrame(obj)
 
 
+def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
+    assert left.equals(right), f"Arrow tables are not equal:\n{left}\n{right}"
+
+
 def assert_frame_equal(
     left: Any,
     right: Any,

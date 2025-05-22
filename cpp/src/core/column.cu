@@ -220,6 +220,48 @@ std::unique_ptr<cudf::column> LogicalColumn::get_cudf(rmm::cuda_stream_view stre
     null_count);
 }
 
+std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
+{
+  if (unbound()) {
+    throw std::runtime_error(
+      "Cannot call `.arrow_array(mr)` on a unbound LogicalColumn, please bind it using "
+      "`.move_into()`");
+  }
+  if (array_->nested()) {
+    if (array_->type().code() == legate::Type::Code::STRING) {
+      const legate::StringPhysicalArray a = array_->get_physical_array().as_string_array();
+      const legate::PhysicalArray chars   = a.chars();
+      const auto num_chars                = chars.data().shape<1>().volume();
+
+      auto data = std::make_shared<arrow::Buffer>(
+        reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(chars)), num_chars);
+
+      auto null_bitmask = null_mask_bools_to_bits(a.null_mask());
+
+      auto offsets = global_ranges_to_arrow_offsets(a.ranges().data());
+
+      return std::make_shared<arrow::StringArray>(num_rows(), offsets, data, null_bitmask);
+
+    } else {
+      throw std::invalid_argument("nested dtype " + array_->type().to_string() +
+                                  " isn't supported");
+    }
+  } else {
+    auto physical_array = array_->get_physical_array();
+    auto nbytes         = array_->volume() * array_->type().size();
+    // 1. Wrap the data in an arrow buffer
+    auto buffer = std::make_shared<arrow::Buffer>(
+      reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(physical_array.data())), nbytes);
+    // 2. Handle null mask
+    std::shared_ptr<arrow::Buffer> null_bitmask;
+    if (array_->nullable()) { null_bitmask = null_mask_bools_to_bits(physical_array.null_mask()); }
+    // 3. Create ArrayData from buffer
+    auto array_data =
+      arrow::ArrayData::Make(to_arrow_type(cudf_type_.id()), num_rows(), {null_bitmask, buffer});
+    return arrow::MakeArray(array_data);
+  }
+}
+
 std::unique_ptr<cudf::scalar> LogicalColumn::get_cudf_scalar(
   rmm::cuda_stream_view stream, rmm::mr::device_memory_resource* mr) const
 {
