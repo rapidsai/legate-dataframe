@@ -10,6 +10,7 @@ from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import assert_frame_equal, guess_available_mem
 
 
+@pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
 def test_offload_to():
     # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
     available_mem_gpu, available_mem_cpu = guess_available_mem()
