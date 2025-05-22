@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -29,6 +29,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
 
         size_t num_rows() except +
         cpp_LogicalArray get_logical_array() except +
+        shared_ptr[array] arrow_array_view() except +
         unique_ptr[column] get_cudf() except +
         unique_ptr[scalar] get_cudf_scalar() except +
         string repr(size_t max_num_items) except +
