@@ -4,6 +4,7 @@
 # distutils: language = c++
 # cython: language_level=3
 
+import pyarrow as pa
 from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
@@ -287,6 +288,13 @@ cdef class LogicalTable:
         ret = cudf.DataFrame()
         for i, name in enumerate(self.get_column_names()):
             ret[name] = self.get_column(i).to_cudf()
+        return ret
+
+    def to_arrow(self) -> pa.Table:
+        ret = pa.table(
+            [self.get_column(i).to_arrow() for i in range(self.num_columns())],
+            names=self.get_column_names(),
+        )
         return ret
 
     def repr(self, size_t max_num_items=30) -> str:

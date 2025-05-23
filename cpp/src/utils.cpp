@@ -23,8 +23,8 @@
 
 #include <cudf/copying.hpp>
 
+#include <legate.h>
 #include <legate/cuda/stream_pool.h>
-
 #include <legate_dataframe/utils.hpp>
 
 namespace legate::dataframe {
@@ -188,6 +188,83 @@ legate::Type to_legate_type(cudf::type_id dtype)
   }
 }
 
+std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
+{
+  switch (code) {
+    case cudf::type_id::INT8: {
+      return arrow::int8();
+    }
+    case cudf::type_id::INT16: {
+      return arrow::int16();
+    }
+    case cudf::type_id::INT32: {
+      return arrow::int32();
+    }
+    case cudf::type_id::INT64: {
+      return arrow::int64();
+    }
+    case cudf::type_id::UINT8: {
+      return arrow::uint8();
+    }
+    case cudf::type_id::UINT16: {
+      return arrow::uint16();
+    }
+    case cudf::type_id::UINT32: {
+      return arrow::uint32();
+    }
+    case cudf::type_id::UINT64: {
+      return arrow::uint64();
+    }
+    case cudf::type_id::FLOAT32: {
+      return arrow::float32();
+    }
+    case cudf::type_id::FLOAT64: {
+      return arrow::float64();
+    }
+    // Don't use arrow::boolean() - arrow::BooleanArray uses bitpacking
+    case cudf::type_id::BOOL8: {
+      return arrow::uint8();
+    }
+    case cudf::type_id::STRING: {
+      return arrow::utf8();
+    }
+    case cudf::type_id::TIMESTAMP_SECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::SECOND);
+    }
+    case cudf::type_id::TIMESTAMP_MILLISECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::MILLI);
+    }
+    case cudf::type_id::TIMESTAMP_MICROSECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::MICRO);
+    }
+    case cudf::type_id::TIMESTAMP_NANOSECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::NANO);
+    }
+    case cudf::type_id::DURATION_SECONDS: {
+      return arrow::duration(arrow::TimeUnit::SECOND);
+    }
+    case cudf::type_id::DURATION_MILLISECONDS: {
+      return arrow::duration(arrow::TimeUnit::MILLI);
+    }
+    case cudf::type_id::DURATION_MICROSECONDS: {
+      return arrow::duration(arrow::TimeUnit::MICRO);
+    }
+    case cudf::type_id::DURATION_NANOSECONDS: {
+      return arrow::duration(arrow::TimeUnit::NANO);
+    }
+    case cudf::type_id::DICTIONARY32:
+    case cudf::type_id::DECIMAL32:
+    case cudf::type_id::DECIMAL64:
+    case cudf::type_id::DECIMAL128:
+    case cudf::type_id::LIST:
+    case cudf::type_id::STRUCT:
+    default:
+      throw std::invalid_argument(
+        "unsupported cudf datatype: " +
+        std::to_string(static_cast<std::underlying_type_t<cudf::type_id>>(code)));
+  }
+}
+
 namespace {
 
 struct read_accessor_as_1d_bytes_fn {
@@ -326,4 +403,39 @@ size_t linearize(const legate::DomainPoint& lo,
   return legate::dim_dispatch(point.dim, linearize_fn{}, lo, hi, point);
 }
 
+bool operator==(legate::PhysicalArray array, legate::PhysicalArray other_array)
+{
+  if (array.nullable() != other_array.nullable()) return false;
+  if (array.type() != other_array.type()) return false;
+  if (array.dim() != other_array.dim()) return false;
+  if (array.shape<1>() != other_array.shape<1>()) return false;
+  auto data       = array.data().template read_accessor<uint8_t, 1, false>().ptr(0);
+  auto type       = array.type();
+  auto other_data = other_array.data().template read_accessor<uint8_t, 1>().ptr(0);
+  auto shape      = array.shape<1>();
+  // TODO: string comparison
+  if (array.type().code() == legate::Type::Code::STRING) {
+    throw std::runtime_error("String comparison not implemented");
+  }
+  // If element is null, data need not be the same
+  if (array.nullable()) {
+    auto null_accessor       = array.null_mask().template read_accessor<bool, 1>();
+    auto other_null_accessor = other_array.null_mask().template read_accessor<bool, 1>();
+    for (size_t i = 0; i < shape.volume(); ++i) {
+      if (null_accessor[i] != other_null_accessor[i]) return false;
+      // Element exists, check data is the same
+      if (null_accessor[i]) {
+        for (size_t j = 0; j < type.size(); ++j) {
+          if (data[i * type.size() + j] != other_data[i * type.size() + j]) return false;
+        }
+      }
+    }
+  } else {
+    // No mask, expect data to be bitwise identical
+    for (size_t i = 0; i < shape.volume() * type.size(); ++i) {
+      if (data[i] != other_data[i]) return false;
+    }
+  }
+  return true;
+}
 }  // namespace legate::dataframe

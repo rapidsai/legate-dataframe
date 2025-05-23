@@ -35,14 +35,15 @@ class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto format = argument::get_next_scalar<std::string>(ctx);
     const auto input  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output       = argument::get_next_output<PhysicalColumn>(ctx);
 
     std::unique_ptr<cudf::column> ret = cudf::strings::to_timestamps(
-      input.column_view(), output.cudf_type(), format, ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
+      input.column_view(mr), output.cudf_type(), format, context.get_task_stream(), &mr);
+    output.move_into(std::move(ret), mr);
   }
 };
 
@@ -54,16 +55,17 @@ class ExtractTimestampComponentTask
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+    TaskMemoryResource mr;
     const auto component = argument::get_next_scalar<cudf::datetime::datetime_component>(ctx);
     const auto input     = argument::get_next_input<PhysicalColumn>(ctx);
     auto output          = argument::get_next_output<PhysicalColumn>(ctx);
 
     std::unique_ptr<cudf::column> ret;
     ret = cudf::datetime::extract_datetime_component(
-      input.column_view(), component, ctx.stream(), ctx.mr());
+      input.column_view(mr), component, context.get_task_stream(), &mr);
 
-    output.move_into(std::move(ret));
+    output.move_into(std::move(ret), mr);
   }
 };
 
