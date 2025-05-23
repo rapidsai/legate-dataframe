@@ -233,8 +233,8 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
       const legate::PhysicalArray chars   = a.chars();
       const auto num_chars                = chars.data().shape<1>().volume();
 
-      auto data = std::make_shared<arrow::Buffer>(
-        reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(chars)), num_chars);
+      std::shared_ptr<arrow::Buffer> data = *arrow::AllocateBuffer(num_chars * sizeof(int8_t));
+      std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(chars), num_chars);
 
       auto null_bitmask = null_mask_bools_to_bits(a.null_mask());
 
@@ -247,17 +247,14 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
                                   " isn't supported");
     }
   } else {
-    auto physical_array = array_->get_physical_array();
-    auto nbytes         = array_->volume() * array_->type().size();
-    // 1. Wrap the data in an arrow buffer
-    auto buffer = std::make_shared<arrow::Buffer>(
-      reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(physical_array.data())), nbytes);
-    // 2. Handle null mask
+    auto physical_array                 = array_->get_physical_array();
+    auto nbytes                         = array_->volume() * array_->type().size();
+    std::shared_ptr<arrow::Buffer> data = *arrow::AllocateBuffer(nbytes * sizeof(int8_t));
+    std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(physical_array), nbytes);
     std::shared_ptr<arrow::Buffer> null_bitmask;
     if (array_->nullable()) { null_bitmask = null_mask_bools_to_bits(physical_array.null_mask()); }
-    // 3. Create ArrayData from buffer
     auto array_data =
-      arrow::ArrayData::Make(to_arrow_type(cudf_type_.id()), num_rows(), {null_bitmask, buffer});
+      arrow::ArrayData::Make(to_arrow_type(cudf_type_.id()), num_rows(), {null_bitmask, data});
     return arrow::MakeArray(array_data);
   }
 }
