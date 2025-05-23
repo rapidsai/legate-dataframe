@@ -12,6 +12,6 @@ else
 fi
 
 # LEGATE_TEST=1 to test broadcasting code paths (locally).
-LEGATE_CONFIG=${LEGATE_CONFIG:- --cpus 8 --sysmem=6000 --omps=0} \
+LEGATE_CONFIG=${LEGATE_CONFIG:- --cpus 8 --gpus 0 --sysmem=6000 --omps=0} \
 LEGATE_TEST=${LEGATE_TEST:-1} \
 legate ./cpp_tests --output-on-failure --no-tests=error "$@" --gtest_filter="*CSV*"

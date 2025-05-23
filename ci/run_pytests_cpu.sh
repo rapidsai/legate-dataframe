@@ -21,7 +21,7 @@ cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../python/tests/
 # Unless `LEGATE_CONFIG` is set, default to all available GPUs and set fbmem/sysmem.
 # The choice of 2000 and 6000 allows some large memory tests to run (on a single GPU).
 # LEGATE_TEST=1 to test broadcasting code paths (locally).
-LEGATE_CONFIG=${LEGATE_CONFIG:- --gpus="$(nvidia-smi -L | wc -l)" --fbmem=2000 --sysmem=6000 --omps=0} \
+LEGATE_CONFIG=${LEGATE_CONFIG:- --gpus 8 --gpus 0 --fbmem=2000 --sysmem=6000 --omps=0} \
 LEGATE_TEST=${LEGATE_TEST:-1} \
 legate \
     --module pytest \
