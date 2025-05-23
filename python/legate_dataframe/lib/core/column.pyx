@@ -248,7 +248,7 @@ cdef class LogicalColumn:
         return arr
 
     def to_arrow(self) -> pa.Array:
-        """View of the column data as an arrow array
+        """Copy column to an arrow array
         Returns
         -------
             An arrow array

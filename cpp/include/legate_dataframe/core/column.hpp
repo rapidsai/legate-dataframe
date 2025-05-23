@@ -278,6 +278,14 @@ class LogicalColumn {
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
+  /**
+   * @brief Copy the logical column into a local arrow array
+   *
+   * This call blocks the client's control flow and fetches the data for the
+   * whole column to the current node.
+   *
+   * @return arrow array, which own the data
+   */
   std::shared_ptr<arrow::Array> get_arrow() const;
 
   /**
