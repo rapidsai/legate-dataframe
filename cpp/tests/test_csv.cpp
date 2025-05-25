@@ -49,7 +49,7 @@ TYPED_TEST(NumericCSVTest, ReadWrite)
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
   auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, false);
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
 TYPED_TEST(NumericCSVTest, ReadWriteSingleItem)
@@ -70,7 +70,7 @@ TYPED_TEST(NumericCSVTest, ReadWriteSingleItem)
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
   auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype}, false);
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
 TEST(StringsCSVTest, ReadWrite)
@@ -91,7 +91,7 @@ TEST(StringsCSVTest, ReadWrite)
   auto dtype = tbl_a.get_column(0).cudf_type();
   auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype}, false);
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
 TYPED_TEST(NumericCSVTest, ReadNulls)
@@ -111,7 +111,7 @@ TYPED_TEST(NumericCSVTest, ReadNulls)
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
   auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, true);
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
 TYPED_TEST(NumericCSVTest, ReadUseCols)
@@ -132,12 +132,13 @@ TYPED_TEST(NumericCSVTest, ReadUseCols)
   std::vector<std::string> usecols1({"a", "b"});
   auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, true, ',', usecols1);
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 
   std::vector<std::string> usecols2({"b"});
   auto tbl_c = csv_read(tmp_dir.path() / "*.csv", {dtype}, true, ',', usecols2);
 
-  EXPECT_EQ(LogicalTable({b}, {"b"}), tbl_c);
+  LogicalTable tbl_d({b}, {"b"});
+  EXPECT_TRUE(tbl_d.get_arrow()->Equals(*tbl_c.get_arrow()));
 }
 
 TYPED_TEST(NumericCSVTest, ReadWriteWithDelimiter)
@@ -158,5 +159,5 @@ TYPED_TEST(NumericCSVTest, ReadWriteWithDelimiter)
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
   auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, false, '|');
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }

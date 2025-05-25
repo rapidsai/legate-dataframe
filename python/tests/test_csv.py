@@ -18,6 +18,7 @@ import math
 import cudf
 import cupy
 import dask_cudf
+import pyarrow as pa
 import pylibcudf
 import pytest
 from legate.core import TaskTarget, get_legate_runtime, get_machine
@@ -33,6 +34,8 @@ from legate_dataframe.testing import (
 
 
 def write_partitioned_csv(table, path, npartitions=1):
+    if table.num_rows == 0:
+        csv.write_csv(table, f"{path}/part-0.csv")
     partition_size = int(math.ceil(table.num_rows / npartitions))
     for i in range(npartitions):
         start = i * partition_size
@@ -45,17 +48,22 @@ def write_partitioned_csv(table, path, npartitions=1):
 
 @pytest.mark.parametrize("df", std_dataframe_set_cpu())
 def test_write(tmp_path, df):
-    tbl = LogicalTable.from_cudf(df)
+    tbl = LogicalTable.from_arrow(df)
 
     csv_write(tbl, path=tmp_path)
     get_legate_runtime().issue_execution_fence(block=True)
 
-    res = (
-        dask_cudf.read_csv(str(tmp_path) + "/*.csv", dtype=list(df.dtypes))
-        .compute()
-        .reset_index(drop=True)
-    )
-    assert_frame_equal(res, df)
+    # Read the files back with pyarrow then compare with the original
+    files = glob.glob(str(tmp_path) + "/*.csv")
+    tables = [
+        csv.read_csv(file, convert_options=csv.ConvertOptions(column_types=df.schema))
+        for file in files
+    ]
+
+    # Concatenate the tables
+    combined_table = pa.concat_tables(tables)
+
+    assert_arrow_table_equal(combined_table, df)
 
 
 @pytest.mark.parametrize("df", std_dataframe_set_cpu())

@@ -110,6 +110,21 @@ std::unique_ptr<cudf::table> LogicalTable::get_cudf(rmm::cuda_stream_view stream
   return std::make_unique<cudf::table>(std::move(cols));
 }
 
+std::shared_ptr<arrow::Table> LogicalTable::get_arrow() const
+{
+  if (unbound()) {
+    throw std::runtime_error("cannot get an arrow table from an unbound LogicalTable");
+  }
+  std::vector<std::shared_ptr<arrow::Array>> cols;
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+  auto names = this->get_column_name_vector();
+  for (std::size_t i = 0; i < columns_.size(); i++) {
+    cols.push_back(columns_.at(i).get_arrow());
+    fields.push_back(arrow::field(names.at(i), columns_.at(i).arrow_type()));
+  }
+  return arrow::Table::Make(arrow::schema(fields), std::move(cols));
+}
+
 std::string LogicalTable::repr(size_t max_num_items_ptr_column) const
 {
   std::stringstream ss;

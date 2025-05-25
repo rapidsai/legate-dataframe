@@ -24,6 +24,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         cpp_LogicalColumn(cpp_LogicalArray logical_array) except +
         cpp_LogicalColumn(column_view cudf_col) except +
         cpp_LogicalColumn(scalar &cudf_scalar) except +
+        cpp_LogicalColumn(shared_ptr[CArray] arrow_array) except +
 
         @staticmethod
         cpp_LogicalColumn empty_like(const cpp_LogicalColumn& other) except +

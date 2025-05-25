@@ -28,6 +28,6 @@ TEST(FillingTest, int64)
 
     LogicalColumn expect(data);
     LogicalColumn res = sequence(data.size(), i);
-    EXPECT_EQ(res, expect);
+    EXPECT_TRUE(expect.get_arrow()->Equals(*res.get_arrow()));
   }
 }

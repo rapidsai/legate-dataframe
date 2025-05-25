@@ -29,6 +29,7 @@ namespace legate::dataframe {
 cudf::type_id to_cudf_type_id(legate::Type::Code code);
 std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code);
 legate::Type to_legate_type(cudf::type_id dtype);
+legate::Type to_legate_type(arrow::Type::type code);
 std::string pprint_1d(cudf::column_view col,
                       cudf::size_type index,
                       rmm::cuda_stream_view stream,
@@ -135,11 +136,5 @@ template <typename PrimaryContainer, typename OtherContainer>
 size_t linearize(const legate::DomainPoint& lo,
                  const legate::DomainPoint& hi,
                  const legate::DomainPoint& point);
-
-bool operator==(legate::PhysicalArray array, legate::PhysicalArray other_array);
-inline bool operator!=(legate::PhysicalArray array, legate::PhysicalArray other_array)
-{
-  return !(array == other_array);
-}
 
 }  // namespace legate::dataframe

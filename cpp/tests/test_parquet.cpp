@@ -44,7 +44,7 @@ TYPED_TEST(NumericParquetTest, ReadWrite)
 
   LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet");
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
 TYPED_TEST(NumericParquetTest, ReadColumnSubset)
@@ -66,7 +66,7 @@ TYPED_TEST(NumericParquetTest, ReadColumnSubset)
   tbl_a              = tbl_a.select(columns);
   LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet", columns);
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
 TYPED_TEST(NumericParquetTest, ReadWriteSingleItem)
@@ -84,7 +84,7 @@ TYPED_TEST(NumericParquetTest, ReadWriteSingleItem)
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
   LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet");
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
 TEST(StringsParquetTest, ReadWrite)
@@ -104,5 +104,5 @@ TEST(StringsParquetTest, ReadWrite)
 
   LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet");
 
-  EXPECT_EQ(tbl_a, tbl_b);
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
