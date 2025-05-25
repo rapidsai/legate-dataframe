@@ -135,6 +135,114 @@ legate::LogicalArray from_cudf(const cudf::scalar& scalar, rmm::cuda_stream_view
   return from_cudf(col->view(), stream);
 }
 
+template <typename T>
+T* maybe_bind_buffer(legate::PhysicalStore store, std::size_t size)
+{
+  T* out;
+  if (store.is_unbound_store()) {
+    out = store.create_output_buffer<T, 1>(legate::Point<1>(size), true).ptr(0);
+  } else {
+    out = store.write_accessor<T, 1>().ptr(0);
+  }
+  return out;
+}
+
+struct ArrowToPhysicalArrayVisitor {
+  ArrowToPhysicalArrayVisitor(legate::PhysicalArray& array) : array_(array) {}
+  legate::PhysicalArray& array_;
+  template <typename Type>
+  arrow::Status Visit(const arrow::NumericArray<Type>& array)
+  {
+    using T = typename std::decay_t<decltype(array)>::TypeClass::c_type;
+    if (sizeof(T) != array_.type().size()) {
+      throw std::invalid_argument(
+        "move_into(): the arrow column type size doesn't match the PhysicalArray");
+    }
+    T* out = maybe_bind_buffer<T>(array_.data(), array.length());
+    std::memcpy(out, array.raw_values(), array.length() * sizeof(T));
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::StringArray& array)
+  {
+    auto legate_string_array = array_.as_string_array();
+    auto ranges_size         = array.length();
+    auto ranges =
+      maybe_bind_buffer<legate::Rect<1>>(legate_string_array.ranges().data(), ranges_size);
+    arrow_offsets_to_local_ranges(array, ranges);
+    auto nbytes = array.total_values_length();
+    auto chars  = maybe_bind_buffer<int8_t>(legate_string_array.chars().data(), nbytes);
+    std::memcpy(chars, array.value_data()->data(), nbytes);
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::BooleanArray& array)
+  {
+    // Boolean array is bit packed
+    auto out = maybe_bind_buffer<bool>(array_.data(), array.length());
+    for (std::size_t i = 0; i < array.length(); ++i) {
+      out[i] = array.Value(i);
+    }
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::Array& array)
+  {
+    return arrow::Status::NotImplemented("Not implemented for array of type ",
+                                         array.type()->ToString());
+  }
+};
+
+// Copy an arrow array into a physical array
+// Binds the legate array if it is unbound
+void from_arrow(legate::PhysicalArray array, std::shared_ptr<arrow::Array> arrow_array)
+{
+  if (array.nullable()) {
+    bool* null_mask;
+    // If the array is a string, its null mask lives in a different place
+    if (array.type().code() == legate::Type::Code::STRING) {
+      null_mask =
+        maybe_bind_buffer<bool>(array.as_string_array().null_mask(), arrow_array->length());
+    } else {
+      null_mask = maybe_bind_buffer<bool>(array.null_mask(), arrow_array->length());
+    }
+
+    if (arrow_array->null_count() > 0) {
+      for (size_t i = 0; i < arrow_array->length(); ++i) {
+        null_mask[i] = !arrow_array->IsNull(i);
+      }
+    } else {
+      std::memset(
+        null_mask, std::numeric_limits<bool>::max(), arrow_array->length() * sizeof(bool));
+    }
+  }
+
+  // Dispatch arrow::Array types
+  ArrowToPhysicalArrayVisitor visitor{array};
+  auto status = arrow::VisitArrayInline(*arrow_array, &visitor);
+  if (!status.ok()) {
+    throw std::invalid_argument("from_arrow(): failed to copy arrow array: " + status.ToString());
+  }
+}
+
+// Copy an arrow array into a logical array
+legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array)
+{
+  // Create an unbound logical array
+  auto runtime = legate::Runtime::get_runtime();
+  if (auto string_array = dynamic_cast<arrow::StringArray*>(arrow_array.get())) {
+    std::cout << "String array" << std::endl;
+    auto array = runtime->create_string_array(
+      runtime->create_array({std::uint64_t(arrow_array->length())}, legate::rect_type(1)),
+      runtime->create_array({std::uint64_t(string_array->total_values_length())}, legate::int8()));
+    from_arrow(array.get_physical_array(), arrow_array);
+    return array;
+  }
+  auto array = runtime->create_array({std::uint64_t(arrow_array->length())},
+                                     to_legate_type(arrow_array->type_id()),
+                                     1,
+                                     arrow_array->null_bitmap_data() != nullptr);
+  from_arrow(array.get_physical_array(), arrow_array);
+  return array;
+}
+
 }  // namespace
 
 LogicalColumn::LogicalColumn(cudf::column_view cudf_col, rmm::cuda_stream_view stream)
@@ -144,6 +252,14 @@ LogicalColumn::LogicalColumn(cudf::column_view cudf_col, rmm::cuda_stream_view s
 
 LogicalColumn::LogicalColumn(const cudf::scalar& cudf_scalar, rmm::cuda_stream_view stream)
   : LogicalColumn{from_cudf(cudf_scalar, stream), cudf_scalar.type(), /* scalar */ true}
+{
+}
+
+LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
+  : LogicalColumn{// This type conversion monstrosity can be improved
+                  from_arrow(arrow_array),
+                  cudf::data_type(to_cudf_type_id(to_legate_type(arrow_array->type_id()).code())),
+                  /* scalar */ false}
 {
 }
 
@@ -250,7 +366,7 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
     auto physical_array                 = array_->get_physical_array();
     auto nbytes                         = array_->volume() * array_->type().size();
     std::shared_ptr<arrow::Buffer> data = *arrow::AllocateBuffer(nbytes * sizeof(int8_t));
-    std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(physical_array), nbytes);
+    std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(physical_array.data()), nbytes);
     std::shared_ptr<arrow::Buffer> null_bitmask;
     if (array_->nullable()) { null_bitmask = null_mask_bools_to_bits(physical_array.null_mask()); }
     auto array_data =
@@ -364,7 +480,8 @@ std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
       auto data = std::make_shared<arrow::Buffer>(
         reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(chars)), num_chars);
 
-      auto null_bitmask = null_mask_bools_to_bits(array_.null_mask());
+      std::shared_ptr<arrow::Buffer> null_bitmask;
+      if (a.nullable()) { null_bitmask = null_mask_bools_to_bits(array_.null_mask()); }
 
       auto offsets = global_ranges_to_arrow_offsets(a.ranges().data());
 
@@ -528,52 +645,6 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar, TaskMemoryR
   move_into(std::move(col), mr);
 }
 
-struct MoveIntoVisitor {
-  MoveIntoVisitor(legate::PhysicalArray& array) : array_(array) {}
-  legate::PhysicalArray& array_;
-  template <typename Type>
-  arrow::Status Visit(const arrow::NumericArray<Type>& array)
-  {
-    using T = typename std::decay_t<decltype(array)>::TypeClass::c_type;
-    if (sizeof(T) != array_.type().size()) {
-      throw std::invalid_argument(
-        "move_into(): the arrow column type size doesn't match the PhysicalArray");
-    }
-    auto out = array_.data().create_output_buffer<T, 1>(legate::Point<1>(array.length()),
-                                                        true /* bind_buffer */);
-    std::memcpy(out.ptr(0), array.raw_values(), array.length() * sizeof(T));
-    return arrow::Status::OK();
-  }
-  arrow::Status Visit(const arrow::StringArray& array)
-  {
-    auto legate_string_array = array_.as_string_array();
-    auto ranges_size         = array.length();
-    auto ranges = legate_string_array.ranges().data().create_output_buffer<legate::Rect<1>, 1>(
-      ranges_size, true /* bind_buffer */);
-    arrow_offsets_to_local_ranges(array, ranges.ptr(0));
-    auto nbytes = array.total_values_length();
-    // TODO: avoid copy and allocation?
-    auto chars = legate_string_array.chars().data().create_output_buffer<int8_t, 1>(
-      nbytes, true /* bind_buffer */);
-    std::memcpy(chars.ptr(0), array.value_data()->data(), nbytes);
-    return arrow::Status::OK();
-  }
-  arrow::Status Visit(const arrow::BooleanArray& array)
-  {
-    // Boolean array is bit packed
-    auto out = array_.data().create_output_buffer<bool, 1>(legate::Point<1>(array.length()), true);
-    for (std::size_t i = 0; i < array.length(); ++i) {
-      out[i] = array.Value(i);
-    }
-    return arrow::Status::OK();
-  }
-  arrow::Status Visit(const arrow::Array& array)
-  {
-    return arrow::Status::NotImplemented("Not implemented for array of type ",
-                                         array.type()->ToString());
-  }
-};
-
 void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column)
 {
   if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
@@ -586,26 +657,8 @@ void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column)
     throw std::logic_error("move_into(): for scalar, column must have size one.");
   }
 
-  if (array_.nullable()) {
-    auto null_mask =
-      array_.null_mask().create_output_buffer<bool, 1>(legate::Point<1>(column->length()),
-                                                       /* bind_buffer = */ true);
-    if (null_count > 0) {
-      for (size_t i = 0; i < column->length(); ++i) {
-        null_mask[i] = !column->IsNull(i);
-      }
-    } else {
-      std::memset(
-        null_mask.ptr(0), std::numeric_limits<bool>::max(), column->length() * sizeof(bool));
-    }
-  }
-
-  // Dispatch arrow::Array types
-  MoveIntoVisitor visitor{array_};
-  auto status = arrow::VisitArrayInline(*column, &visitor);
-  if (!status.ok()) {
-    throw std::invalid_argument("move_into(): failed to copy arrow array: " + status.ToString());
-  }
+  // TODO: this copies the data, we ideally want to move the arrow buffer.
+  from_arrow(array_, column);
 }
 
 void PhysicalColumn::bind_empty_data() const

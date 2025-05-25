@@ -137,7 +137,7 @@ class LogicalColumn {
       ranges_store.get_physical_store().template write_accessor<legate::Rect<1>, 1, false>().ptr(0);
     for (size_t i = 0; i < data.size(); ++i) {
       std::copy(data[i].data(), data[i].data() + data[i].size(), data_ptr + offsets[i]);
-      ranges_ptr[i] = legate::Rect<1>(offsets[i], offsets[i + 1]);
+      ranges_ptr[i] = legate::Rect<1>(offsets[i], offsets[i + 1] - 1);
     }
 
     if (null_mask.empty()) {
@@ -167,6 +167,16 @@ class LogicalColumn {
    */
   LogicalColumn(cudf::column_view cudf_col,
                 rmm::cuda_stream_view stream = cudf::get_default_stream());
+
+  /**
+   * @brief Create a column from a local arrow array
+   *
+   * This call blocks the client's control flow and scatter the data to all
+   * legate nodes.
+   *
+   * @param arrow_array The local arrow array to copy into a logical column
+   */
+  LogicalColumn(std::shared_ptr<arrow::Array> arrow_array);
 
   /**
    * @brief Create a scalar column from a local cudf scalar
@@ -395,19 +405,6 @@ class LogicalColumn {
    * @return Printable representational string
    */
   std::string repr(size_t max_num_items = 30) const;
-
-  bool operator==(const LogicalColumn& other) const
-  {
-    if (this == &other) return true;
-    if (array_.has_value() != other.array_.has_value()) return false;
-    if (cudf_type_ != other.cudf_type_) return false;
-    if (scalar_ != other.scalar_) return false;
-    if (array_.has_value()) {
-      if (array_->unbound() != other.array_->unbound()) return false;
-      if (array_->get_physical_array() != other.array_->get_physical_array()) return false;
-    }
-    return true;
-  }
 
  private:
   // In order to support a default ctor and assignment (used by Cython),

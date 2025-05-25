@@ -94,6 +94,28 @@ cdef class LogicalTable:
             column_names=df.columns
         )
 
+    @staticmethod
+    def from_arrow(table: pa.Table) -> LogicalTable:
+        """Create a logical table from a local arrow table
+
+        This call blocks the client's control flow and scatter
+        the data to all legate nodes.
+
+        Parameters
+        ----------
+        table : pyarrow.Table
+            Arrow table
+
+        Returns
+        -------
+            New logical table
+        """
+        columns = [LogicalColumn.from_arrow(a.combine_chunks()) for a in table.columns]
+        return LogicalTable(
+            columns=columns,
+            column_names=table.column_names,
+        )
+
     def num_columns(self) -> int:
         """Returns the number of columns
 

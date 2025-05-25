@@ -302,20 +302,22 @@ class LogicalTable {
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
 
   /**
+   * @brief Copy the logical table into a local arrow table
+
+   * This call blocks the client's control flow and fetches the data for the
+   * whole table to the current node.
+   *
+   * @return arrow table, which own the data
+   */
+  std::shared_ptr<arrow::Table> get_arrow() const;
+
+  /**
    * @brief Return a printable representational string
    *
    * @param max_num_items Maximum number of items to include before items are abbreviated.
    * @return Printable representational string
    */
   std::string repr(size_t max_num_items_ptr_column = 30) const;
-
-  bool operator==(const LogicalTable& other) const
-  {
-    if (this == &other) return true;
-    if (column_names_ != other.column_names_) return false;
-    if (get_columns() != other.get_columns()) return false;
-    return true;
-  }
 
  private:
   std::vector<LogicalColumn> columns_;
