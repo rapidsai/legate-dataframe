@@ -29,6 +29,7 @@ from cudf._typing import DtypeObj
 from legate.core import AutoTask, Field, LogicalArray
 
 from legate_dataframe.lib.core.data_type cimport (
+    DataType,
     cpp_cudf_type_to_cudf_dtype,
     is_legate_compatible,
 )
@@ -178,6 +179,11 @@ cdef class LogicalColumn:
             if column is unbound
         """
         return self._handle.num_rows()
+
+    def type(self) -> DataType:
+        """Return the low-level data type.
+        """
+        return DataType.from_libcudf(self._handle.cudf_type())
 
     def dtype(self) -> DtypeObj:
         """Returns the cudf data type of the row elements
