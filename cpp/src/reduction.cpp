@@ -84,7 +84,6 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
 
     const auto input = argument::get_next_input<PhysicalColumn>(ctx);
     auto agg_kind    = argument::get_next_scalar<cudf::aggregation::Kind>(ctx);
@@ -93,7 +92,7 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
     auto output      = argument::get_next_output<PhysicalColumn>(ctx);
     // Fetching initial value column below if used.
 
-    auto col_view = input.column_view(mr);
+    auto col_view = input.column_view();
     std::unique_ptr<const cudf::scalar> scalar_res;
     // TODO: Counting is slightly awkward, it may be best if it was just
     // specially handled (once we have a count-valid function)
@@ -101,30 +100,28 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
       assert(!initial);
       if (!finalize) {
         auto count = col_view.size() - col_view.null_count();
-        scalar_res = std::make_unique<cudf::scalar_type_t<int64_t>>(
-          count, true, context.get_task_stream(), &mr);
-      } else {
-        auto sum  = cudf::make_sum_aggregation<cudf::reduce_aggregation>();
-        auto zero = cudf::numeric_scalar<int64_t>(0, true, context.get_task_stream(), &mr);
         scalar_res =
-          cudf::reduce(col_view, *sum, output.cudf_type(), zero, context.get_task_stream(), &mr);
+          std::make_unique<cudf::scalar_type_t<int64_t>>(count, true, ctx.stream(), ctx.mr());
+      } else {
+        auto sum   = cudf::make_sum_aggregation<cudf::reduce_aggregation>();
+        auto zero  = cudf::numeric_scalar<int64_t>(0, true, ctx.stream(), ctx.mr());
+        scalar_res = cudf::reduce(col_view, *sum, output.cudf_type(), zero, ctx.stream(), ctx.mr());
       }
     } else {
       auto agg = make_reduce_aggregation(agg_kind);
       if (initial) {
         auto initial_col    = argument::get_next_input<PhysicalColumn>(ctx);
-        auto initial_scalar = initial_col.cudf_scalar(mr);
-        scalar_res          = cudf::reduce(
-          col_view, *agg, output.cudf_type(), *initial_scalar, context.get_task_stream(), &mr);
-      } else {
+        auto initial_scalar = initial_col.cudf_scalar();
         scalar_res =
-          cudf::reduce(col_view, *agg, output.cudf_type(), context.get_task_stream(), &mr);
+          cudf::reduce(col_view, *agg, output.cudf_type(), *initial_scalar, ctx.stream(), ctx.mr());
+      } else {
+        scalar_res = cudf::reduce(col_view, *agg, output.cudf_type(), ctx.stream(), ctx.mr());
       }
     }
 
     // Note: cudf has no helper to go to a column view right now, but we could
     // specialize this in principle.
-    output.move_into(cudf::make_column_from_scalar(*scalar_res, 1, context.get_task_stream()), mr);
+    output.move_into(cudf::make_column_from_scalar(*scalar_res, 1, context.get_task_stream()));
   }
 };
 

@@ -67,7 +67,7 @@ __global__ void bools_to_bitmask(int64_t bools_size,
   auto bools_size  = bools_shape.volume();
 
   rmm::device_buffer bitmask =
-    cudf::create_null_mask(bools_size, cudf::mask_state::UNINITIALIZED, stream, mr);
+    cudf::create_null_mask(bools_size, cudf::mask_state::UNINITIALIZED, stream);
 
   if (bools_size == 0) { return bitmask; }
 
@@ -78,7 +78,7 @@ __global__ void bools_to_bitmask(int64_t bools_size,
     bools_to_bitmask<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
       bools_size, bools_shape.lo, static_cast<cudf::bitmask_type*>(bitmask.data()), bools_acc);
   } else {
-    auto tmp_dev_buf      = rmm::device_buffer(bools_size * sizeof(bool), stream, mr);
+    auto tmp_dev_buf      = rmm::device_buffer(bools_size * sizeof(bool), stream);
     auto bools_acc_on_dev = static_cast<bool*>(tmp_dev_buf.data());
     LEGATE_CHECK_CUDA(cudaMemcpyAsync(bools_acc_on_dev,
                                       bools_acc.ptr(0),

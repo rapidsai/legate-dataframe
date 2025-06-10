@@ -66,7 +66,6 @@ class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
     const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
     const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
     const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
@@ -74,11 +73,11 @@ class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
     const auto delimiter       = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
 
     auto dest    = cudf::io::sink_info(filepath);
-    auto options = cudf::io::csv_writer_options::builder(dest, tbl.table_view(mr));
+    auto options = cudf::io::csv_writer_options::builder(dest, tbl.table_view());
     options.names(column_names);
     options.inter_column_delimiter(delimiter);
 
-    cudf::io::write_csv(options, context.get_task_stream());
+    cudf::io::write_csv(options, ctx.stream());
   }
 };
 
@@ -151,7 +150,6 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
     const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
     const auto all_column_names = argument::get_next_scalar_vector<std::string>(ctx);
     const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
@@ -212,7 +210,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       opt.use_cols_indexes(use_cols_indexes);
       opt.names(column_names);
 
-      auto read_table = cudf::io::read_csv(opt, context.get_task_stream(), &mr).tbl;
+      auto read_table = cudf::io::read_csv(opt, ctx.stream(), ctx.mr()).tbl;
 
       // Only add if we read something (otherwise number of cols may be off)
       if (read_table->num_rows() != 0) { tables.emplace_back(std::move(read_table)); }
@@ -229,13 +227,13 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     if (tables.size() == 0) {
       tbl_arg.bind_empty_data();
     } else if (tables.size() == 1) {
-      tbl_arg.move_into(std::move(tables.back()), mr);
+      tbl_arg.move_into(std::move(tables.back()));
     } else {
       std::vector<cudf::table_view> table_views;
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, context.get_task_stream(), mr), mr);
+      tbl_arg.move_into(cudf::concatenate(table_views, context.get_task_stream()));
     }
   }
 };

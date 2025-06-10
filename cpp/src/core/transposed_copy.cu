@@ -60,7 +60,6 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
                   size_t offset,
                   legate::Scalar& null_value)
   {
-    auto stream = ctx.get_legate_context().get_task_stream();
     legate::Rect<2> bounds{{offset, 0}, {offset + tbl.num_rows() - 1, tbl.num_columns() - 1}};
     if (bounds.empty()) { return; }
 
@@ -70,7 +69,7 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
     }
 
     // Similar to cudf's interleave_columns (we don't want to allocate, so avoid it).
-    auto device_input = cudf::table_device_view::create(tbl, stream);
+    auto device_input = cudf::table_device_view::create(tbl, ctx.stream());
 
     auto index_begin = thrust::make_counting_iterator<size_t>(0);
     auto index_end   = thrust::make_counting_iterator<size_t>(bounds.volume());
@@ -88,7 +87,7 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
         });
 
       thrust::transform(
-        rmm::exec_policy(stream), index_begin, index_end, acc.ptr(bounds.lo), get_value_func);
+        rmm::exec_policy(ctx.stream()), index_begin, index_end, acc.ptr(bounds.lo), get_value_func);
     } else {
       // This assumes that for rep_layout_compatible types `.element<T>(idx)` is OK even for masked
       // values.
@@ -98,7 +97,7 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
         });
 
       thrust::transform(
-        rmm::exec_policy(stream), index_begin, index_end, acc.ptr(bounds.lo), get_value_func);
+        rmm::exec_policy(ctx.stream()), index_begin, index_end, acc.ptr(bounds.lo), get_value_func);
 
       auto get_isvalid_func = cuda::proclaim_return_type<bool>(
         [input = *device_input, divisor = tbl.num_columns()] __device__(size_t idx) {
@@ -111,7 +110,7 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
           "internal error: copy_into_transpose assume C-order store (mask).");
       }
 
-      thrust::transform(rmm::exec_policy(stream),
+      thrust::transform(rmm::exec_policy(ctx.stream()),
                         index_begin,
                         index_end,
                         mask_acc.ptr(bounds.lo),

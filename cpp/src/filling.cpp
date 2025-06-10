@@ -34,7 +34,6 @@ class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
     auto global_size = argument::get_next_scalar<size_t>(ctx);
     auto global_init = argument::get_next_scalar<int64_t>(ctx);
     auto output      = argument::get_next_output<PhysicalColumn>(ctx);
@@ -48,10 +47,10 @@ class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
       return;
     }
 
-    cudf::numeric_scalar<int64_t> cudf_init(local_init, true, context.get_task_stream(), &mr);
-    auto res = cudf::sequence(local_size, cudf_init, context.get_task_stream(), &mr);
+    cudf::numeric_scalar<int64_t> cudf_init(local_init, true, ctx.stream(), ctx.mr());
+    auto res = cudf::sequence(local_size, cudf_init, ctx.stream(), ctx.mr());
 
-    output.move_into(std::move(res), mr);
+    output.move_into(std::move(res));
   }
 };
 

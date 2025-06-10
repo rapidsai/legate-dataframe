@@ -351,17 +351,17 @@ class PhysicalTable {
    * @brief Return a cudf table view of this physical table
    *
    * NB: The physical table MUST outlive the returned view thus it is UB to do some-
-   *     thing like `argument::get_next_input<PhysicalTable>(ctx).table_view(mr);`
+   *     thing like `argument::get_next_input<PhysicalTable>(ctx).table_view;`
    *
    * @throw std::runtime_error if table is unbound.
    * @return A new table view
    */
-  cudf::table_view table_view(TaskMemoryResource& mr) const
+  cudf::table_view table_view() const
   {
     std::vector<cudf::column_view> cols;
     cols.reserve(columns_.size());
     for (const auto& col : columns_) {
-      cols.push_back(col.column_view(mr));
+      cols.push_back(col.column_view());
     }
     return cudf::table_view(std::move(cols));
   }
@@ -399,7 +399,7 @@ class PhysicalTable {
    * @param columns The cudf columns to move
    * @param mr Device memory resource to use for memory allocations.
    */
-  void move_into(std::vector<std::unique_ptr<cudf::column>> columns, TaskMemoryResource& mr)
+  void move_into(std::vector<std::unique_ptr<cudf::column>> columns)
   {
     if (columns.size() != columns_.size()) {
       throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
@@ -407,7 +407,7 @@ class PhysicalTable {
                                " != " + std::to_string(columns.size()));
     }
     for (size_t i = 0; i < columns.size(); ++i) {
-      columns_[i].move_into(std::move(columns[i]), mr);
+      columns_[i].move_into(std::move(columns[i]));
     }
   }
 
@@ -440,10 +440,7 @@ class PhysicalTable {
    * @param table The cudf table to move
    * @param mr Device memory resource to use for memory allocations.
    */
-  void move_into(std::unique_ptr<cudf::table> table, TaskMemoryResource& mr)
-  {
-    move_into(table->release(), mr);
-  }
+  void move_into(std::unique_ptr<cudf::table> table) { move_into(table->release()); }
 
   /**
    * @brief Makes the unbound table empty. Valid only when the table is unbound.

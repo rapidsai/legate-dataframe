@@ -142,7 +142,6 @@ class ExchangedSizes {
 std::pair<std::vector<cudf::table_view>,
           std::unique_ptr<std::pair<std::map<int, rmm::device_buffer>, cudf::table>>>
 shuffle(TaskContext& ctx,
-        TaskMemoryResource& mr,
         std::vector<cudf::table_view>& tbl_partitioned,
         std::unique_ptr<cudf::table> owning_table)
 {
@@ -157,12 +156,12 @@ shuffle(TaskContext& ctx,
   std::map<int, cudf::packed_columns> columns;
   for (int i = 0; static_cast<size_t>(i) < tbl_partitioned.size(); ++i) {
     if (i != ctx.rank) {
-      columns[i] = cudf::detail::pack(tbl_partitioned[i], context.get_task_stream(), &mr);
+      columns[i] = cudf::detail::pack(tbl_partitioned[i], ctx.stream(), ctx.mr());
     }
   }
   // Also copy tbl_partitioned.at(ctx.rank).  This copy is unnecessary but allows
   // clearing the (possibly) much larger owning_table (if passed).
-  cudf::table local_table(tbl_partitioned.at(ctx.rank), context.get_task_stream(), &mr);
+  cudf::table local_table(tbl_partitioned.at(ctx.rank), ctx.stream(), ctx.mr());
   if (owning_table) {
     tbl_partitioned.clear();
     owning_table.reset();
@@ -176,7 +175,8 @@ shuffle(TaskContext& ctx,
   std::map<int, rmm::device_buffer> packed_metadata;
   for (const auto& [peer, col] : columns) {
     packed_metadata.insert(
-      {peer, rmm::device_buffer(col.metadata->data(), col.metadata->size(), sizes.stream, &mr)});
+      {peer,
+       rmm::device_buffer(col.metadata->data(), col.metadata->size(), sizes.stream, ctx.mr())});
   }
 
   // Let's allocate receive buffers for the packed columns.
@@ -199,7 +199,7 @@ shuffle(TaskContext& ctx,
     std::size_t nbytes = sizes.gpu_data(peer, ctx.rank);
     if (nbytes > 0) {
       assert(peer != ctx.rank);
-      recv_gpu_data.insert({peer, rmm::device_buffer(nbytes, context.get_task_stream(), &mr)});
+      recv_gpu_data.insert({peer, rmm::device_buffer(nbytes, ctx.stream(), ctx.mr())});
     }
   }
 
@@ -266,7 +266,6 @@ shuffle(TaskContext& ctx,
 
 std::unique_ptr<cudf::table> repartition_by_hash(
   TaskContext& ctx,
-  TaskMemoryResource& mr,
   const cudf::table_view& table,
   const std::vector<cudf::size_type>& columns_to_hash)
 {
@@ -282,10 +281,9 @@ std::unique_ptr<cudf::table> repartition_by_hash(
    *  6) Finally, each task return a new local cudf table that contains the concatenated partitions.
    */
 
-  auto stream = ctx.get_legate_context().get_task_stream();
   if (ctx.nranks == 1) {
     // TODO: avoid copy
-    return std::make_unique<cudf::table>(table, stream, &mr);
+    return std::make_unique<cudf::table>(table, ctx.stream(), ctx.mr());
   }
 
   // When used, we need to hold on the partition table as long as tbl_partitioned
@@ -303,8 +301,7 @@ std::unique_ptr<cudf::table> repartition_by_hash(
                                     ctx.nranks,
                                     cudf::hash_id::HASH_MURMUR3,
                                     cudf::DEFAULT_HASH_SEED,
-                                    stream,
-                                    &mr);
+                                    ctx.stream());
     partition_table.swap(res.first);
 
     // Notice, the offset argument for split() and hash_partition() doesn't align. hash_partition()
@@ -312,12 +309,12 @@ std::unique_ptr<cudf::table> repartition_by_hash(
     // See: <https://github.com/rapidsai/cudf/issues/4607>.
     auto partition_offsets = std::vector<int>(res.second.begin() + 1, res.second.end());
 
-    tbl_partitioned = cudf::split(*partition_table, partition_offsets, stream);
+    tbl_partitioned = cudf::split(*partition_table, partition_offsets, ctx.stream());
   }
 
-  auto [tables, owners] = shuffle(ctx, mr, tbl_partitioned, std::move(partition_table));
+  auto [tables, owners] = shuffle(ctx, tbl_partitioned, std::move(partition_table));
 
-  return cudf::concatenate(tables, stream, &mr);
+  return cudf::concatenate(tables, ctx.stream(), ctx.mr());
 }
 
 }  // namespace legate::dataframe::task
