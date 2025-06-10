@@ -44,11 +44,11 @@ struct RoundTripTableTask : public legate::LegateTask<RoundTripTableTask> {
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
+
     const auto input = argument::get_next_input<task::PhysicalTable>(ctx);
     auto output      = argument::get_next_output<task::PhysicalTable>(ctx);
-    auto copy = std::make_unique<cudf::table>(input.table_view(mr), context.get_task_stream(), &mr);
-    output.move_into(std::move(copy), mr);
+    auto copy        = std::make_unique<cudf::table>(input.table_view(), ctx.stream(), ctx.mr());
+    output.move_into(std::move(copy));
   }
 };
 

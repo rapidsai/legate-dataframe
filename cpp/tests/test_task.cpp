@@ -35,7 +35,7 @@ struct GlobalRowOffsetTask : public legate::LegateTask<GlobalRowOffsetTask> {
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
+
     auto tbl                               = argument::get_next_input<task::PhysicalTable>(ctx);
     auto output                            = argument::get_next_output<task::PhysicalColumn>(ctx);
     std::vector<task::PhysicalColumn> cols = tbl.release();
@@ -47,7 +47,7 @@ struct GlobalRowOffsetTask : public legate::LegateTask<GlobalRowOffsetTask> {
 
     // Write our row offset and size
     cudf::test::fixed_width_column_wrapper<int64_t> out({offset, nrows});
-    output.move_into(out.release(), mr);
+    output.move_into(out.release());
   }
 };
 
@@ -64,7 +64,7 @@ struct TaskArgumentMix : public legate::LegateTask<TaskArgumentMix> {
     //     legate-dataframe arguments has been retrieved.
 
     TaskContext ctx{context};
-    TaskMemoryResource mr;
+
     {
       auto [scalar_idx, input_idx, output_idx] = ctx.get_task_argument_indices();
       EXPECT_EQ(scalar_idx, 0);
@@ -92,7 +92,7 @@ struct TaskArgumentMix : public legate::LegateTask<TaskArgumentMix> {
       EXPECT_EQ(input_idx, 1);
       EXPECT_EQ(output_idx, 1);
     }
-    output.move_into(std::make_unique<cudf::column>(input.column_view(mr)), mr);
+    output.move_into(std::make_unique<cudf::column>(input.column_view()));
   }
 };
 

@@ -43,6 +43,7 @@ class TaskContext {
   size_t _arg_scalar_idx{0};
   size_t _arg_input_idx{0};
   size_t _arg_output_idx{0};
+  std::optional<TaskMemoryResource> _mr;
 
  public:
   const int rank;
@@ -82,6 +83,22 @@ class TaskContext {
   {
     return {_arg_scalar_idx, _arg_input_idx, _arg_output_idx};
   }
+
+  TaskMemoryResource* mr()
+  {
+    if (!_mr.has_value()) { _mr = TaskMemoryResource(); }
+    return &_mr.value();
+  }
+
+  /**
+   * @brief Get the CUDA stream to be used in this task context.
+   *
+   * All legate tasks should use this stream.  The function is mainly for
+   * convenience to mirror easy access to `mr()`.
+   *
+   * @return The tasks CUDA stream
+   */
+  cudaStream_t stream() { return _context.get_task_stream(); }
 
   legate::Scalar get_next_scalar_arg() { return _context.scalars().at(_arg_scalar_idx++); }
   legate::PhysicalArray get_next_input_arg() { return _context.input(_arg_input_idx++); }

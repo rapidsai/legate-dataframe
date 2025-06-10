@@ -547,13 +547,13 @@ class PhysicalColumn {
    * @brief Return a cudf column view of this physical column
    *
    * NB: The physical column MUST outlive the returned view thus it is UB to do some-
-   *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view(mr);`
+   *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view;`
    *
    * @param mr Device memory resource to use for any allocations.
    * @throw cudf::logic_error if column is unbound.
    * @return A new column view.
    */
-  cudf::column_view column_view(TaskMemoryResource& mr) const;
+  cudf::column_view column_view() const;
 
   std::shared_ptr<arrow::Array> arrow_array_view() const;
   /**
@@ -569,7 +569,7 @@ class PhysicalColumn {
    * @throw cudf::logic_error if column is unbound or the size is not one.
    * @return A new cudf scalar.
    */
-  std::unique_ptr<cudf::scalar> cudf_scalar(TaskMemoryResource& mr) const;
+  std::unique_ptr<cudf::scalar> cudf_scalar() const;
 
   /**
    * @brief Return a printable representational string
@@ -587,7 +587,7 @@ class PhysicalColumn {
    * @param column The cudf column to move
    * @param mr Device memory resource to use for any allocations.
    */
-  void move_into(std::unique_ptr<cudf::column> column, TaskMemoryResource& mr);
+  void move_into(std::unique_ptr<cudf::column> column);
 
   /**
    * @brief Move local cudf scalar into this unbound physical column
@@ -595,7 +595,7 @@ class PhysicalColumn {
    * @param scalar The cudf scalar to move
    * @param mr Device memory resource to use for any allocations.
    */
-  void move_into(std::unique_ptr<cudf::scalar> scalar, TaskMemoryResource& mr);
+  void move_into(std::unique_ptr<cudf::scalar> scalar);
 
   /**
    * @brief Move arrow array into this unbound physical column

@@ -105,7 +105,7 @@ std::unique_ptr<cudf::table> LogicalTable::get_cudf(rmm::cuda_stream_view stream
   std::vector<std::unique_ptr<cudf::column>> cols;
   cols.reserve(columns_.size());
   for (const auto& col : columns_) {
-    cols.push_back(col.get_cudf(stream, mr));
+    cols.push_back(col.get_cudf(stream));
   }
   return std::make_unique<cudf::table>(std::move(cols));
 }

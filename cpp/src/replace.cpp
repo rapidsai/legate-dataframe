@@ -38,17 +38,16 @@ class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::Replace
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
+
     const auto input = argument::get_next_input<PhysicalColumn>(ctx);
     auto scalar_col  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output      = argument::get_next_output<PhysicalColumn>(ctx);
 
-    auto cudf_scalar = scalar_col.cudf_scalar(mr);
+    auto cudf_scalar = scalar_col.cudf_scalar();
 
-    auto ret =
-      cudf::replace_nulls(input.column_view(mr), *cudf_scalar, context.get_task_stream(), &mr);
+    auto ret = cudf::replace_nulls(input.column_view(), *cudf_scalar, ctx.stream(), ctx.mr());
 
-    output.move_into(std::move(ret), mr);
+    output.move_into(std::move(ret));
   }
 };
 

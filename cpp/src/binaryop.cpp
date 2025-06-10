@@ -37,7 +37,6 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
     auto op        = argument::get_next_scalar<cudf::binary_operator>(ctx);
     const auto lhs = argument::get_next_input<PhysicalColumn>(ctx);
     const auto rhs = argument::get_next_input<PhysicalColumn>(ctx);
@@ -49,22 +48,18 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
      * broadcast binary operations.
      */
     if (lhs.num_rows() == 1 && rhs.num_rows() != 1) {
-      auto lhs_scalar = lhs.cudf_scalar(mr);
+      auto lhs_scalar = lhs.cudf_scalar();
       ret             = cudf::binary_operation(
-        *lhs_scalar, rhs.column_view(mr), op, output.cudf_type(), context.get_task_stream(), &mr);
+        *lhs_scalar, rhs.column_view(), op, output.cudf_type(), ctx.stream(), ctx.mr());
     } else if (rhs.num_rows() == 1 && lhs.num_rows() != 1) {
-      auto rhs_scalar = rhs.cudf_scalar(mr);
+      auto rhs_scalar = rhs.cudf_scalar();
       ret             = cudf::binary_operation(
-        lhs.column_view(mr), *rhs_scalar, op, output.cudf_type(), context.get_task_stream(), &mr);
+        lhs.column_view(), *rhs_scalar, op, output.cudf_type(), ctx.stream(), ctx.mr());
     } else {
-      ret = cudf::binary_operation(lhs.column_view(mr),
-                                   rhs.column_view(mr),
-                                   op,
-                                   output.cudf_type(),
-                                   context.get_task_stream(),
-                                   &mr);
+      ret = cudf::binary_operation(
+        lhs.column_view(), rhs.column_view(), op, output.cudf_type(), context.get_task_stream());
     }
-    output.move_into(std::move(ret), mr);
+    output.move_into(std::move(ret));
   }
 };
 

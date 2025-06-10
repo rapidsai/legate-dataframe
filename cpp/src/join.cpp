@@ -42,7 +42,6 @@ namespace {
 std::pair<std::unique_ptr<rmm::device_uvector<cudf::size_type>>,
           std::unique_ptr<rmm::device_uvector<cudf::size_type>>>
 cudf_join(TaskContext& ctx,
-          TaskMemoryResource& mr,
           cudf::table_view lhs,
           cudf::table_view rhs,
           const std::vector<int32_t>& lhs_keys,
@@ -50,18 +49,20 @@ cudf_join(TaskContext& ctx,
           cudf::null_equality null_equality,
           JoinType join_type)
 {
-  auto stream = ctx.get_legate_context().get_task_stream();
-  cudf::hash_join joiner(rhs.select(rhs_keys), null_equality, stream);
+  cudf::hash_join joiner(rhs.select(rhs_keys), null_equality, ctx.stream());
 
   switch (join_type) {
     case JoinType::INNER: {
-      return joiner.inner_join(lhs.select(lhs_keys), std::optional<std::size_t>{}, stream, &mr);
+      return joiner.inner_join(
+        lhs.select(lhs_keys), std::optional<std::size_t>{}, ctx.stream(), ctx.mr());
     }
     case JoinType::LEFT: {
-      return joiner.left_join(lhs.select(lhs_keys), std::optional<std::size_t>{}, stream, &mr);
+      return joiner.left_join(
+        lhs.select(lhs_keys), std::optional<std::size_t>{}, ctx.stream(), ctx.mr());
     }
     case JoinType::FULL: {
-      return joiner.full_join(lhs.select(lhs_keys), std::optional<std::size_t>{}, stream, &mr);
+      return joiner.full_join(
+        lhs.select(lhs_keys), std::optional<std::size_t>{}, ctx.stream(), ctx.mr());
     }
     default: {
       throw std::invalid_argument("Unknown JoinType");
@@ -102,7 +103,6 @@ std::pair<cudf::out_of_bounds_policy, cudf::out_of_bounds_policy> out_of_bounds_
  * Note that `lhs_table` is only passed for cleanup.
  */
 void cudf_join_and_gather(TaskContext& ctx,
-                          TaskMemoryResource& mr,
                           cudf::table_view lhs,
                           cudf::table_view rhs,
                           const std::vector<int32_t> lhs_keys,
@@ -116,7 +116,7 @@ void cudf_join_and_gather(TaskContext& ctx,
 {
   // Perform the join and convert (zero-copy) the resulting indices to columns
   auto [lhs_row_idx, rhs_row_idx] =
-    cudf_join(ctx, mr, lhs, rhs, lhs_keys, rhs_keys, null_equality, join_type);
+    cudf_join(ctx, lhs, rhs, lhs_keys, rhs_keys, null_equality, join_type);
   auto left_indices_span  = cudf::device_span<cudf::size_type const>{*lhs_row_idx};
   auto right_indices_span = cudf::device_span<cudf::size_type const>{*rhs_row_idx};
   auto left_indices_col   = cudf::column_view{left_indices_span};
@@ -125,19 +125,18 @@ void cudf_join_and_gather(TaskContext& ctx,
   // Use the index columns to gather the result from the original left and right input columns
   auto [left_policy, right_policy] = out_of_bounds_policy_by_join_type(join_type);
 
-  auto stream = ctx.get_legate_context().get_task_stream();
   auto left_result =
-    cudf::gather(lhs.select(lhs_out_cols), left_indices_col, left_policy, stream, &mr);
+    cudf::gather(lhs.select(lhs_out_cols), left_indices_col, left_policy, ctx.stream(), ctx.mr());
   // Clean up left indices and columns as quickly as possible to reduce peak memory.
   // (This is the only reason for passing `lhs_table`.)
   lhs_row_idx.reset();
   lhs_table.reset();
 
   auto right_result =
-    cudf::gather(rhs.select(rhs_out_cols), right_indices_col, right_policy, stream, &mr);
+    cudf::gather(rhs.select(rhs_out_cols), right_indices_col, right_policy, ctx.stream(), ctx.mr());
 
   // Finally, create a vector of both the left and right results and move it into the output table
-  output.move_into(concat(left_result->release(), right_result->release()), mr);
+  output.move_into(concat(left_result->release(), right_result->release()));
 }
 
 /**
@@ -159,12 +158,11 @@ std::unique_ptr<cudf::table> no_rows_table_like(const PhysicalTable& other)
  * The `owners` argument is used to keep new cudf allocations alive
  */
 cudf::table_view revert_broadcast(TaskContext& ctx,
-                                  TaskMemoryResource& mr,
                                   const PhysicalTable& table,
                                   std::vector<std::unique_ptr<cudf::table>>& owners)
 {
   if (ctx.rank == 0 || table.is_partitioned()) {
-    return table.table_view(mr);
+    return table.table_view();
   } else {
     owners.push_back(no_rows_table_like(table));
     return owners.back()->view();
@@ -209,7 +207,6 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    TaskMemoryResource mr;
     const auto lhs          = argument::get_next_input<PhysicalTable>(ctx);
     const auto rhs          = argument::get_next_input<PhysicalTable>(ctx);
     const auto lhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
@@ -229,9 +226,9 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
 
     if (is_repartition_not_needed(ctx, join_type, lhs_broadcasted, rhs_broadcasted)) {
       cudf_join_and_gather(ctx,
-                           mr,
-                           lhs.table_view(mr),
-                           rhs.table_view(mr),
+
+                           lhs.table_view(),
+                           rhs.table_view(),
                            lhs_keys,
                            rhs_keys,
                            join_type,
@@ -244,14 +241,12 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
 
       // All-to-all repartition to one hash bucket per rank. Matching rows from
       // both tables then guaranteed to be on the same rank.
-      auto cudf_lhs =
-        repartition_by_hash(ctx, mr, revert_broadcast(ctx, mr, lhs, owners), lhs_keys);
-      auto cudf_rhs =
-        repartition_by_hash(ctx, mr, revert_broadcast(ctx, mr, rhs, owners), rhs_keys);
+      auto cudf_lhs = repartition_by_hash(ctx, revert_broadcast(ctx, lhs, owners), lhs_keys);
+      auto cudf_rhs = repartition_by_hash(ctx, revert_broadcast(ctx, rhs, owners), rhs_keys);
 
       auto lhs_view = cudf_lhs->view();  // cudf_lhs unique pointer is moved.
       cudf_join_and_gather(ctx,
-                           mr,
+
                            lhs_view,
                            cudf_rhs->view(),
                            lhs_keys,
