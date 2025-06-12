@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2023-2024, NVIDIA CORPORATION.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 
 # legate_dataframe build script
@@ -16,7 +16,7 @@ ARGS=$*
 
 # NOTE: ensure all dir changes are relative to the location of this
 # script, and that this script resides in the repo dir!
-REPODIR=$(cd $(dirname $0); pwd)
+REPODIR=$(cd "$(dirname "$0")"; pwd)
 
 VALIDARGS="clean liblegate_dataframe legate_dataframe test -v -g -n -s --ptds -h"
 HELP="$0 [clean] [liblegate_dataframe] [legate_dataframe] [legate] [-v] [-g] [-n] [-s] [--ptds] [--cmake-args=\"<args>\"] [-h]
