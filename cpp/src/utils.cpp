@@ -145,6 +145,21 @@ cudf::data_type to_cudf_type(const arrow::DataType& arrow_type)
     case arrow::Type::STRING: {
       return cudf::data_type{cudf::type_id::STRING};
     }
+    case arrow::Type::DATE64: {
+      return cudf::data_type{cudf::type_id::TIMESTAMP_MILLISECONDS};
+    }
+    case arrow::Type::DURATION: {
+      const auto& duration_type = static_cast<const arrow::DurationType&>(arrow_type);
+      if (duration_type.unit() == arrow::TimeUnit::SECOND) {
+        return cudf::data_type{cudf::type_id::DURATION_SECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::MILLI) {
+        return cudf::data_type{cudf::type_id::DURATION_MILLISECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::MICRO) {
+        return cudf::data_type{cudf::type_id::DURATION_MICROSECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::NANO) {
+        return cudf::data_type{cudf::type_id::DURATION_NANOSECONDS};
+      }
+    }
     default: throw std::invalid_argument("unsupported Arrow datatype");
   }
 }
