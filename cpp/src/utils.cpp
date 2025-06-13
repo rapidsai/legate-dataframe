@@ -106,6 +106,64 @@ cudf::type_id to_cudf_type_id(legate::Type::Code code)
   }
 }
 
+cudf::data_type to_cudf_type(const arrow::DataType& arrow_type)
+{
+  switch (arrow_type.id()) {
+    case arrow::Type::BOOL: {
+      return cudf::data_type{cudf::type_id::BOOL8};
+    }
+    case arrow::Type::INT8: {
+      return cudf::data_type{cudf::type_id::INT8};
+    }
+    case arrow::Type::INT16: {
+      return cudf::data_type{cudf::type_id::INT16};
+    }
+    case arrow::Type::INT32: {
+      return cudf::data_type{cudf::type_id::INT32};
+    }
+    case arrow::Type::INT64: {
+      return cudf::data_type{cudf::type_id::INT64};
+    }
+    case arrow::Type::UINT8: {
+      return cudf::data_type{cudf::type_id::UINT8};
+    }
+    case arrow::Type::UINT16: {
+      return cudf::data_type{cudf::type_id::UINT16};
+    }
+    case arrow::Type::UINT32: {
+      return cudf::data_type{cudf::type_id::UINT32};
+    }
+    case arrow::Type::UINT64: {
+      return cudf::data_type{cudf::type_id::UINT64};
+    }
+    case arrow::Type::FLOAT: {
+      return cudf::data_type{cudf::type_id::FLOAT32};
+    }
+    case arrow::Type::DOUBLE: {
+      return cudf::data_type{cudf::type_id::FLOAT64};
+    }
+    case arrow::Type::STRING: {
+      return cudf::data_type{cudf::type_id::STRING};
+    }
+    case arrow::Type::DATE64: {
+      return cudf::data_type{cudf::type_id::TIMESTAMP_MILLISECONDS};
+    }
+    case arrow::Type::DURATION: {
+      const auto& duration_type = static_cast<const arrow::DurationType&>(arrow_type);
+      if (duration_type.unit() == arrow::TimeUnit::SECOND) {
+        return cudf::data_type{cudf::type_id::DURATION_SECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::MILLI) {
+        return cudf::data_type{cudf::type_id::DURATION_MILLISECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::MICRO) {
+        return cudf::data_type{cudf::type_id::DURATION_MICROSECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::NANO) {
+        return cudf::data_type{cudf::type_id::DURATION_NANOSECONDS};
+      }
+    }
+    default: throw std::invalid_argument("unsupported Arrow datatype");
+  }
+}
+
 legate::Type to_legate_type(cudf::type_id dtype)
 {
   switch (dtype) {
