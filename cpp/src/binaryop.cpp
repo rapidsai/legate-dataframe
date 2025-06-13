@@ -36,7 +36,7 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
     auto op        = argument::get_next_scalar<cudf::binary_operator>(ctx);
     const auto lhs = argument::get_next_input<PhysicalColumn>(ctx);
     const auto rhs = argument::get_next_input<PhysicalColumn>(ctx);
@@ -57,7 +57,7 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
         lhs.column_view(), *rhs_scalar, op, output.cudf_type(), ctx.stream(), ctx.mr());
     } else {
       ret = cudf::binary_operation(
-        lhs.column_view(), rhs.column_view(), op, output.cudf_type(), ctx.stream(), ctx.mr());
+        lhs.column_view(), rhs.column_view(), op, output.cudf_type(), context.get_task_stream());
     }
     output.move_into(std::move(ret));
   }

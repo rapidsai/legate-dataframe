@@ -35,7 +35,8 @@ class CastTask : public Task<CastTask, OpCode::Cast> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto input                  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
     cudf::column_view col             = input.column_view();
@@ -50,7 +51,8 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     auto op                           = argument::get_next_scalar<cudf::unary_operator>(ctx);
     const auto input                  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output                       = argument::get_next_output<PhysicalColumn>(ctx);

@@ -13,40 +13,66 @@
 # limitations under the License.
 
 import glob
+import math
 
 import cudf
 import cupy
 import dask_cudf
+import pyarrow as pa
+import pylibcudf
 import pytest
 from legate.core import TaskTarget, get_legate_runtime, get_machine
+from pyarrow import csv
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.csv import csv_read, csv_write
-from legate_dataframe.testing import assert_frame_equal, std_dataframe_set
+from legate_dataframe.testing import (
+    assert_arrow_table_equal,
+    assert_frame_equal,
+    std_dataframe_set_cpu,
+)
 
 
-@pytest.mark.parametrize("df", std_dataframe_set())
+def write_partitioned_csv(table, path, npartitions=1):
+    if table.num_rows == 0:
+        csv.write_csv(table, f"{path}/part-0.csv")
+    partition_size = int(math.ceil(table.num_rows / npartitions))
+    for i in range(npartitions):
+        start = i * partition_size
+        end = min((i + 1) * partition_size, table.num_rows)
+        if start >= end:
+            break
+        partition = table[start:end]
+        csv.write_csv(partition, f"{path}/part-{i}.csv")
+
+
+@pytest.mark.parametrize("df", std_dataframe_set_cpu())
 def test_write(tmp_path, df):
-    tbl = LogicalTable.from_cudf(df)
+    tbl = LogicalTable.from_arrow(df)
 
     csv_write(tbl, path=tmp_path)
     get_legate_runtime().issue_execution_fence(block=True)
 
-    res = (
-        dask_cudf.read_csv(str(tmp_path) + "/*.csv", dtype=list(df.dtypes))
-        .compute()
-        .reset_index(drop=True)
-    )
-    assert_frame_equal(res, df)
+    # Read the files back with pyarrow then compare with the original
+    files = glob.glob(str(tmp_path) + "/*.csv")
+    tables = [
+        csv.read_csv(file, convert_options=csv.ConvertOptions(column_types=df.schema))
+        for file in files
+    ]
+
+    # Concatenate the tables
+    combined_table = pa.concat_tables(tables)
+
+    assert_arrow_table_equal(combined_table, df)
 
 
-@pytest.mark.parametrize("df", std_dataframe_set())
+@pytest.mark.parametrize("df", std_dataframe_set_cpu())
 def test_read(tmp_path, df, npartitions=2):
     filenames = str(tmp_path) + "/*.csv"
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_csv(filenames, index=False)
-    tbl = csv_read(filenames, dtypes=df.dtypes)
-    assert_frame_equal(tbl, df)
+    write_partitioned_csv(df, tmp_path, npartitions=npartitions)
+    cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
+    tbl = csv_read(filenames, dtypes=cudf_types)
+    assert_arrow_table_equal(tbl.to_arrow(), df)
 
 
 def test_read_single_rows(tmp_path):
@@ -181,6 +207,10 @@ def test_usecols_and_names_no_header(tmp_path):
     assert_frame_equal(read_tbl, df[["b", "c"]].astype({"b": "float64"}))
 
 
+@pytest.mark.skipif(
+    get_machine().count(TaskTarget.GPU) == 0,
+    reason="Arrow does not support this na_filter option",
+)
 def test_na_filter_false(tmp_path):
     df = cudf.DataFrame({"a": [1, 2, 3, 4]})
     df.to_csv(tmp_path / "tmp.csv", index=False)

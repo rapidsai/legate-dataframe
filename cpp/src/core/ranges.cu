@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ std::unique_ptr<cudf::column> global_ranges_to_cudf_offsets_impl(
     ranges_to_offsets<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
       cudf_offsets->size(), num_chars, ranges_shape.lo, ranges_acc, offsets_acc);
   } else {
-    auto tmp_dev_buf       = rmm::device_buffer(ranges_size * sizeof(RangeDType), stream, mr);
+    auto tmp_dev_buf       = rmm::device_buffer(ranges_size * sizeof(RangeDType), stream);
     auto ranges_acc_on_dev = static_cast<RangeDType*>(tmp_dev_buf.data());
     LEGATE_CHECK_CUDA(cudaMemcpyAsync(ranges_acc_on_dev,
                                       ranges_acc.ptr(0),
@@ -100,6 +100,30 @@ std::unique_ptr<cudf::column> global_ranges_to_cudf_offsets(const legate::Physic
     return global_ranges_to_cudf_offsets_impl<int32_t>(ranges, num_chars, mem_kind, stream, mr);
   } else {
     return global_ranges_to_cudf_offsets_impl<int64_t>(ranges, num_chars, mem_kind, stream, mr);
+  }
+}
+
+std::shared_ptr<arrow::Buffer> global_ranges_to_arrow_offsets(const legate::PhysicalStore& ranges)
+{
+  using offset_type = typename arrow::StringArray::TypeClass::offset_type;
+  std::shared_ptr<arrow::Buffer> offsets =
+    *arrow::AllocateBuffer((ranges.shape<1>().volume() + 1) * sizeof(offset_type));
+  auto offsets_ptr         = reinterpret_cast<offset_type*>(offsets->mutable_data());
+  auto ranges_ptr          = ranges.read_accessor<legate::Rect<1>, 1>().ptr(0);
+  auto ranges_size         = ranges.shape<1>().volume();
+  auto global_range_offset = ranges_ptr[0].lo[0];
+  for (size_t i = 0; i < ranges_size; ++i) {
+    offsets_ptr[i] = ranges_ptr[i].lo[0] - global_range_offset;
+  }
+  offsets_ptr[ranges_size] = ranges_ptr[ranges_size - 1].hi[0] - global_range_offset + 1;
+  return offsets;
+}
+
+void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect<1>* ranges_acc)
+{
+  for (size_t i = 0; i < array.length(); ++i) {
+    ranges_acc[i].lo[0] = array.value_offset(i);
+    ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1;
   }
 }
 

@@ -36,7 +36,8 @@ class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBool
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto tbl    = argument::get_next_input<PhysicalTable>(ctx);
     auto boolean_mask = argument::get_next_input<PhysicalColumn>(ctx);
     auto output       = argument::get_next_output<PhysicalTable>(ctx);

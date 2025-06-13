@@ -42,7 +42,7 @@ namespace {
 class ExchangedSizes {
  private:
   legate::Buffer<std::size_t> _all_sizes;
-  GPUTaskContext& _ctx;
+  TaskContext& _ctx;
 
  public:
   // We use a temporary stream for the metadata communication. This ways, we avoid
@@ -59,9 +59,9 @@ class ExchangedSizes {
    * will be send to the i'th task. NB: all tasks beside itself must have a map thus:
    * `columns.size() == ctx.nranks - 1`.
    */
-  ExchangedSizes(GPUTaskContext& ctx, const std::map<int, cudf::packed_columns>& columns)
-    : _ctx(ctx), stream(ctx.tmp_stream())
+  ExchangedSizes(TaskContext& ctx, const std::map<int, cudf::packed_columns>& columns) : _ctx(ctx)
   {
+    LEGATE_CHECK_CUDA(cudaStreamCreate(&stream));
     assert(columns.size() == ctx.nranks - 1);
     // Note: Size of this buffer is taken into account in the mapper:
     _all_sizes =
@@ -93,6 +93,8 @@ class ExchangedSizes {
     LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
     task.concurrent_task_barrier();
   }
+
+  ~ExchangedSizes() { LEGATE_CHECK_CUDA(cudaStreamDestroy(stream)); }
 
   // TODO: implement a destructor that syncs and calls _all_sizes.destroy(). Currently,
   //       the lifespan of `_all_sizes` is until the legate task finish.
@@ -139,10 +141,11 @@ class ExchangedSizes {
  */
 std::pair<std::vector<cudf::table_view>,
           std::unique_ptr<std::pair<std::map<int, rmm::device_buffer>, cudf::table>>>
-shuffle(GPUTaskContext& ctx,
+shuffle(TaskContext& ctx,
         std::vector<cudf::table_view>& tbl_partitioned,
         std::unique_ptr<cudf::table> owning_table)
 {
+  auto context = ctx.get_legate_context();
   if (tbl_partitioned.size() != ctx.nranks) {
     throw std::runtime_error("internal error: partition split has wrong size.");
   }
@@ -221,13 +224,18 @@ shuffle(GPUTaskContext& ctx,
   for (auto& [peer, buf] : recv_gpu_data) {
     std::size_t nbytes = sizes.gpu_data(peer, ctx.rank);
     assert(nbytes > 0);
-    CHECK_NCCL(ncclRecv(buf.data(), nbytes, ncclInt8, peer, task_nccl(ctx), ctx.stream()));
+    CHECK_NCCL(
+      ncclRecv(buf.data(), nbytes, ncclInt8, peer, task_nccl(ctx), context.get_task_stream()));
   }
   for (const auto& [peer, col] : columns) {
     if (col.gpu_data->size() == 0) { continue; }
     assert(col.gpu_data->size() == sizes.gpu_data(ctx.rank, peer));
-    CHECK_NCCL(ncclSend(
-      col.gpu_data->data(), col.gpu_data->size(), ncclInt8, peer, task_nccl(ctx), ctx.stream()));
+    CHECK_NCCL(ncclSend(col.gpu_data->data(),
+                        col.gpu_data->size(),
+                        ncclInt8,
+                        peer,
+                        task_nccl(ctx),
+                        context.get_task_stream()));
   }
   CHECK_NCCL(ncclGroupEnd());
   task.concurrent_task_barrier();
@@ -257,7 +265,7 @@ shuffle(GPUTaskContext& ctx,
 }
 
 std::unique_ptr<cudf::table> repartition_by_hash(
-  GPUTaskContext& ctx,
+  TaskContext& ctx,
   const cudf::table_view& table,
   const std::vector<cudf::size_type>& columns_to_hash)
 {
@@ -293,8 +301,7 @@ std::unique_ptr<cudf::table> repartition_by_hash(
                                     ctx.nranks,
                                     cudf::hash_id::HASH_MURMUR3,
                                     cudf::DEFAULT_HASH_SEED,
-                                    ctx.stream(),
-                                    ctx.mr());
+                                    ctx.stream());
     partition_table.swap(res.first);
 
     // Notice, the offset argument for split() and hash_partition() doesn't align. hash_partition()

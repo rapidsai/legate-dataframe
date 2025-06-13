@@ -42,7 +42,7 @@ struct copy_into_transposed_fn {
 
 struct copy_into_transposed_impl {
   template <typename T>
-  void operator()(GPUTaskContext& ctx,
+  void operator()(TaskContext& ctx,
                   legate::PhysicalArray& array,
                   cudf::table_view tbl,
                   size_t offset,
@@ -54,7 +54,7 @@ struct copy_into_transposed_impl {
 
 template <typename T>
 struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatible<T>()>> {
-  void operator()(GPUTaskContext& ctx,
+  void operator()(TaskContext& ctx,
                   legate::PhysicalArray& array,
                   cudf::table_view tbl,
                   size_t offset,
@@ -121,7 +121,7 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
 
 }  // namespace
 
-void copy_into_tranposed(GPUTaskContext& ctx,
+void copy_into_tranposed(TaskContext& ctx,
                          legate::PhysicalArray& array,
                          cudf::table_view tbl,
                          size_t offset,

@@ -11,6 +11,7 @@ import cudf.testing
 import cupy
 import legate.core
 import numpy as np
+import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalColumn, LogicalTable
@@ -46,6 +47,10 @@ def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> cudf.DataF
     if isinstance(obj, (cudf.Series, cudf.core.column.ColumnBase)):
         return cudf.DataFrame({default_column_name: obj})
     return cudf.DataFrame(obj)
+
+
+def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
+    assert left.equals(right), f"Arrow tables are not equal:\n{left}\n{right}"
 
 
 def assert_frame_equal(
@@ -141,6 +146,33 @@ def std_dataframe_set() -> List[cudf.DataFrame]:
             {
                 "a": get_empty_series(dtype=int, nullable=True),
                 "b": get_empty_series(dtype=float, nullable=True),
+            }
+        ),
+    ]
+
+
+def std_dataframe_set_cpu() -> List[pa.Table]:
+    """Return the standard test set of dataframes
+
+    Used throughout the test suite to check against supported data types
+
+    Returns
+    -------
+        List of dataframes
+    """
+    return [
+        pa.table({"a": np.arange(10000, dtype="int64")}),
+        pa.table(
+            {
+                "a": np.arange(10000, dtype="int32"),
+                "b": np.arange(-10000, 0, dtype="float64"),
+            }
+        ),
+        pa.table({"a": ["a", "bb", "ccc"]}),
+        pa.table(
+            {
+                "a": np.array([], dtype=int),
+                "b": np.array([], dtype=float),
             }
         ),
     ]

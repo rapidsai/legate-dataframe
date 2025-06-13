@@ -43,7 +43,7 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
     auto table        = argument::get_next_input<PhysicalTable>(ctx);
     auto output       = argument::get_next_output<PhysicalTable>(ctx);
     auto _key_col_idx = argument::get_next_scalar_vector<size_t>(ctx);

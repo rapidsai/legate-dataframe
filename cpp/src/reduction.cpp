@@ -83,7 +83,7 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
 
     const auto input = argument::get_next_input<PhysicalColumn>(ctx);
     auto agg_kind    = argument::get_next_scalar<cudf::aggregation::Kind>(ctx);
@@ -121,7 +121,7 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
 
     // Note: cudf has no helper to go to a column view right now, but we could
     // specialize this in principle.
-    output.move_into(cudf::make_column_from_scalar(*scalar_res, 1, ctx.stream(), ctx.mr()));
+    output.move_into(cudf::make_column_from_scalar(*scalar_res, 1, context.get_task_stream()));
   }
 };
 

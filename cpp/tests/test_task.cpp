@@ -34,7 +34,8 @@ struct GlobalRowOffsetTask : public legate::LegateTask<GlobalRowOffsetTask> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     auto tbl                               = argument::get_next_input<task::PhysicalTable>(ctx);
     auto output                            = argument::get_next_output<task::PhysicalColumn>(ctx);
     std::vector<task::PhysicalColumn> cols = tbl.release();
@@ -62,7 +63,8 @@ struct TaskArgumentMix : public legate::LegateTask<TaskArgumentMix> {
     // NB: `get_task_argument_indices()` must be called *after* all the
     //     legate-dataframe arguments has been retrieved.
 
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     {
       auto [scalar_idx, input_idx, output_idx] = ctx.get_task_argument_indices();
       EXPECT_EQ(scalar_idx, 0);

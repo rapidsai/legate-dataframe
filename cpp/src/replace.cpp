@@ -37,7 +37,8 @@ class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::Replace
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto input = argument::get_next_input<PhysicalColumn>(ctx);
     auto scalar_col  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output      = argument::get_next_output<PhysicalColumn>(ctx);

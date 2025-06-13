@@ -35,7 +35,8 @@ class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto format = argument::get_next_scalar<std::string>(ctx);
     const auto input  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output       = argument::get_next_output<PhysicalColumn>(ctx);
@@ -54,7 +55,8 @@ class ExtractTimestampComponentTask
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto component = argument::get_next_scalar<cudf::datetime::datetime_component>(ctx);
     const auto input     = argument::get_next_input<PhysicalColumn>(ctx);
     auto output          = argument::get_next_output<PhysicalColumn>(ctx);

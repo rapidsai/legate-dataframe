@@ -55,7 +55,7 @@ namespace {
  * @param include_start Whether to include the starting 0.
  * @returns cudf column selecting containing nsplits indices.
  */
-std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
+std::unique_ptr<cudf::column> get_split_ind(TaskContext& ctx,
                                             cudf::size_type nvalues,
                                             int nsplits,
                                             bool include_start)
@@ -128,7 +128,7 @@ std::unique_ptr<cudf::column> get_split_ind(GPUTaskContext& ctx,
  * depending on whether it came from an earlier or later rank.
  */
 std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
-  GPUTaskContext& ctx,
+  TaskContext& ctx,
   const cudf::table_view& my_sorted_tbl,
   const std::vector<cudf::size_type>& keys_idx,
   const std::vector<cudf::order>& column_order,
@@ -152,8 +152,7 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   auto my_split_cols_tbl = cudf::gather(my_sorted_tbl.select(keys_idx),
                                         my_split_ind_col->view(),
                                         cudf::out_of_bounds_policy::DONT_CHECK,
-                                        ctx.stream(),
-                                        ctx.mr());
+                                        ctx.stream());
 
   auto my_split_cols_view = my_split_cols_tbl->view();
   auto my_split_cols_vector =
@@ -202,8 +201,7 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   auto split_values_tbl  = cudf::gather(split_candidates->view(),
                                        split_value_inds->view(),
                                        cudf::out_of_bounds_policy::DONT_CHECK,
-                                       ctx.stream(),
-                                       ctx.mr());
+                                       ctx.stream());
   auto split_values_view = split_values_tbl->view();
 
   /*
@@ -223,15 +221,13 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
                                                       split_values_view.select(value_keysx),
                                                       column_order,
                                                       null_precedence,
-                                                      ctx.stream(),
-                                                      ctx.mr());
+                                                      ctx.stream());
   auto split_candidates_first_view = split_candidates_first_col->view();
   auto split_candidates_last_col   = cudf::upper_bound(my_sorted_tbl.select(keys_idx),
                                                      split_values_view.select(value_keysx),
                                                      column_order,
                                                      null_precedence,
-                                                     ctx.stream(),
-                                                     ctx.mr());
+                                                     ctx.stream());
   auto split_candidates_last_view  = split_candidates_last_col->view();
 
   // The local index and rank of the split value, we'll use the rank if it came from this rank
@@ -316,7 +312,8 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
     const auto keys_idx        = argument::get_next_scalar_vector<cudf::size_type>(ctx);
     const auto column_order    = argument::get_next_scalar_vector<cudf::order>(ctx);
@@ -343,7 +340,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     // split_indices will be null.  Exchange the (empty) table instead.
     std::vector<cudf::table_view> partitions;
     if (split_indices) {
-      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
+      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, context.get_task_stream());
     } else {
       assert(my_sorted_tbl->num_rows() == 0);
       for (int i = 0; i < ctx.nranks; i++) {
@@ -362,8 +359,12 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
       result = cudf::concatenate(parts, ctx.stream(), ctx.mr());
       owners.reset();  // we created a copy.
       auto res_view = result->view();
-      result        = sort_func(
-        res_view, res_view.select(keys_idx), column_order, null_precedence, ctx.stream(), ctx.mr());
+      result        = sort_func(res_view,
+                         res_view.select(keys_idx),
+                         column_order,
+                         null_precedence,
+                         context.get_task_stream(),
+                         ctx.mr());
     }
 
 #if DEBUG_SPLITS

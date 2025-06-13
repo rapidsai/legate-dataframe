@@ -43,7 +43,8 @@ struct RoundTripTableTask : public legate::LegateTask<RoundTripTableTask> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto input = argument::get_next_input<task::PhysicalTable>(ctx);
     auto output      = argument::get_next_output<task::PhysicalTable>(ctx);
     auto copy        = std::make_unique<cudf::table>(input.table_view(), ctx.stream(), ctx.mr());

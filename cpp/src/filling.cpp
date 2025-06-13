@@ -33,7 +33,7 @@ class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
     auto global_size = argument::get_next_scalar<size_t>(ctx);
     auto global_init = argument::get_next_scalar<int64_t>(ctx);
     auto output      = argument::get_next_output<PhysicalColumn>(ctx);

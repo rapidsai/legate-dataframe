@@ -43,7 +43,8 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
     const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
     const auto table           = argument::get_next_input<PhysicalTable>(ctx);
@@ -59,7 +60,7 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
       metadata.column_metadata.at(i).set_name(column_names.at(i));
     }
     options.metadata(metadata);
-    cudf::io::write_parquet(options, ctx.stream());
+    cudf::io::write_parquet(options, context.get_task_stream());
   }
 };
 
@@ -70,7 +71,8 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto file_paths  = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns     = argument::get_next_scalar_vector<std::string>(ctx);
     const auto nrows       = argument::get_next_scalar_vector<size_t>(ctx);
@@ -122,7 +124,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()));
+      tbl_arg.move_into(cudf::concatenate(table_views, context.get_task_stream()));
     }
   }
 };
@@ -134,7 +136,8 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
+
     const auto file_paths = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns    = argument::get_next_scalar_vector<std::string>(ctx);
     const auto nrows      = argument::get_next_scalar_vector<size_t>(ctx);

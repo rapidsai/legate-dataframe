@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,9 +82,9 @@ void add_next_scalar_vector(AutoTask& task, const std::vector<T>& scalars)
  * @return The value of the scalar argument.
  */
 template <typename T>
-T get_next_scalar(GPUTaskContext& ctx)
+T get_next_scalar(TaskContext& ctx)
 {
-  return ctx.get_next_scalar_arg().value<T>();
+  return ctx.get_next_scalar_arg().template value<T>();
 }
 
 /**
@@ -100,7 +100,7 @@ T get_next_scalar(GPUTaskContext& ctx)
  * @return The vector of scalar values.
  */
 template <typename T>
-std::vector<T> get_next_scalar_vector(GPUTaskContext& ctx)
+std::vector<T> get_next_scalar_vector(TaskContext& ctx)
 {
   size_t num_items = get_next_scalar<size_t>(ctx);
   std::vector<T> ret;
@@ -126,7 +126,7 @@ std::vector<T> get_next_scalar_vector(GPUTaskContext& ctx)
  * @return The input task argument.
  */
 template <typename T>
-T get_next_input(GPUTaskContext& ctx) = delete;
+T get_next_input(TaskContext& ctx) = delete;
 
 /**
  * @brief Get next output task argument
@@ -143,7 +143,7 @@ T get_next_input(GPUTaskContext& ctx) = delete;
  * @return The output task argument.
  */
 template <typename T>
-T get_next_output(GPUTaskContext& ctx) = delete;
+T get_next_output(TaskContext& ctx) = delete;
 
 /**
  * @brief Adding alignment constraints to a task
@@ -189,6 +189,6 @@ void add_parallel_launch_task(legate::AutoTask& task);
 /**
  * @brief Handle of task launched using `add_parallel_launch_task()`
  */
-void get_parallel_launch_task(GPUTaskContext& ctx);
+void get_parallel_launch_task(TaskContext& ctx);
 
 }  // namespace legate::dataframe::argument

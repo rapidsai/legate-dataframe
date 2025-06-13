@@ -4,6 +4,8 @@
 # distutils: language = c++
 # cython: language_level=3
 
+import pyarrow as pa
+
 from cython.operator cimport dereference
 from libc.stdint cimport uintptr_t
 from libcpp.memory cimport unique_ptr
@@ -12,6 +14,7 @@ from libcpp.utility cimport move
 
 from cudf._lib.column cimport Column as cudfColumn
 from cudf._lib.scalar cimport DeviceScalar
+from pyarrow.lib cimport pyarrow_unwrap_array, pyarrow_wrap_array
 from pylibcudf.libcudf.column.column cimport column
 
 from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
@@ -105,6 +108,29 @@ cdef class LogicalColumn:
             raise TypeError(
                 "from_cudf() only supports cudf columns and device scalars."
             )
+
+    @staticmethod
+    def from_arrow(array) -> LogicalColumn:
+        """Create a logical column from a local arrow array.
+
+        This call blocks the client's control flow and scatter
+        the data to all legate nodes.
+
+        Parameters
+        ----------
+        array
+            pyarrow array
+
+        Returns
+        -------
+            New logical column
+        """
+        print(type(array))
+        print(array)
+        cdef shared_ptr[CArray] arrow_array = pyarrow_unwrap_array(array)
+        if arrow_array.get() == NULL:
+            raise TypeError("not an array")
+        return LogicalColumn.from_handle(cpp_LogicalColumn(arrow_array))
 
     @staticmethod
     def empty_like_logical_column(LogicalColumn col) -> LogicalColumn:
@@ -243,6 +269,15 @@ cdef class LogicalColumn:
         if not writeable:
             arr.flags.writeable = False
         return arr
+
+    def to_arrow(self) -> pa.Array:
+        """Copy column to an arrow array
+        Returns
+        -------
+            An arrow array
+
+        """
+        return pyarrow_wrap_array(self._handle.get_arrow())
 
     def to_cudf(self) -> cudfColumn:
         """Copy the logical column into a local cudf column

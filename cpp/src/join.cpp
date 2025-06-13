@@ -41,7 +41,7 @@ namespace {
  */
 std::pair<std::unique_ptr<rmm::device_uvector<cudf::size_type>>,
           std::unique_ptr<rmm::device_uvector<cudf::size_type>>>
-cudf_join(GPUTaskContext& ctx,
+cudf_join(TaskContext& ctx,
           cudf::table_view lhs,
           cudf::table_view rhs,
           const std::vector<int32_t>& lhs_keys,
@@ -102,7 +102,7 @@ std::pair<cudf::out_of_bounds_policy, cudf::out_of_bounds_policy> out_of_bounds_
  *
  * Note that `lhs_table` is only passed for cleanup.
  */
-void cudf_join_and_gather(GPUTaskContext& ctx,
+void cudf_join_and_gather(TaskContext& ctx,
                           cudf::table_view lhs,
                           cudf::table_view rhs,
                           const std::vector<int32_t> lhs_keys,
@@ -157,7 +157,7 @@ std::unique_ptr<cudf::table> no_rows_table_like(const PhysicalTable& other)
  * The table is passed through on rank 0 and on the other ranks, an empty table is returned.
  * The `owners` argument is used to keep new cudf allocations alive
  */
-cudf::table_view revert_broadcast(GPUTaskContext& ctx,
+cudf::table_view revert_broadcast(TaskContext& ctx,
                                   const PhysicalTable& table,
                                   std::vector<std::unique_ptr<cudf::table>>& owners)
 {
@@ -175,7 +175,7 @@ cudf::table_view revert_broadcast(GPUTaskContext& ctx,
  * If legate broadcast the left- or right-hand side table, we might not need to
  * repartition them. This depends on the join type and which table is broadcasted.
  */
-bool is_repartition_not_needed(const GPUTaskContext& ctx,
+bool is_repartition_not_needed(const TaskContext& ctx,
                                JoinType join_type,
                                bool lhs_broadcasted,
                                bool rhs_broadcasted)
@@ -206,7 +206,7 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
 
   static void gpu_variant(legate::TaskContext context)
   {
-    GPUTaskContext ctx{context};
+    TaskContext ctx{context};
     const auto lhs          = argument::get_next_input<PhysicalTable>(ctx);
     const auto rhs          = argument::get_next_input<PhysicalTable>(ctx);
     const auto lhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
@@ -226,6 +226,7 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
 
     if (is_repartition_not_needed(ctx, join_type, lhs_broadcasted, rhs_broadcasted)) {
       cudf_join_and_gather(ctx,
+
                            lhs.table_view(),
                            rhs.table_view(),
                            lhs_keys,
@@ -245,6 +246,7 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
 
       auto lhs_view = cudf_lhs->view();  // cudf_lhs unique pointer is moved.
       cudf_join_and_gather(ctx,
+
                            lhs_view,
                            cudf_rhs->view(),
                            lhs_keys,
