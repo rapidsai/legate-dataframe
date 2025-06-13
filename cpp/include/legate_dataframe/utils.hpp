@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,19 +20,38 @@
 
 #include <legate.h>
 
+#include <arrow/type.h>
 #include <cudf/column/column_view.hpp>
 #include <cudf/types.hpp>
 
 namespace legate::dataframe {
 
 cudf::type_id to_cudf_type_id(legate::Type::Code code);
+cudf::data_type to_cudf_type(const arrow::DataType& arrow_type);
 legate::Type to_legate_type(cudf::type_id dtype);
+
 std::string pprint_1d(cudf::column_view col,
                       cudf::size_type index,
                       rmm::cuda_stream_view stream,
                       rmm::mr::device_memory_resource* mr);
+
 const void* read_accessor_as_1d_bytes(const legate::PhysicalStore& store);
+
 std::vector<legate::PhysicalStore> get_stores(const legate::PhysicalArray& ary);
+
+/**
+ * @brief Helper unpack an arrow result or throw an exception
+ *
+ * @tparam T The type of the result
+ * @param result The Arrow result to convert
+ * @return The result
+ */
+template <typename T>
+T ARROW_RESULT(arrow::Result<T> result)
+{
+  if (!result.ok()) { throw std::runtime_error(result.status().ToString()); }
+  return std::move(result).ValueOrDie();
+}
 
 /**
  * @brief Parse a UNIX glob string incl. tilde expansion
