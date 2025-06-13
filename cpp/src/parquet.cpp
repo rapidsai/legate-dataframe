@@ -254,25 +254,40 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
   status = parquet_reader->GetSchema(&schema);
   if (!status.ok()) { throw std::runtime_error("failed to get schema: " + status.ToString()); }
 
-  std::optional<std::set<std::string>> requested_names;
-  if (columns.has_value()) {
-    requested_names = std::set<std::string>(columns.value().begin(), columns.value().end());
-  }
-
-  // Get the column names from the schema
+  // Get the column metadata from the schema (depends on whether columns are specified)
   std::vector<std::string> column_names;
   std::vector<cudf::data_type> column_types;
   std::vector<bool> column_nullable;
-  column_names.reserve(schema->num_fields());
-  column_types.reserve(schema->num_fields());
-  column_nullable.reserve(schema->num_fields());
-  for (int i = 0; i < schema->num_fields(); i++) {
-    auto name = schema->field(i)->name();
-    if (requested_names.has_value() && requested_names->count(name) == 0) { continue; }
-    column_names.emplace_back(name);
-    auto arrow_type = schema->field(i)->type();
-    column_types.emplace_back(to_cudf_type(*arrow_type.get()));
-    column_nullable.emplace_back(schema->field(i)->nullable());
+  if (!columns.has_value()) {
+    column_names.reserve(schema->num_fields());
+    column_types.reserve(schema->num_fields());
+    column_nullable.reserve(schema->num_fields());
+    for (int i = 0; i < schema->num_fields(); i++) {
+      auto name = schema->field(i)->name();
+      column_names.emplace_back(name);
+      auto arrow_type = schema->field(i)->type();
+      column_types.emplace_back(to_cudf_type(*arrow_type.get()));
+      column_nullable.emplace_back(schema->field(i)->nullable());
+    }
+  } else {
+    std::map<std::string, int> name_to_index;
+    for (int i = 0; i < schema->num_fields(); i++) {
+      name_to_index[schema->field(i)->name()] = i;
+    }
+    column_names.reserve(columns.value().size());
+    column_types.reserve(columns.value().size());
+    column_nullable.reserve(columns.value().size());
+    for (auto& name : columns.value()) {
+      // Validate column names
+      if (name_to_index.count(name) == 0) {
+        throw std::invalid_argument("column was not found in parquet file: " + std::string(name));
+      }
+      auto i = name_to_index.at(name);
+      column_names.emplace_back(name);
+      auto arrow_type = schema->field(i)->type();
+      column_types.emplace_back(to_cudf_type(*arrow_type.get()));
+      column_nullable.emplace_back(schema->field(i)->nullable());
+    }
   }
 
   // Get the number of rows in each file
@@ -285,16 +300,6 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
     auto metadata       = parquet_reader->metadata();
     nrows.push_back(metadata->num_rows());
     nrows_total += metadata->num_rows();
-  }
-
-  // Validate column names if specified
-  if (columns.has_value()) {
-    std::set<std::string> names_in_table{column_names.begin(), column_names.end()};
-    for (auto col : columns.value()) {
-      if (names_in_table.count(col) == 0) {
-        throw std::invalid_argument("column was not found in parquet file: " + std::string(col));
-      }
-    }
   }
 
   return {std::move(file_paths),

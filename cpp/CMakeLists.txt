@@ -76,6 +76,18 @@ rapids_find_package(
   INSTALL_EXPORT_SET LegateDataframe-exports
 )
 
+rapids_find_package(
+  Arrow REQUIRED
+  BUILD_EXPORT_SET LegateDataframe-exports
+  INSTALL_EXPORT_SET LegateDataframe-exports
+)
+
+rapids_find_package(
+  Parquet REQUIRED
+  BUILD_EXPORT_SET LegateDataframe-exports
+  INSTALL_EXPORT_SET LegateDataframe-exports
+)
+
 # add third party dependencies using CPM
 rapids_cpm_init()
 
@@ -123,7 +135,10 @@ target_include_directories(
   INTERFACE "$<INSTALL_INTERFACE:include>"
 )
 
-target_link_libraries(LegateDataframe PUBLIC legate::legate rmm::rmm cudf::cudf)
+target_link_libraries(
+  LegateDataframe PUBLIC legate::legate rmm::rmm cudf::cudf Arrow::arrow_shared
+                         Parquet::parquet_shared
+)
 
 # Add Conda library, and include paths if specified
 if(TARGET conda_env)
