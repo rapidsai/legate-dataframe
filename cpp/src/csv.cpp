@@ -141,10 +141,13 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       tables.push_back(*reader->Read());
     }
 
-    auto table = *arrow::ConcatenateTables(tables);
-
     // Concatenate tables
-    tbl_arg.move_into(table);
+    if (tables.size() == 0) {
+      tbl_arg.bind_empty_data();
+    } else {
+      auto table = *arrow::ConcatenateTables(tables);
+      tbl_arg.move_into(table);
+    }
   }
 
   static void gpu_variant(legate::TaskContext context)

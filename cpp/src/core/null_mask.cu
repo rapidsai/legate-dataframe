@@ -103,7 +103,7 @@ std::shared_ptr<arrow::Buffer> null_mask_bools_to_bits(const legate::PhysicalSto
   auto ptr         = buffer->mutable_data();
   std::memset(ptr, 0, static_cast<size_t>(buffer->capacity()));
   for (size_t i = 0; i < bools_size; ++i) {
-    if (bools_acc[i] > 0) { arrow::bit_util::SetBit(ptr, i); }
+    if (bools_acc[bools_shape.lo[0] + i] > 0) { arrow::bit_util::SetBit(ptr, i); }
   }
   return buffer;
 }

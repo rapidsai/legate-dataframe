@@ -56,9 +56,9 @@ void add_parallel_launch_task(legate::AutoTask& task, int min_num_tasks)
 
 void add_parallel_launch_task(legate::AutoTask& task)
 {
-  auto num_gpus =
-    legate::Runtime::get_runtime()->get_machine().count(legate::mapping::TaskTarget::GPU);
-  add_parallel_launch_task(task, num_gpus);
+  // This should be the number of "preferred" processors
+  auto num_processors = legate::Runtime::get_runtime()->get_machine().count();
+  add_parallel_launch_task(task, num_processors);
 }
 
 void get_parallel_launch_task(TaskContext& ctx) { get_next_input<task::PhysicalColumn>(ctx); }
