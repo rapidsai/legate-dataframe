@@ -15,6 +15,7 @@
  */
 
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <vector>
 
@@ -164,7 +165,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
   {
     TaskContext ctx{context};
     const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto all_column_names = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_names     = argument::get_next_scalar_vector<std::string>(ctx);
     const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
     const auto na_filter        = argument::get_next_scalar<bool>(ctx);
     const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
@@ -183,10 +184,6 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
     auto dtypes = tbl_arg.cudf_types();
 
-    std::vector<std::string> column_names;
-    for (auto index : use_cols_indexes) {
-      column_names.push_back(all_column_names[index]);
-    }
     std::map<std::string, cudf::data_type> dtypes_map;
     for (size_t i = 0; i < dtypes.size(); i++) {
       dtypes_map[column_names[i]] = dtypes[i];
