@@ -13,6 +13,6 @@ fi
 
 # Unless `LEGATE_CONFIG` is set, default to all available GPUs and set fbmem/sysmem.
 # LEGATE_TEST=1 to test broadcasting code paths (locally).
-LEGATE_CONFIG=${LEGATE_CONFIG:- --gpus="$(nvidia-smi -L | wc -l)" --fbmem=2000 --sysmem=6000 --omps=0} \
+LEGATE_CONFIG=${LEGATE_CONFIG:- --gpus="$(nvidia-smi -L | wc -l)" --sysmem=6000 --omps=0} \
 LEGATE_TEST=${LEGATE_TEST:-1} \
 legate ./cpp_tests --output-on-failure --no-tests=error "$@"
