@@ -22,15 +22,9 @@ files:
   test:
     output: none
     includes:
-      - py_version
-      - test
-  test-gpu:
-    output: none
-    includes:
       - depends_on_cupy
       - py_version
       - test
-      - test-gpu
   docs:
     output: none
     includes:
@@ -182,19 +176,13 @@ dependencies:
         packages:
           - cupynumeric==25.05.*,>=0.0.0.dev0
           - pytest>=7.0
-      - output_types: conda
-        packages:
-          - valgrind
-  test-gpu:
-    common:
-      - output_types: [conda, requirements, pyproject]
-        packages:
           - dask-cuda==24.12.*
           - dask-cudf==24.12.*
       - output_types: conda
         packages:
           - cuda-sanitizer-api
           - openssh  # for dask
+          - valgrind
 
   depends_on_cudf:
     common:
