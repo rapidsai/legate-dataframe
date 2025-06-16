@@ -56,7 +56,7 @@ def test_write(tmp_path, df):
     get_legate_runtime().issue_execution_fence(block=True)
 
     # Read the files back with pyarrow then compare with the original
-    files = glob.glob(str(tmp_path) + "/*.csv")
+    files = sorted(glob.glob(str(tmp_path) + "/*.csv"))
     tables = [
         csv.read_csv(file, convert_options=csv.ConvertOptions(column_types=df.schema))
         for file in files

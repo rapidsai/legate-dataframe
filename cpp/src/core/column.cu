@@ -352,7 +352,8 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
       std::shared_ptr<arrow::Buffer> data = *arrow::AllocateBuffer(num_chars * sizeof(int8_t));
       std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(chars), num_chars);
 
-      auto null_bitmask = null_mask_bools_to_bits(a.null_mask());
+      std::shared_ptr<arrow::Buffer> null_bitmask;
+      if (a.nullable()) { null_bitmask = null_mask_bools_to_bits(a.null_mask()); }
 
       auto offsets = global_ranges_to_arrow_offsets(a.ranges().data());
 

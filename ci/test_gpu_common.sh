@@ -21,7 +21,7 @@ rapids-print-env
 
 rapids-dependency-file-generator \
   --output conda \
-  --file-key test-gpu \
+  --file-key test \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION}" \
 | tee /tmp/env.yaml
 
