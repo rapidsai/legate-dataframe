@@ -19,6 +19,12 @@
 #include <stdexcept>
 #include <vector>
 
+#include <arrow/io/file.h>
+#include <arrow/io/memory.h>
+#include <parquet/arrow/reader.h>
+#include <parquet/arrow/schema.h>
+#include <parquet/file_reader.h>
+
 #include <cudf/concatenate.hpp>
 #include <cudf/io/parquet.hpp>
 #include <cudf/unary.hpp>
@@ -31,6 +37,7 @@
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/core/task_context.hpp>
 #include <legate_dataframe/core/transposed_copy.cuh>
+#include <legate_dataframe/utils.hpp>
 
 #include <legate_dataframe/parquet.hpp>
 
@@ -222,9 +229,10 @@ const auto reg_id_ = []() -> char {
 struct ParquetReadInfo {
   std::vector<std::string> file_paths;
   std::vector<std::string> column_names;
+  std::vector<cudf::data_type> column_types;
+  std::vector<bool> column_nullable;
   std::vector<size_t> nrows;
   size_t nrows_total;
-  std::unique_ptr<cudf::table> prototype_table;
 };
 
 ParquetReadInfo get_parquet_info(const std::string& glob_string,
@@ -232,45 +240,77 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
 {
   std::vector<std::string> file_paths = parse_glob(glob_string);
   if (file_paths.empty()) { throw std::invalid_argument("no parquet files specified"); }
-  // We read the meta data from the first file
-  auto source  = cudf::io::source_info(file_paths[0]);
-  auto options = cudf::io::parquet_reader_options::builder(source).num_rows(1);
-  if (columns.has_value()) { options.columns(columns.value()); }
-  auto result = cudf::io::read_parquet(options);
 
-  // Get the column names
+  // TODO: Using the default memory pool, hopefully it doesn't matter anyway here.
+  auto pool = arrow::default_memory_pool();
+
+  // Open the first file to get schema information
+  auto reader = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths[0]));
+
+  // Newer versions arrow have versions that return a result which is more convenient...
+  std::unique_ptr<parquet::arrow::FileReader> parquet_reader;
+  auto status = parquet::arrow::OpenFile(reader, pool, &parquet_reader);
+  if (!status.ok()) {
+    throw std::runtime_error("failed to open parquet file: " + status.ToString());
+  }
+  std::shared_ptr<arrow::Schema> schema;
+  status = parquet_reader->GetSchema(&schema);
+  if (!status.ok()) { throw std::runtime_error("failed to get schema: " + status.ToString()); }
+
+  // Get the column metadata from the schema (depends on whether columns are specified)
   std::vector<std::string> column_names;
-  column_names.reserve(result.metadata.schema_info.size());
-  for (const auto& column_name_info : result.metadata.schema_info) {
-    column_names.push_back(column_name_info.name);
+  std::vector<cudf::data_type> column_types;
+  std::vector<bool> column_nullable;
+  if (!columns.has_value()) {
+    column_names.reserve(schema->num_fields());
+    column_types.reserve(schema->num_fields());
+    column_nullable.reserve(schema->num_fields());
+    for (int i = 0; i < schema->num_fields(); i++) {
+      auto name = schema->field(i)->name();
+      column_names.emplace_back(name);
+      auto arrow_type = schema->field(i)->type();
+      column_types.emplace_back(to_cudf_type(*arrow_type.get()));
+      column_nullable.emplace_back(schema->field(i)->nullable());
+    }
+  } else {
+    std::map<std::string, int> name_to_index;
+    for (int i = 0; i < schema->num_fields(); i++) {
+      name_to_index[schema->field(i)->name()] = i;
+    }
+    column_names.reserve(columns.value().size());
+    column_types.reserve(columns.value().size());
+    column_nullable.reserve(columns.value().size());
+    for (auto& name : columns.value()) {
+      // Validate column names
+      if (name_to_index.count(name) == 0) {
+        throw std::invalid_argument("column was not found in parquet file: " + std::string(name));
+      }
+      auto i = name_to_index.at(name);
+      column_names.emplace_back(name);
+      auto arrow_type = schema->field(i)->type();
+      column_types.emplace_back(to_cudf_type(*arrow_type.get()));
+      column_nullable.emplace_back(schema->field(i)->nullable());
+    }
   }
 
-  // Get the number of rows in each file:
+  // Get the number of rows in each file
   std::vector<size_t> nrows;
   size_t nrows_total = 0;
   nrows.reserve(file_paths.size());
   for (const auto& path : file_paths) {
-    auto source   = cudf::io::source_info(path);
-    auto metadata = cudf::io::read_parquet_metadata(source);
-    nrows.push_back(metadata.num_rows());
-    nrows_total += metadata.num_rows();
-  }
-
-  // Validate column names if specified
-  if (columns.has_value()) {
-    std::set<std::string> names_in_table{column_names.begin(), column_names.end()};
-    for (auto col : columns.value()) {
-      if (names_in_table.count(col) == 0) {
-        throw std::invalid_argument("column was not found in parquet file: " + std::string(col));
-      }
-    }
+    auto reader         = ARROW_RESULT(arrow::io::ReadableFile::Open(path));
+    auto parquet_reader = parquet::ParquetFileReader::Open(reader);
+    auto metadata       = parquet_reader->metadata();
+    nrows.push_back(metadata->num_rows());
+    nrows_total += metadata->num_rows();
   }
 
   return {std::move(file_paths),
           std::move(column_names),
+          std::move(column_types),
+          std::move(column_nullable),
           std::move(nrows),
-          nrows_total,
-          std::move(result.tbl)};
+          nrows_total};
 }
 
 }  // namespace
@@ -293,8 +333,15 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath)
 LogicalTable parquet_read(const std::string& glob_string,
                           const std::optional<std::vector<std::string>>& columns)
 {
-  auto info        = get_parquet_info(glob_string, columns);
-  LogicalTable ret = LogicalTable::empty_like(*info.prototype_table, info.column_names);
+  auto info = get_parquet_info(glob_string, columns);
+
+  std::vector<LogicalColumn> logical_columns;
+  logical_columns.reserve(info.column_types.size());
+  for (int i = 0; i < info.column_types.size(); i++) {
+    logical_columns.emplace_back(
+      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false));
+  }
+  auto ret = LogicalTable(std::move(logical_columns), info.column_names);
 
   auto runtime = legate::Runtime::get_runtime();
   legate::AutoTask task =
@@ -320,12 +367,12 @@ legate::LogicalArray parquet_read_array(const std::string& glob_string,
   legate::Type legate_type = legate::null_type();
 
   if (!type.has_value()) {
-    auto cudf_type = info.prototype_table->get_column(0).type();
+    auto cudf_type = info.column_types.at(0);
     if (!cudf::is_numeric(cudf_type)) {
       throw std::invalid_argument("only numeric columns are supported for parquet_read_array");
     }
-    for (auto&& col : info.prototype_table->view()) {
-      if (col.type().id() != cudf_type.id()) {
+    for (auto& type : info.column_types) {
+      if (type.id() != type.id()) {
         throw std::invalid_argument("all columns must have the same type");
       }
     }
@@ -335,17 +382,24 @@ legate::LogicalArray parquet_read_array(const std::string& glob_string,
     legate_type = type.value();
 
     auto cudf_type = cudf::data_type{to_cudf_type_id(legate_type.code())};
-    for (auto&& col : info.prototype_table->view()) {
-      if (!cudf::is_supported_cast(col.type(), cudf_type)) {
+    for (auto& type : info.column_types) {
+      if (!cudf::is_supported_cast(type, cudf_type)) {
         throw std::invalid_argument("Cannot cast all columns to specified type");
       }
     }
   }
 
-  auto nullable = null_value.type().code() == Type::Code::NIL;
-  if (!nullable) {
-    if (null_value.type() != legate_type) {
-      throw std::invalid_argument("null value must be null or have the same type as the result");
+  // If all columns are not nullable, we don't have to worry about null values
+  auto nullable = std::any_of(info.column_nullable.begin(),
+                              info.column_nullable.end(),
+                              [](bool nullable) { return nullable; });
+  if (nullable) {
+    // Otherwise, see if we fill the null values
+    nullable = null_value.type().code() == Type::Code::NIL;
+    if (!nullable) {
+      if (null_value.type() != legate_type) {
+        throw std::invalid_argument("null value must be null or have the same type as the result");
+      }
     }
   }
 
