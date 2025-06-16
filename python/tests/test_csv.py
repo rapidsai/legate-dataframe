@@ -16,8 +16,7 @@ import glob
 import math
 
 import cudf
-import cupy
-import dask_cudf
+import numpy as np
 import pyarrow as pa
 import pylibcudf
 import pytest
@@ -36,10 +35,13 @@ from legate_dataframe.testing import (
 def write_partitioned_csv(table, path, npartitions=1):
     if table.num_rows == 0:
         csv.write_csv(table, f"{path}/part-0.csv")
-    partition_size = int(math.ceil(table.num_rows / npartitions))
+    partition_size = int(math.floor(table.num_rows / npartitions))
     for i in range(npartitions):
         start = i * partition_size
         end = min((i + 1) * partition_size, table.num_rows)
+        if i == npartitions - 1:
+            # Last partition may be larger if not evenly divisible
+            end = table.num_rows
         if start >= end:
             break
         partition = table[start:end]
@@ -77,11 +79,11 @@ def test_read(tmp_path, df, npartitions=2):
 
 def test_read_single_rows(tmp_path):
     filenames = str(tmp_path) + "/*.csv"
-    df = cudf.DataFrame({"a": cupy.arange(1, dtype="int64")})
-    ddf = dask_cudf.from_cudf(df, npartitions=1)
-    ddf.to_csv(filenames, index=False)
-    tbl = csv_read(filenames, dtypes=df.dtypes)
-    assert_frame_equal(tbl, df)
+    df = pa.table({"a": np.arange(1, dtype="int64")})
+    write_partitioned_csv(df, tmp_path, npartitions=1)
+    cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
+    tbl = csv_read(filenames, dtypes=cudf_types)
+    assert_arrow_table_equal(tbl.to_arrow(), df)
 
 
 def test_read_single_many_columns(tmp_path):
@@ -104,18 +106,15 @@ def test_read_single_many_columns(tmp_path):
 def test_read_many_files_per_rank(tmp_path):
     # Use uneven number to test splitting
     filenames = str(tmp_path) + "/*.csv"
-    df = cudf.DataFrame({"a": cupy.arange(983, dtype="int64")})
+    df = pa.table({"a": np.arange(983, dtype="int64")})
     npartitions = 100
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_csv(filenames, index=False)
+    write_partitioned_csv(df, tmp_path, npartitions=npartitions)
     # Test that we really have many files hoped for:
     assert len(glob.glob(filenames)) == npartitions
-    tbl = csv_read(filenames, dtypes=df.dtypes)
+    cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
+    tbl = csv_read(filenames, dtypes=cudf_types)
 
-    # NOTE: Right now the C-code does not attempt to "natural" sort csv
-    #       files.  So more with more than 10 files the order of rows is not
-    #       preserved at this time.
-    assert_frame_equal(tbl.to_cudf().sort_values(by="a"), df)
+    assert_arrow_table_equal(tbl.to_arrow().sort_by("a"), df)
 
 
 @pytest.mark.parametrize("delimiter", [",", "|"])
