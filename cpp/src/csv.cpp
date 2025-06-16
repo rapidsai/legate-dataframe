@@ -106,31 +106,32 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
     auto dtypes = tbl_arg.arrow_types();
 
-    std::vector<std::string> column_names;
+    std::vector<std::string> include_columns;
     for (auto index : use_cols_indexes) {
-      column_names.push_back(all_column_names[index]);
+      include_columns.push_back("f" + std::to_string(index));
     }
-
     std::unordered_map<std::string, std::shared_ptr<arrow::DataType>> dtypes_map;
     for (size_t i = 0; i < dtypes.size(); i++) {
-      dtypes_map[column_names[i]] = dtypes[i];
+      dtypes_map[include_columns[i]] = dtypes[i];
     }
+
     // Assign one file to each rank for now
     auto [file_offset, num_files] = evenly_partition_work(file_paths.size(), ctx.rank, ctx.nranks);
     std::vector<std::shared_ptr<arrow::Table>> tables;
     for (size_t i = file_offset; i < file_offset + num_files; i++) {
       auto input = *arrow::io::ReadableFile::Open(file_paths[i]);
 
-      auto read_options         = arrow::csv::ReadOptions::Defaults();
-      read_options.use_threads  = false;
-      read_options.column_names = all_column_names;
-      read_options.skip_rows    = read_header ? 1 : 0;
+      auto read_options        = arrow::csv::ReadOptions::Defaults();
+      read_options.use_threads = false;
+      // Column names will be f0, f1 ...
+      read_options.autogenerate_column_names = true;
+      read_options.skip_rows                 = read_header ? 1 : 0;
 
       auto parse_options              = arrow::csv::ParseOptions::Defaults();
       parse_options.delimiter         = delimiter;
       auto convert_options            = arrow::csv::ConvertOptions::Defaults();
       convert_options.column_types    = dtypes_map;
-      convert_options.include_columns = column_names;
+      convert_options.include_columns = include_columns;
 
       // Instantiate TableReader from input stream and options
       arrow::io::IOContext io_context                 = arrow::io::default_io_context();
@@ -138,7 +139,16 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
         io_context, input, read_options, parse_options, convert_options);
 
       // Read table from CSV file
-      tables.push_back(*reader->Read());
+      auto result = reader->Read();
+      if (!result.ok()) {
+        // Empty file
+        if (result.status().ToString().find("Empty CSV file") != std::string::npos) {
+          continue;
+        } else {
+          throw std::runtime_error("Failed to read CSV file: " + result.status().ToString());
+        }
+      }
+      tables.push_back(*result);
     }
 
     // Concatenate tables
@@ -395,7 +405,7 @@ LogicalTable csv_read(const std::string& glob_string,
   auto runtime          = legate::Runtime::get_runtime();
   legate::AutoTask task = runtime->create_task(get_library(), task::CSVRead::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, file_paths);
-  argument::add_next_scalar_vector(task, all_column_names);
+  argument::add_next_scalar_vector(task, column_names);
   argument::add_next_scalar_vector(task, use_cols_indexes);
   argument::add_next_scalar(task, na_filter);
   // legate doesn't accept char so we use int32_t instead
