@@ -15,6 +15,7 @@
  */
 
 #include <cstdlib>
+#include <type_traits>
 #include <vector>
 
 #include <legate_dataframe/core/allocator.hpp>
@@ -93,7 +94,7 @@ class Mapper : public legate::mapping::Mapper {
             return 0;
           }
           // Note: + 2 is for sorting!  TODO: refactor into helper...
-          auto num_cols = task.scalars().at(0).value<int32_t>();
+          auto num_cols = task.num_inputs();
           auto nrank    = task.get_launch_domain().get_volume();
 
           // Space for the exchange buffers containing size chunks:
