@@ -110,11 +110,10 @@ cdef class LogicalColumn:
             )
 
     @staticmethod
-    def from_arrow(array) -> LogicalColumn:
+    def from_arrow(pa.Array array not None) -> LogicalColumn:
         """Create a logical column from a local arrow array.
 
-        This call blocks the client's control flow and scatter
-        the data to all legate nodes.
+        This call blocks the client's control flow.
 
         Parameters
         ----------
@@ -125,8 +124,6 @@ cdef class LogicalColumn:
         -------
             New logical column
         """
-        print(type(array))
-        print(array)
         cdef shared_ptr[CArray] arrow_array = pyarrow_unwrap_array(array)
         if arrow_array.get() == NULL:
             raise TypeError("not an array")

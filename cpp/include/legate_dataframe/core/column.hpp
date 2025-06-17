@@ -549,7 +549,6 @@ class PhysicalColumn {
    * NB: The physical column MUST outlive the returned view thus it is UB to do some-
    *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view;`
    *
-   * @param mr Device memory resource to use for any allocations.
    * @throw cudf::logic_error if column is unbound.
    * @return A new column view.
    */
@@ -565,7 +564,6 @@ class PhysicalColumn {
    * Note that the above should be considered true even if currently the scalar
    * may not view the memory (you must consider the scalar immutable).
    *
-   * @param mr Device memory resource to use for any allocations.
    * @throw cudf::logic_error if column is unbound or the size is not one.
    * @return A new cudf scalar.
    */
@@ -585,7 +583,6 @@ class PhysicalColumn {
    * @brief Move local cudf column into this unbound physical column
    *
    * @param column The cudf column to move
-   * @param mr Device memory resource to use for any allocations.
    */
   void move_into(std::unique_ptr<cudf::column> column);
 
@@ -593,7 +590,6 @@ class PhysicalColumn {
    * @brief Move local cudf scalar into this unbound physical column
    *
    * @param scalar The cudf scalar to move
-   * @param mr Device memory resource to use for any allocations.
    */
   void move_into(std::unique_ptr<cudf::scalar> scalar);
 

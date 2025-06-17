@@ -120,7 +120,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     auto [file_offset, num_files] = evenly_partition_work(file_paths.size(), ctx.rank, ctx.nranks);
     std::vector<std::shared_ptr<arrow::Table>> tables;
     for (size_t i = file_offset; i < file_offset + num_files; i++) {
-      auto input = *arrow::io::ReadableFile::Open(file_paths[i]);
+      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths[i]));
 
       auto read_options        = arrow::csv::ReadOptions::Defaults();
       read_options.use_threads = false;
@@ -136,8 +136,8 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
       // Instantiate TableReader from input stream and options
       arrow::io::IOContext io_context                 = arrow::io::default_io_context();
-      std::shared_ptr<arrow::csv::TableReader> reader = *arrow::csv::TableReader::Make(
-        io_context, input, read_options, parse_options, convert_options);
+      std::shared_ptr<arrow::csv::TableReader> reader = ARROW_RESULT(arrow::csv::TableReader::Make(
+        io_context, input, read_options, parse_options, convert_options));
 
       // Read table from CSV file
       auto result = reader->Read();
@@ -156,7 +156,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
     if (tables.size() == 0) {
       tbl_arg.bind_empty_data();
     } else {
-      auto table = *arrow::ConcatenateTables(tables);
+      auto table = ARROW_RESULT(arrow::ConcatenateTables(tables));
       tbl_arg.move_into(table);
     }
   }
@@ -243,7 +243,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, context.get_task_stream()));
+      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream()));
     }
   }
 };
@@ -310,7 +310,7 @@ LogicalTable csv_read(const std::string& glob_string,
   if (!usecols.has_value()) {
     // We need to read the first row to get the column names.
     arrow::io::IOContext io_context = arrow::io::default_io_context();
-    auto input                      = *arrow::io::ReadableFile::Open(file_paths.at(0));
+    auto input                      = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths.at(0)));
     auto read_options               = arrow::csv::ReadOptions::Defaults();
     read_options.block_size         = 10000;  // Should be large enough for 1 row
     read_options.use_threads        = false;
@@ -319,8 +319,8 @@ LogicalTable csv_read(const std::string& glob_string,
     auto convert_options            = arrow::csv::ConvertOptions::Defaults();
 
     // Instantiate StreamingReader from input stream and options
-    auto reader = *arrow::csv::StreamingReader::Make(
-      io_context, input, read_options, parse_options, convert_options);
+    auto reader = ARROW_RESULT(arrow::csv::StreamingReader::Make(
+      io_context, input, read_options, parse_options, convert_options));
 
     std::shared_ptr<arrow::RecordBatch> batch;
     // We could also infer the dtypes from the batch schema if we wanted

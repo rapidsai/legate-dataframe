@@ -228,7 +228,6 @@ legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array)
   // Create an unbound logical array
   auto runtime = legate::Runtime::get_runtime();
   if (auto string_array = dynamic_cast<arrow::StringArray*>(arrow_array.get())) {
-    std::cout << "String array" << std::endl;
     auto array = runtime->create_string_array(
       runtime->create_array({std::uint64_t(arrow_array->length())}, legate::rect_type(1)),
       runtime->create_array({std::uint64_t(string_array->total_values_length())}, legate::int8()));
@@ -349,7 +348,8 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
       const legate::PhysicalArray chars   = a.chars();
       const auto num_chars                = chars.data().shape<1>().volume();
 
-      std::shared_ptr<arrow::Buffer> data = *arrow::AllocateBuffer(num_chars * sizeof(int8_t));
+      std::shared_ptr<arrow::Buffer> data =
+        ARROW_RESULT(arrow::AllocateBuffer(num_chars * sizeof(int8_t)));
       std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(chars), num_chars);
 
       std::shared_ptr<arrow::Buffer> null_bitmask;
@@ -364,9 +364,10 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
                                   " isn't supported");
     }
   } else {
-    auto physical_array                 = array_->get_physical_array();
-    auto nbytes                         = array_->volume() * array_->type().size();
-    std::shared_ptr<arrow::Buffer> data = *arrow::AllocateBuffer(nbytes * sizeof(int8_t));
+    auto physical_array = array_->get_physical_array();
+    auto nbytes         = array_->volume() * array_->type().size();
+    std::shared_ptr<arrow::Buffer> data =
+      ARROW_RESULT(arrow::AllocateBuffer(nbytes * sizeof(int8_t)));
     std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(physical_array.data()), nbytes);
     std::shared_ptr<arrow::Buffer> null_bitmask;
     if (array_->nullable()) { null_bitmask = null_mask_bools_to_bits(physical_array.null_mask()); }
@@ -380,7 +381,7 @@ std::unique_ptr<cudf::scalar> LogicalColumn::get_cudf_scalar(
   rmm::cuda_stream_view stream, rmm::mr::device_memory_resource* mr) const
 {
   // NOTE: We could specialize simple scalars here at least.
-  auto col = get_cudf(stream);
+  auto col = get_cudf(stream, mr);
   if (col->size() != 1) {
     throw std::invalid_argument("only length 1/scalar columns can be converted to scalar.");
   }

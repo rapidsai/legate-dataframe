@@ -107,7 +107,7 @@ std::shared_ptr<arrow::Buffer> global_ranges_to_arrow_offsets(const legate::Phys
 {
   using offset_type = typename arrow::StringArray::TypeClass::offset_type;
   std::shared_ptr<arrow::Buffer> offsets =
-    *arrow::AllocateBuffer((ranges.shape<1>().volume() + 1) * sizeof(offset_type));
+    ARROW_RESULT(arrow::AllocateBuffer((ranges.shape<1>().volume() + 1) * sizeof(offset_type)));
   auto offsets_ptr = reinterpret_cast<offset_type*>(offsets->mutable_data());
   auto ranges_ptr  = ranges.read_accessor<legate::Rect<1>, 1>().ptr(ranges.shape<1>().lo[0]);
   auto ranges_size = ranges.shape<1>().volume();

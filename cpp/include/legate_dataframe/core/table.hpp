@@ -397,7 +397,6 @@ class PhysicalTable {
    * @brief Move local cudf columns into this unbound physical table
    *
    * @param columns The cudf columns to move
-   * @param mr Device memory resource to use for memory allocations.
    */
   void move_into(std::vector<std::unique_ptr<cudf::column>> columns)
   {
@@ -438,7 +437,6 @@ class PhysicalTable {
    * @brief Move local cudf table into this unbound physical table
    *
    * @param table The cudf table to move
-   * @param mr Device memory resource to use for memory allocations.
    */
   void move_into(std::unique_ptr<cudf::table> table) { move_into(table->release()); }
 

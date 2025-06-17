@@ -99,7 +99,7 @@ std::shared_ptr<arrow::Buffer> null_mask_bools_to_bits(const legate::PhysicalSto
   auto bools_shape = bools.shape<1>();
   auto bools_size  = bools_shape.volume();
   auto bitmap_size = arrow::bit_util::BytesForBits(bools_size);
-  auto buffer      = *arrow::AllocateBuffer(bitmap_size);
+  auto buffer      = ARROW_RESULT(arrow::AllocateBuffer(bitmap_size));
   auto ptr         = buffer->mutable_data();
   std::memset(ptr, 0, static_cast<size_t>(buffer->capacity()));
   for (size_t i = 0; i < bools_size; ++i) {

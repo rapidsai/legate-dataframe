@@ -67,7 +67,7 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
       metadata.column_metadata.at(i).set_name(column_names.at(i));
     }
     options.metadata(metadata);
-    cudf::io::write_parquet(options, context.get_task_stream());
+    cudf::io::write_parquet(options, ctx.stream());
   }
 };
 
@@ -131,7 +131,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, context.get_task_stream()));
+      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream()));
     }
   }
 };

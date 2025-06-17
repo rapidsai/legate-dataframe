@@ -340,7 +340,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     // split_indices will be null.  Exchange the (empty) table instead.
     std::vector<cudf::table_view> partitions;
     if (split_indices) {
-      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, context.get_task_stream());
+      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
     } else {
       assert(my_sorted_tbl->num_rows() == 0);
       for (int i = 0; i < ctx.nranks; i++) {
@@ -359,12 +359,8 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
       result = cudf::concatenate(parts, ctx.stream(), ctx.mr());
       owners.reset();  // we created a copy.
       auto res_view = result->view();
-      result        = sort_func(res_view,
-                         res_view.select(keys_idx),
-                         column_order,
-                         null_precedence,
-                         context.get_task_stream(),
-                         ctx.mr());
+      result        = sort_func(
+        res_view, res_view.select(keys_idx), column_order, null_precedence, ctx.stream(), ctx.mr());
     }
 
 #if DEBUG_SPLITS

@@ -57,7 +57,7 @@ struct CheckHash : public legate::LegateTask<CheckHash> {
                                                                      ctx.nranks,
                                                                      cudf::hash_id::HASH_MURMUR3,
                                                                      cudf::DEFAULT_HASH_SEED,
-                                                                     context.get_task_stream());
+                                                                     ctx.stream());
     result.move_into(std::move(cudf_result));
 
     // Check that the partition assigned to our rank gets all the rows.

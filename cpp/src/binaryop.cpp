@@ -57,7 +57,7 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
         lhs.column_view(), *rhs_scalar, op, output.cudf_type(), ctx.stream(), ctx.mr());
     } else {
       ret = cudf::binary_operation(
-        lhs.column_view(), rhs.column_view(), op, output.cudf_type(), context.get_task_stream());
+        lhs.column_view(), rhs.column_view(), op, output.cudf_type(), ctx.stream(), ctx.mr());
     }
     output.move_into(std::move(ret));
   }

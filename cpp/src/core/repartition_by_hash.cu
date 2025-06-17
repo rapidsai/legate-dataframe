@@ -224,18 +224,13 @@ shuffle(TaskContext& ctx,
   for (auto& [peer, buf] : recv_gpu_data) {
     std::size_t nbytes = sizes.gpu_data(peer, ctx.rank);
     assert(nbytes > 0);
-    CHECK_NCCL(
-      ncclRecv(buf.data(), nbytes, ncclInt8, peer, task_nccl(ctx), context.get_task_stream()));
+    CHECK_NCCL(ncclRecv(buf.data(), nbytes, ncclInt8, peer, task_nccl(ctx), ctx.stream()));
   }
   for (const auto& [peer, col] : columns) {
     if (col.gpu_data->size() == 0) { continue; }
     assert(col.gpu_data->size() == sizes.gpu_data(ctx.rank, peer));
-    CHECK_NCCL(ncclSend(col.gpu_data->data(),
-                        col.gpu_data->size(),
-                        ncclInt8,
-                        peer,
-                        task_nccl(ctx),
-                        context.get_task_stream()));
+    CHECK_NCCL(ncclSend(
+      col.gpu_data->data(), col.gpu_data->size(), ncclInt8, peer, task_nccl(ctx), ctx.stream()));
   }
   CHECK_NCCL(ncclGroupEnd());
   task.concurrent_task_barrier();
