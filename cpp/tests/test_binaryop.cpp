@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
+#include <arrow/api.h>
+#include <arrow/compute/api.h>
+#include <cudf/binaryop.hpp>
+#include <gtest/gtest.h>
 #include <legate.h>
 
-#include <cudf/binaryop.hpp>
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_utilities.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/type_lists.hpp>
-
+#include "test_utils.hpp"
 #include <legate_dataframe/binaryop.hpp>
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/table.hpp>
@@ -29,71 +28,66 @@
 using namespace legate::dataframe;
 
 template <typename T>
-struct BinaryOpsTest : public cudf::test::BaseFixture {};
+struct BinaryOpsTest : public testing::Test {};
 
-TYPED_TEST_SUITE(BinaryOpsTest, cudf::test::NumericTypes);
+using NumericTypesWithoutBool = ::testing::
+  Types<int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, float, double>;
+
+TYPED_TEST_SUITE(BinaryOpsTest, NumericTypesWithoutBool);
+
+std::string op = "add";
 
 TYPED_TEST(BinaryOpsTest, AddColCol)
 {
-  constexpr auto op = cudf::binary_operator::ADD;
-  cudf::test::fixed_width_column_wrapper<TypeParam> lhs({0, 1, 2, 3});
-  cudf::test::fixed_width_column_wrapper<TypeParam> rhs({4, 5, 6, 7});
-  auto const type = static_cast<cudf::column_view>(lhs).type();
+  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}));
+  LogicalColumn rhs(narrow<TypeParam>({4, 5, 6, 7}));
+  auto expected =
+    (*arrow::compute::CallFunction(op, {lhs.get_arrow(), rhs.get_arrow()})).make_array();
+  auto result = binary_operation(lhs, rhs, cudf::binary_operator::ADD, lhs.cudf_type()).get_arrow();
 
-  std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  EXPECT_TRUE(expected->Equals(*result));
 }
 
 TYPED_TEST(BinaryOpsTest, AddColColWithNull)
 {
-  constexpr auto op = cudf::binary_operator::ADD;
-  cudf::test::fixed_width_column_wrapper<TypeParam> lhs({0, 1, 2, 3}, {1, 0, 1, 0});
-  cudf::test::fixed_width_column_wrapper<TypeParam> rhs({4, 5, 6, 7}, {1, 0, 1, 0});
-  auto const type = static_cast<cudf::column_view>(lhs).type();
+  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}), {1, 0, 1, 0});
+  LogicalColumn rhs(narrow<TypeParam>({4, 5, 6, 7}), {1, 0, 1, 0});
+  auto expected =
+    (*arrow::compute::CallFunction(op, {lhs.get_arrow(), rhs.get_arrow()})).make_array();
+  auto result = binary_operation(lhs, rhs, cudf::binary_operator::ADD, lhs.cudf_type()).get_arrow();
 
-  std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  EXPECT_TRUE(expected->Equals(*result));
 }
 
 TYPED_TEST(BinaryOpsTest, AddColScalar)
 {
-  constexpr auto op = cudf::binary_operator::ADD;
-  cudf::test::fixed_width_column_wrapper<TypeParam> lhs({0, 1, 2, 3});
-  cudf::numeric_scalar<TypeParam> rhs{1, true};
-  auto const type = static_cast<cudf::column_view>(lhs).type();
-
-  std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}));
+  LogicalColumn rhs(narrow<TypeParam>({1}), {}, true);
+  auto expected =
+    (*arrow::compute::CallFunction(op, {lhs.get_arrow(), *rhs.get_arrow()->GetScalar(0)}))
+      .make_array();
+  auto result = binary_operation(lhs, rhs, cudf::binary_operator::ADD, lhs.cudf_type()).get_arrow();
+  EXPECT_TRUE(expected->Equals(*result));
 }
 
 TYPED_TEST(BinaryOpsTest, AddColScalarWithNull)
 {
-  constexpr auto op = cudf::binary_operator::ADD;
-  cudf::test::fixed_width_column_wrapper<TypeParam> lhs({0, 1, 2, 3}, {1, 0, 1, 0});
-  cudf::numeric_scalar<TypeParam> rhs{1, true};
-  auto const type = static_cast<cudf::column_view>(lhs).type();
-
-  std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}), {1, 0, 1, 0});
+  LogicalColumn rhs(narrow<TypeParam>({1}), {1}, true);
+  auto expected =
+    (*arrow::compute::CallFunction(op, {lhs.get_arrow(), *rhs.get_arrow()->GetScalar(0)}))
+      .make_array();
+  auto result = binary_operation(lhs, rhs, cudf::binary_operator::ADD, lhs.cudf_type()).get_arrow();
+  EXPECT_TRUE(expected->Equals(*result));
 }
 
 TYPED_TEST(BinaryOpsTest, AddScalarCol)
 {
-  constexpr auto op = cudf::binary_operator::ADD;
-  cudf::numeric_scalar<TypeParam> lhs{1, true};
-  cudf::test::fixed_width_column_wrapper<TypeParam> rhs({0, 1, 2, 3});
-  auto const type = static_cast<cudf::column_view>(rhs).type();
-
-  std::unique_ptr<cudf::column> expect = cudf::binary_operation(lhs, rhs, op, type);
-  LogicalColumn res = binary_operation(LogicalColumn{lhs}, LogicalColumn{rhs}, op, type);
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  LogicalColumn lhs(narrow<TypeParam>({1}), {}, true);
+  LogicalColumn rhs(narrow<TypeParam>({0, 1, 2, 3}));
+  auto expected =
+    (*arrow::compute::CallFunction(op, {*lhs.get_arrow()->GetScalar(0), rhs.get_arrow()}))
+      .make_array();
+  auto result = binary_operation(lhs, rhs, cudf::binary_operator::ADD, lhs.cudf_type()).get_arrow();
+  EXPECT_TRUE(expected->Equals(*result));
 }
