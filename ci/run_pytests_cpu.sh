@@ -28,5 +28,5 @@ legate \
     . \
     -sv \
     --durations=0 \
-    -k csv \
+    -k 'csv or binary' \
     "${@}"
