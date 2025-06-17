@@ -131,7 +131,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream()));
+      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()));
     }
   }
 };

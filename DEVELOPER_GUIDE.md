@@ -71,7 +71,7 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
     auto op                           = argument::get_next_scalar<cudf::unary_operator>(ctx);
     const auto input                  = argument::get_next_input<PhysicalColumn>(ctx);
     auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
-    cudf::column_view col             = input.column_view()
+    cudf::column_view col             = input.column_view();
     std::unique_ptr<cudf::column> ret = cudf::unary_operation(col, op, ctx.stream(), ctx.mr());
     output.move_into(std::move(ret));
   }

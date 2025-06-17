@@ -243,7 +243,7 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream()));
+      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()));
     }
   }
 };

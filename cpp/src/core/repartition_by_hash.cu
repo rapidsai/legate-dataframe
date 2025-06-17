@@ -296,7 +296,8 @@ std::unique_ptr<cudf::table> repartition_by_hash(
                                     ctx.nranks,
                                     cudf::hash_id::HASH_MURMUR3,
                                     cudf::DEFAULT_HASH_SEED,
-                                    ctx.stream());
+                                    ctx.stream(),
+                                    ctx.mr());
     partition_table.swap(res.first);
 
     // Notice, the offset argument for split() and hash_partition() doesn't align. hash_partition()

@@ -625,20 +625,15 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
   if (scalar_out_ && column->size() != 1) {
     throw std::logic_error("move_into(): for scalar, column must have size one.");
   }
-  cudf::type_dispatcher(column->type(),
-                        move_into_fn{},
-                        ctx_,
-                        array_,
-                        std::move(column),
-                        ctx_->get_legate_context().get_task_stream());
+  cudf::type_dispatcher(
+    column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
 }
 
 void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be
   // preferable (although libcudf could also grow a way to get a column view).
-  auto col =
-    cudf::make_column_from_scalar(*scalar, 1, ctx_->get_legate_context().get_task_stream());
+  auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream());
   move_into(std::move(col));
 }
 

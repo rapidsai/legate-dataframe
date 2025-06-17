@@ -121,7 +121,7 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
 
     // Note: cudf has no helper to go to a column view right now, but we could
     // specialize this in principle.
-    output.move_into(cudf::make_column_from_scalar(*scalar_res, 1, ctx.stream()));
+    output.move_into(cudf::make_column_from_scalar(*scalar_res, 1, ctx.stream(), ctx.mr()));
   }
 };
 

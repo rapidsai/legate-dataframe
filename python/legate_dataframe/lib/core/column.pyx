@@ -110,7 +110,7 @@ cdef class LogicalColumn:
             )
 
     @staticmethod
-    def from_arrow(pa.Array array not None) -> LogicalColumn:
+    def from_arrow(array) -> LogicalColumn:
         """Create a logical column from a local arrow array.
 
         This call blocks the client's control flow.

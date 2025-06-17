@@ -351,7 +351,7 @@ class PhysicalTable {
    * @brief Return a cudf table view of this physical table
    *
    * NB: The physical table MUST outlive the returned view thus it is UB to do some-
-   *     thing like `argument::get_next_input<PhysicalTable>(ctx).table_view;`
+   *     thing like `argument::get_next_input<PhysicalTable>(ctx).table_view();`
    *
    * @throw std::runtime_error if table is unbound.
    * @return A new table view

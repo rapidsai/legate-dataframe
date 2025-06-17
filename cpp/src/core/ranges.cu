@@ -74,7 +74,7 @@ std::unique_ptr<cudf::column> global_ranges_to_cudf_offsets_impl(
     ranges_to_offsets<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
       cudf_offsets->size(), num_chars, ranges_shape.lo, ranges_acc, offsets_acc);
   } else {
-    auto tmp_dev_buf       = rmm::device_buffer(ranges_size * sizeof(RangeDType), stream);
+    auto tmp_dev_buf       = rmm::device_buffer(ranges_size * sizeof(RangeDType), stream, mr);
     auto ranges_acc_on_dev = static_cast<RangeDType*>(tmp_dev_buf.data());
     LEGATE_CHECK_CUDA(cudaMemcpyAsync(ranges_acc_on_dev,
                                       ranges_acc.ptr(0),

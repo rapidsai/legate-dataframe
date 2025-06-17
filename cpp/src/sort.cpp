@@ -152,7 +152,8 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   auto my_split_cols_tbl = cudf::gather(my_sorted_tbl.select(keys_idx),
                                         my_split_ind_col->view(),
                                         cudf::out_of_bounds_policy::DONT_CHECK,
-                                        ctx.stream());
+                                        ctx.stream(),
+                                        ctx.mr());
 
   auto my_split_cols_view = my_split_cols_tbl->view();
   auto my_split_cols_vector =
@@ -201,7 +202,8 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   auto split_values_tbl  = cudf::gather(split_candidates->view(),
                                        split_value_inds->view(),
                                        cudf::out_of_bounds_policy::DONT_CHECK,
-                                       ctx.stream());
+                                       ctx.stream(),
+                                       ctx.mr());
   auto split_values_view = split_values_tbl->view();
 
   /*
@@ -221,13 +223,15 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
                                                       split_values_view.select(value_keysx),
                                                       column_order,
                                                       null_precedence,
-                                                      ctx.stream());
+                                                      ctx.stream(),
+                                                      ctx.mr());
   auto split_candidates_first_view = split_candidates_first_col->view();
   auto split_candidates_last_col   = cudf::upper_bound(my_sorted_tbl.select(keys_idx),
                                                      split_values_view.select(value_keysx),
                                                      column_order,
                                                      null_precedence,
-                                                     ctx.stream());
+                                                     ctx.stream(),
+                                                     ctx.mr());
   auto split_candidates_last_view  = split_candidates_last_col->view();
 
   // The local index and rank of the split value, we'll use the rank if it came from this rank

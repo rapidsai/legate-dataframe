@@ -547,7 +547,7 @@ class PhysicalColumn {
    * @brief Return a cudf column view of this physical column
    *
    * NB: The physical column MUST outlive the returned view thus it is UB to do some-
-   *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view;`
+   *     thing like `argument::get_next_input<PhysicalColumn>(ctx).column_view();`
    *
    * @throw cudf::logic_error if column is unbound.
    * @return A new column view.
