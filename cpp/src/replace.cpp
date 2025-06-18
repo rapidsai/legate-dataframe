@@ -50,7 +50,11 @@ class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::Replace
 
     auto datum_result =
       ARROW_RESULT(arrow::compute::CallFunction("coalesce", {arrow_input, scalar}));
-    output.move_into(std::move(datum_result.make_array()));
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(datum_result.make_array()));
+    } else {
+      output.move_into(std::move(datum_result.make_array()));
+    }
   }
 
   static void gpu_variant(legate::TaskContext context)
