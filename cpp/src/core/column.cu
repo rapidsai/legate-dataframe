@@ -580,25 +580,23 @@ struct move_into_fn {
     const auto num_rows = column->size();
     const auto cudf_col = column->view();
     if (array.nullable()) {
+      bool* null_mask_ptr = maybe_bind_buffer<bool>(array.null_mask(), num_rows);
+
       if (column->nullable()) {
-        auto null_mask = array.null_mask().create_output_buffer<bool, 1>(legate::Point<1>(num_rows),
-                                                                         /* bind_buffer = */ true);
-        null_mask_bits_to_bools(num_rows, null_mask.ptr(0), cudf_col.null_mask(), stream);
+        null_mask_bits_to_bools(num_rows, null_mask_ptr, cudf_col.null_mask(), stream);
       } else {
-        auto null_mask = array.null_mask().create_output_buffer<bool, 1>(legate::Point<1>(num_rows),
-                                                                         true /* bind_buffer */);
         LEGATE_CHECK_CUDA(cudaMemsetAsync(
-          null_mask.ptr(0), std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
+          null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
       }
     }
 
     auto mem_alloc = ctx->mr()->release_buffer(cudf_col);
-    if (mem_alloc.valid()) {
+
+    if (mem_alloc.valid() && array.data().is_unbound_store()) {
       array.data().bind_untyped_data(mem_alloc.buffer(), cudf_col.size());
     } else {
-      auto out =
-        array.data().create_output_buffer<T, 1>(legate::Point<1>(num_rows), true /* bind_buffer */);
-      LEGATE_CHECK_CUDA(cudaMemcpyAsync(out.ptr(0),
+      T* data_ptr = maybe_bind_buffer<T>(array.data(), num_rows);
+      LEGATE_CHECK_CUDA(cudaMemcpyAsync(data_ptr,
                                         cudf_col.data<T>(),
                                         cudf_col.size() * sizeof(T),
                                         cudaMemcpyDeviceToDevice,
@@ -612,18 +610,19 @@ struct move_into_fn {
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
   {
+    // The string version currently doesn't support already bound outputs.  Presumably, this
+    // can't happen right now anyway, because the result size is not fixed so it should fail early?
     const auto num_rows = column->size();
     const auto cudf_col = column->view();
+
     if (array.nullable()) {
+      bool* null_mask_ptr = maybe_bind_buffer<bool>(array.null_mask(), num_rows);
+
       if (column->nullable()) {
-        auto null_mask = array.null_mask().create_output_buffer<bool, 1>(legate::Point<1>(num_rows),
-                                                                         /* bind_buffer = */ true);
-        null_mask_bits_to_bools(num_rows, null_mask.ptr(0), cudf_col.null_mask(), stream);
+        null_mask_bits_to_bools(num_rows, null_mask_ptr, cudf_col.null_mask(), stream);
       } else {
-        auto null_mask = array.null_mask().create_output_buffer<bool, 1>(legate::Point<1>(num_rows),
-                                                                         true /* bind_buffer */);
         LEGATE_CHECK_CUDA(cudaMemsetAsync(
-          null_mask.ptr(0), std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
+          null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
       }
     }
 
@@ -631,22 +630,21 @@ struct move_into_fn {
     legate::StringPhysicalArray ary = array.as_string_array();
 
     if (str_col.size() == 0) {
-      ary.ranges().data().bind_empty_data();
-      ary.chars().data().bind_empty_data();
+      if (ary.ranges().data().is_unbound_store()) { ary.ranges().data().bind_empty_data(); }
+      if (ary.chars().data().is_unbound_store()) { ary.chars().data().bind_empty_data(); }
       return;
     }
 
     auto ranges_size = str_col.offsets().size() - 1;
-    auto ranges      = ary.ranges().data().create_output_buffer<legate::Rect<1>, 1>(
-      ranges_size, true /* bind_buffer */);
-
-    cudf_offsets_to_local_ranges(ranges_size, ranges.ptr(0), str_col.offsets(), stream);
+    auto ranges_ptr  = maybe_bind_buffer<legate::Rect<1>>(ary.ranges().data(), ranges_size);
+    cudf_offsets_to_local_ranges(ranges_size, ranges_ptr, str_col.offsets(), stream);
 
     if (str_col.offsets().offset() != 0) {
       throw std::runtime_error("string column seems sliced, which is currently not supported.");
     }
     // TODO: maybe attach the chars data instead of copying.
     auto nbytes = str_col.chars_size(stream);
+    // NOTE: a string array can never bind it's chars data (size may change).
     auto chars = ary.chars().data().create_output_buffer<int8_t, 1>(nbytes, true /* bind_buffer */);
     LEGATE_CHECK_CUDA(cudaMemcpyAsync(
       chars.ptr(0), str_col.chars_begin(stream), nbytes, cudaMemcpyDeviceToDevice, stream));
@@ -667,9 +665,11 @@ struct move_into_fn {
 
 }  // namespace
 
-void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
+void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column, bool allow_copy)
 {
-  if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
+  if (!unbound() && !allow_copy) {
+    throw std::invalid_argument("Cannot call `.move_into()` on a bound column without allow_copy.");
+  }
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
   //     seem to get a nullable column.  So also check `has_nulls()`.
   if (column->nullable() && !array_.nullable() && column->has_nulls()) {
@@ -683,17 +683,19 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
     column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
 }
 
-void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
+void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar, bool allow_copy)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be
   // preferable (although libcudf could also grow a way to get a column view).
   auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream());
-  move_into(std::move(col));
+  move_into(std::move(col), allow_copy);
 }
 
-void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column)
+void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column, bool allow_copy)
 {
-  if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column"); }
+  if (!unbound() && !allow_copy) {
+    throw std::invalid_argument("Cannot call `.move_into()` on a bound column without allow_copy.");
+  }
   auto null_count = column->null_count();
   if (null_count > 0 && !array_.nullable()) {
     throw std::invalid_argument(
@@ -707,11 +709,16 @@ void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column)
   from_arrow(array_, column);
 }
 
-void PhysicalColumn::bind_empty_data() const
+void PhysicalColumn::bind_empty_data(bool allow_copy) const
 {
   if (!unbound()) {
-    throw std::invalid_argument("Cannot call `.bind_empty_data()` on a bound column");
+    if (!allow_copy) {
+      throw std::invalid_argument("Cannot call `.bind_empty_data()` on a bound column");
+    }
+    // Column should already be bound (with empty data), so this is a no-op.
+    return;
   }
+
   if (scalar_out_) {
     throw std::logic_error("Binding empty data to scalar column should not happen?");
   }

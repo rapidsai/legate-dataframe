@@ -136,7 +136,7 @@ void cudf_join_and_gather(TaskContext& ctx,
     cudf::gather(rhs.select(rhs_out_cols), right_indices_col, right_policy, ctx.stream(), ctx.mr());
 
   // Finally, create a vector of both the left and right results and move it into the output table
-  output.move_into(concat(left_result->release(), right_result->release()));
+  output.move_into(concat(left_result->release(), right_result->release()), /* allow_copy */ true);
 }
 
 /**
@@ -270,10 +270,13 @@ namespace {
 /**
  * @brief Help function to append empty columns like those in `table`.
  */
-void append_empty_like_columns(std::vector<LogicalColumn>& output, const LogicalTable& table)
+void append_empty_like_columns(std::vector<LogicalColumn>& output,
+                               const LogicalTable& table,
+                               std::optional<size_t> size = std::nullopt)
 {
   for (const auto& col : table.get_columns()) {
-    output.push_back(LogicalColumn::empty_like(col));
+    output.push_back(
+      LogicalColumn::empty_like(col.type(), col.nullable(), /* scalar */ false, size));
   }
 }
 
@@ -282,10 +285,11 @@ void append_empty_like_columns(std::vector<LogicalColumn>& output, const Logical
  * The empty columns are all nullable no matter the nullability of the columns in `table`
  */
 void append_empty_like_columns_force_nullable(std::vector<LogicalColumn>& output,
-                                              const LogicalTable& table)
+                                              const LogicalTable& table,
+                                              std::optional<size_t> size = std::nullopt)
 {
   for (const auto& col : table.get_columns()) {
-    output.push_back(LogicalColumn::empty_like(col.type(), true));
+    output.push_back(LogicalColumn::empty_like(col.type(), true, /* scalar */ false, size));
   }
 }
 }  // namespace
@@ -309,6 +313,7 @@ LogicalTable join(const LogicalTable& lhs,
 
   // Create an empty like table of the output columns
   std::vector<LogicalColumn> ret_cols;
+  bool output_is_eager_lhs_aligned = false;
   switch (join_type) {
     case JoinType::INNER: {
       append_empty_like_columns(ret_cols, lhs_out);
@@ -316,9 +321,14 @@ LogicalTable join(const LogicalTable& lhs,
       break;
     }
     case JoinType::LEFT: {
-      append_empty_like_columns(ret_cols, lhs_out);
-      // In a left join, the right columns might contain nulls even when `rhs` doesn't
-      append_empty_like_columns_force_nullable(ret_cols, rhs_out);
+      if (broadcast == BroadcastInput::RIGHT && get_prefer_eager_allocations()) {
+        output_is_eager_lhs_aligned = true;
+        append_empty_like_columns(ret_cols, lhs_out, lhs.num_rows());
+        append_empty_like_columns_force_nullable(ret_cols, rhs_out, lhs.num_rows());
+      } else {
+        append_empty_like_columns(ret_cols, lhs_out);
+        append_empty_like_columns_force_nullable(ret_cols, rhs_out);
+      }
       break;
     }
     case JoinType::FULL: {
@@ -343,7 +353,7 @@ LogicalTable join(const LogicalTable& lhs,
   //       a heuristic (e.g. based on the fact that we need to do copies
   //       anyway, so the broadcast may actually copy less).
   //       That could be done here, in a mapper, or within the task itself.
-  argument::add_next_input(task, lhs, broadcast == BroadcastInput::LEFT);
+  auto lhs_vars = argument::add_next_input(task, lhs, broadcast == BroadcastInput::LEFT);
   argument::add_next_input(task, rhs, broadcast == BroadcastInput::RIGHT);
   argument::add_next_scalar_vector(task, std::vector<int32_t>(lhs_keys.begin(), lhs_keys.end()));
   argument::add_next_scalar_vector(task, std::vector<int32_t>(rhs_keys.begin(), rhs_keys.end()));
@@ -354,7 +364,14 @@ LogicalTable join(const LogicalTable& lhs,
     task, std::vector<int32_t>(lhs_out_columns.begin(), lhs_out_columns.end()));
   argument::add_next_scalar_vector(
     task, std::vector<int32_t>(rhs_out_columns.begin(), rhs_out_columns.end()));
-  argument::add_next_output(task, ret);
+  auto output_vars = argument::add_next_output(task, ret);
+
+  if (output_is_eager_lhs_aligned) {
+    for (auto& var : output_vars) {
+      task.add_constraint(legate::align(var, lhs_vars.at(0)));
+    }
+  }
+
   if (broadcast == BroadcastInput::AUTO) {
     task.add_communicator("nccl");
   } else if (join_type == JoinType::FULL ||

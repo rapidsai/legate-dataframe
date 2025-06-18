@@ -65,7 +65,7 @@ class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::Replace
 
     auto ret = cudf::replace_nulls(input.column_view(), *cudf_scalar, ctx.stream(), ctx.mr());
 
-    output.move_into(std::move(ret));
+    output.move_into(std::move(ret), /* allow_copy */ true);
   }
 };
 
@@ -77,7 +77,10 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
   // Result needs to be nullable if the input is and the scalar is also.
   // NOTE: We possibly should bite the bullet here and check if the scalar is null
   // or not.  That is blocking, though.
-  auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable() && scalar.nullable());
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = col.num_rows(); }
+  auto ret =
+    LogicalColumn::empty_like(col.cudf_type(), col.nullable() && scalar.nullable(), false, size);
   if (col.cudf_type() != scalar.cudf_type()) {
     throw std::invalid_argument("Scalar type does not match column type.");
   }
@@ -88,9 +91,10 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
   legate::AutoTask task =
     runtime->create_task(get_library(), task::ReplaceNullScalarTask::TASK_CONFIG.task_id());
 
-  argument::add_next_input(task, col);
+  auto in_var = argument::add_next_input(task, col);
   argument::add_next_input(task, scalar, /* broadcast */ true);
-  argument::add_next_output(task, ret);
+  auto out_var = argument::add_next_output(task, ret);
+  if (size.has_value()) { task.add_constraint(legate::align(out_var, in_var)); }
 
   runtime->submit(std::move(task));
   return ret;

@@ -203,21 +203,29 @@ class LogicalColumn {
                 rmm::cuda_stream_view stream = cudf::get_default_stream());
 
   /**
-   * @brief Create a new unbounded column from an existing column
+   * @brief Create a new column from an existing column
    *
    * This function always returns a non-scalar column, even if the input was
    * considered scalar.  Functions that wish to propagate scalar information
    * must use the long signature.
    *
    * @param other The prototype column
+   * @param bound Whether the new column should be bound with the size of the input.
    * @return The new unbounded column with the type and nullable equal `other`
    */
-  static LogicalColumn empty_like(const LogicalColumn& other)
+  static LogicalColumn empty_like(const LogicalColumn& other, bool bound = false)
   {
-    return LogicalColumn(legate::Runtime::get_runtime()->create_array(
-                           other.array_->type(), other.array_->dim(), other.array_->nullable()),
-                         other.cudf_type(),
-                         false);
+    if (!bound) {
+      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
+                             other.array_->type(), other.array_->dim(), other.array_->nullable()),
+                           other.cudf_type(),
+                           false);
+    } else {
+      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
+                             other.array_->shape(), other.array_->type(), other.array_->nullable()),
+                           other.cudf_type(),
+                           true);
+    }
   }
 
   /**
@@ -238,11 +246,21 @@ class LogicalColumn {
    *
    * @param dtype The data type of the new column
    * @param nullable The nullable of the new column
+   * @param scalar Whether the result is a scalar column.
+   * @param bound_shape If provided, the column will be bound with the given shape.
    * @return The new unbounded column
    */
-  static LogicalColumn empty_like(const legate::Type& dtype, bool nullable, bool scalar = false)
+  static LogicalColumn empty_like(const legate::Type& dtype,
+                                  bool nullable,
+                                  bool scalar                = false,
+                                  std::optional<size_t> size = std::nullopt)
   {
-    return LogicalColumn(legate::Runtime::get_runtime()->create_array(dtype, 1, nullable));
+    if (!size.has_value()) {
+      return LogicalColumn(legate::Runtime::get_runtime()->create_array(dtype, 1, nullable));
+    } else {
+      return LogicalColumn(
+        legate::Runtime::get_runtime()->create_array(Shape{size.value()}, dtype, nullable));
+    }
   }
 
   /**
@@ -253,12 +271,22 @@ class LogicalColumn {
    * @param scalar Whether the result is a scalar column.
    * @return The new unbounded column
    */
-  static LogicalColumn empty_like(cudf::data_type dtype, bool nullable, bool scalar = false)
+  static LogicalColumn empty_like(cudf::data_type dtype,
+                                  bool nullable,
+                                  bool scalar                = false,
+                                  std::optional<size_t> size = std::nullopt)
   {
-    return LogicalColumn(
-      legate::Runtime::get_runtime()->create_array(to_legate_type(dtype.id()), 1, nullable),
-      dtype,
-      scalar);
+    if (!size.has_value()) {
+      return LogicalColumn(
+        legate::Runtime::get_runtime()->create_array(to_legate_type(dtype.id()), 1, nullable),
+        dtype,
+        scalar);
+    } else {
+      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
+                             Shape{size.value()}, to_legate_type(dtype.id()), nullable),
+                           dtype,
+                           scalar);
+    }
   }
 
  public:
@@ -603,27 +631,33 @@ class PhysicalColumn {
    * @brief Move local cudf column into this unbound physical column
    *
    * @param column The cudf column to move
+   * @param allow_copy If true, copies the data if the column is bound.
    */
-  void move_into(std::unique_ptr<cudf::column> column);
+  void move_into(std::unique_ptr<cudf::column> column, bool allow_copy = false);
 
   /**
    * @brief Move local cudf scalar into this unbound physical column
    *
    * @param scalar The cudf scalar to move
+   * @param allow_copy If true, copies the data if the column is bound.
    */
-  void move_into(std::unique_ptr<cudf::scalar> scalar);
+  void move_into(std::unique_ptr<cudf::scalar> scalar, bool allow_copy = false);
 
   /**
    * @brief Move arrow array into this unbound physical column
    *
    * @param column The arrow array to move
+   * @param allow_copy If true, copies the data if the column is bound.
    */
-  void move_into(std::shared_ptr<arrow::Array> column);
+  void move_into(std::shared_ptr<arrow::Array> column, bool allow_copy = false);
 
   /**
    * @brief Makes the unbound column empty. Valid only when the column is unbound.
+   *
+   * @param allow_copy If true, no error is given if the column is bound, this becomes
+   * a no-op instead.  (`allow_copy` just to match `move_into()`.)
    */
-  void bind_empty_data() const;
+  void bind_empty_data(bool allow_copy = false) const;
 
  private:
   TaskContext* ctx_;
