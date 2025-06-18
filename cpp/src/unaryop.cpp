@@ -41,7 +41,7 @@ class CastTask : public Task<CastTask, OpCode::Cast> {
     auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
     cudf::column_view col             = input.column_view();
     std::unique_ptr<cudf::column> ret = cudf::cast(col, output.cudf_type(), ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
+    output.move_into(std::move(ret), /* allow_copy */ true);
   }
 };
 
@@ -58,7 +58,7 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
     auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
     cudf::column_view col             = input.column_view();
     std::unique_ptr<cudf::column> ret = cudf::unary_operation(col, op, ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
+    output.move_into(std::move(ret), /* allow_copy */ true);
   }
 };
 
@@ -75,9 +75,12 @@ LogicalColumn cast(const LogicalColumn& col, cudf::data_type to_type)
     runtime->create_task(get_library(), task::CastTask::TASK_CONFIG.task_id());
 
   // Unary ops can return a scalar column for a scalar column input.
-  auto ret = LogicalColumn::empty_like(to_type, col.nullable(), col.is_scalar());
-  argument::add_next_input(task, col);
-  argument::add_next_output(task, ret);
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = col.num_rows(); }
+  auto ret     = LogicalColumn::empty_like(to_type, col.nullable(), col.is_scalar(), size);
+  auto in_var  = argument::add_next_input(task, col);
+  auto out_var = argument::add_next_output(task, ret);
+  if (size.has_value()) { task.add_constraint(legate::align(out_var, in_var)); }
   runtime->submit(std::move(task));
   return ret;
 }
@@ -89,10 +92,14 @@ LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op)
     runtime->create_task(get_library(), task::UnaryOpTask::TASK_CONFIG.task_id());
 
   // Unary ops can return a scalar column for a scalar column input.
-  auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable(), col.is_scalar());
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = col.num_rows(); }
+  auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable(), col.is_scalar(), size);
+
   argument::add_next_scalar(task, static_cast<std::underlying_type_t<cudf::unary_operator>>(op));
-  argument::add_next_input(task, col);
-  argument::add_next_output(task, ret);
+  auto in_var  = argument::add_next_input(task, col);
+  auto out_var = argument::add_next_output(task, ret);
+  if (size.has_value()) { task.add_constraint(legate::align(out_var, in_var)); }
   runtime->submit(std::move(task));
   return ret;
 }

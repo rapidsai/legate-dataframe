@@ -85,7 +85,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     const auto nrows       = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrows_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg  = argument::get_next_output<PhysicalTable>(ctx);
-    argument::get_parallel_launch_task(ctx);
+    if (!get_prefer_eager_allocations()) { argument::get_parallel_launch_task(ctx); }
 
     if (file_paths.size() != nrows.size()) {
       throw std::runtime_error("internal error: file path and nrows size mismatch");
@@ -123,15 +123,16 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
 
     // Concatenate tables and move the result to the output table
     if (tables.size() == 0) {
-      tbl_arg.bind_empty_data();
+      tbl_arg.bind_empty_data(/* allow_copy */ true);
     } else if (tables.size() == 1) {
-      tbl_arg.move_into(std::move(tables.back()));
+      tbl_arg.move_into(std::move(tables.back()), /* allow_copy */ true);
     } else {
       std::vector<cudf::table_view> table_views;
       for (const auto& table : tables) {
         table_views.push_back(table->view());
       }
-      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()));
+      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()),
+                        /* allow_copy */ true);
     }
   }
 };
@@ -337,9 +338,12 @@ LogicalTable parquet_read(const std::string& glob_string,
 
   std::vector<LogicalColumn> logical_columns;
   logical_columns.reserve(info.column_types.size());
+
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = info.nrows_total; }
   for (int i = 0; i < info.column_types.size(); i++) {
     logical_columns.emplace_back(
-      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false));
+      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false, size));
   }
   auto ret = LogicalTable(std::move(logical_columns), info.column_names);
 
@@ -351,7 +355,8 @@ LogicalTable parquet_read(const std::string& glob_string,
   argument::add_next_scalar_vector(task, info.nrows);
   argument::add_next_scalar(task, info.nrows_total);
   argument::add_next_output(task, ret);
-  argument::add_parallel_launch_task(task);
+
+  if (!size.has_value()) { argument::add_parallel_launch_task(task); }
   runtime->submit(std::move(task));
   return ret;
 }
