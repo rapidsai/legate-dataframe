@@ -466,11 +466,14 @@ class PhysicalTable {
 
   /**
    * @brief Makes the unbound table empty. Valid only when the table is unbound.
+   *
+   * @param allow_copy If true, no error is given if the column is bound, this becomes
+   * a no-op instead.  (`allow_copy` just to match `move_into()`.)
    */
-  void bind_empty_data() const
+  void bind_empty_data(bool allow_copy = false) const
   {
     for (const auto& col : columns_) {
-      col.bind_empty_data();
+      col.bind_empty_data(allow_copy);
     }
   }
 

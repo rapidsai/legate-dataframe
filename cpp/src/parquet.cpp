@@ -209,7 +209,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
-    argument::get_parallel_launch_task(ctx);
+    if (!get_prefer_eager_allocations()) { argument::get_parallel_launch_task(ctx); }
 
     if (file_paths.size() != ngroups_per_file.size()) {
       throw std::runtime_error("internal error: file path and nrows size mismatch");
@@ -219,7 +219,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
 
     if (my_num_groups == 0) {
-      tbl_arg.bind_empty_data();
+      tbl_arg.bind_empty_data(/* allow_copy */ true);
       return;
     }
 
@@ -232,7 +232,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     opt.row_groups(row_groups);
     auto res = cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl;
 
-    tbl_arg.move_into(std::move(res));
+    tbl_arg.move_into(std::move(res), /* allow_copy */ true);
   }
 };
 
@@ -550,9 +550,12 @@ LogicalTable parquet_read(const std::vector<std::string>& files,
 
   std::vector<LogicalColumn> logical_columns;
   logical_columns.reserve(info.column_types.size());
+
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = info.nrows_total; }
   for (int i = 0; i < info.column_types.size(); i++) {
     logical_columns.emplace_back(
-      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false));
+      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false, size));
   }
   auto ret = LogicalTable(std::move(logical_columns), info.column_names);
 
@@ -564,8 +567,15 @@ LogicalTable parquet_read(const std::vector<std::string>& files,
   argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
   argument::add_next_scalar(task, info.nrow_groups_total);
-  argument::add_next_output(task, ret);
-  argument::add_parallel_launch_task(task);
+  auto vars = argument::add_next_output(task, ret);
+
+  if (!size.has_value()) {
+    argument::add_parallel_launch_task(task);
+  }
+  else {
+    auto constraint_var = task.add_input(info.row_group_ranges);
+    task.add_constraint(legate::image(constraint_var, vars.at(0)));
+  }
   runtime->submit(std::move(task));
   return ret;
 }
