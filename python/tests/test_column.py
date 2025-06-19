@@ -83,6 +83,7 @@ def test_huge_string_roundtrip(size):
     assert col_cudf_arrow == col_lg_arrow
 
 
+@pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
 def test_offload_to():
     # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
     available_mem_gpu, available_mem_cpu = guess_available_mem()
