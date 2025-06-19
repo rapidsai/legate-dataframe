@@ -122,17 +122,26 @@ class Mapper : public legate::mapping::Mapper {
 
 legate::Library create_and_registrate_library()
 {
+  auto runtime = legate::Runtime::get_runtime();
+
+  if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) > 0) {
+    // If we are running on a GPU, we should set the global RMM memory resource
+    // to hook into more/most allocations triggered via libcudf.
+    const char* env = std::getenv("LDF_DISABLE_GLOBAL_MEMORY_RESOURCE");
+    if (env == nullptr || std::string{env} == "0") {
+      GlobalMemoryResource::set_as_default_mmr_resource();
+    }
+  }
   // Set with_has_allocations globally since currently all tasks allocate (and libcudf may also)
   auto options = legate::VariantOptions{}.with_has_allocations(true);
-  auto context =
-    legate::Runtime::get_runtime()->find_or_create_library(library_name,
-                                                           legate::ResourceConfig{},
-                                                           std::make_unique<Mapper>(),
-                                                           {{legate::VariantCode::CPU, options},
-                                                            {legate::VariantCode::GPU, options},
-                                                            {legate::VariantCode::OMP, options}});
+  auto context = runtime->find_or_create_library(library_name,
+                                                 legate::ResourceConfig{},
+                                                 std::make_unique<Mapper>(),
+                                                 {{legate::VariantCode::CPU, options},
+                                                  {legate::VariantCode::GPU, options},
+                                                  {legate::VariantCode::OMP, options}});
   task::Registry::get_registrar().register_all_tasks(context);
-  return legate::Runtime::get_runtime()->find_library(legate::dataframe::library_name);
+  return runtime->find_library(legate::dataframe::library_name);
 }
 
 }  // namespace

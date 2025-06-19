@@ -104,5 +104,34 @@ class TaskMemoryResource : public DeviceMemoryResource {
   std::unordered_map<const void*, MemAlloc> buffers_{};
 };
 
+/**
+ * @brief Global RMM resource that return device memory allocations
+ *
+ * This resource returns allocations backed by either legate buffers or regular CUDA
+ * buffers depending on whether the allocation is called from inside a legate task
+ * or by the control code. Therefore, this resource can be used both inside and
+ * outside tasks and can be used with RMM's `set_per_device_resource()` and
+ * `set_current_device_resource()`.
+ *
+ * Recommendation: use `.set_as_default_mmr_resource()` to create a single instance of
+ * this class per GPU and set them as the default memory resources.
+ */
+class GlobalMemoryResource : public DeviceMemoryResource {
+ public:
+  void* do_allocate(std::size_t bytes, rmm::cuda_stream_view stream) override;
+  void do_deallocate(void* ptr, std::size_t bytes, rmm::cuda_stream_view stream) override;
+
+  /**
+   * @brief Create an memory resource per GPU and set them as the default memory resources.
+   *
+   * This function is idempotent and only creates and sets the memory sources at first call.
+   */
+  static void set_as_default_mmr_resource();
+
+ private:
+  rmm::mr::cuda_memory_resource cuda_mr_{};
+  TaskMemoryResource task_mr_{};
+};
+
 }  // namespace dataframe
 }  // namespace legate
