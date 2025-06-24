@@ -236,12 +236,17 @@ legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array)
   }
   auto array = runtime->create_array({std::uint64_t(arrow_array->length())},
                                      to_legate_type(arrow_array->type_id()),
-                                     1,
-                                     arrow_array->null_bitmap_data() != nullptr);
+                                     arrow_array->null_count() > 0,
+                                     false /* scalar */);
   from_arrow(array.get_physical_array(), arrow_array);
   return array;
 }
 
+legate::LogicalArray from_arrow(std::shared_ptr<arrow::Scalar> scalar)
+{
+  auto array = ARROW_RESULT(arrow::MakeArrayFromScalar(*scalar, 1));
+  return from_arrow(array);
+}
 }  // namespace
 
 LogicalColumn::LogicalColumn(cudf::column_view cudf_col, rmm::cuda_stream_view stream)
@@ -259,6 +264,14 @@ LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
                   from_arrow(arrow_array),
                   cudf::data_type(to_cudf_type_id(to_legate_type(arrow_array->type_id()).code())),
                   /* scalar */ false}
+{
+}
+
+LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Scalar> arrow_scalar)
+  : LogicalColumn{// This type conversion monstrosity can be improved
+                  from_arrow(arrow_scalar),
+                  cudf::data_type(to_cudf_type_id(to_legate_type(arrow_scalar->type->id()).code())),
+                  /* scalar */ true}
 {
 }
 

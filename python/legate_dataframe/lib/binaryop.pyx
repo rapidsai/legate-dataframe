@@ -4,7 +4,7 @@
 # distutils: language = c++
 # cython: language_level=3
 
-from libc.stdint cimport int32_t
+from libcpp.string cimport string
 
 from pylibcudf.types cimport data_type
 
@@ -18,87 +18,11 @@ from legate_dataframe.lib.core.scalar import ScalarLike
 from legate_dataframe.utils import _track_provenance
 
 
-cdef extern from "<cudf/binaryop.hpp>" namespace "cudf":
-    cpdef enum class binary_operator(int32_t):
-        """Enum of binary operators, see :external:cpp:enum:`binary_operator`.
-        """
-        ADD,                   # operator +
-        SUB,                   # operator -
-        MUL,                   # operator *
-        DIV,                   # operator / using common type of lhs and rhs
-        TRUE_DIV,              # operator / after promoting type to floating point
-        BITWISE_AND,           # operator &
-        BITWISE_OR,            # operator |
-        BITWISE_XOR,           # operator ^
-        LOGICAL_AND,           # operator &&
-        LOGICAL_OR,            # operator ||
-        EQUAL,                 # operator ==
-        NOT_EQUAL,             # operator !=
-        LESS,                  # operator <
-        GREATER,               # operator >
-        LESS_EQUAL,            # operator <=
-        GREATER_EQUAL,         # operator >=
-        MOD,                   # operator %
-
-        # operator //
-        # integer division rounding towards negative
-        # infinity if both arguments are integral;
-        # floor division for floating types (using C++ type
-        # promotion for mixed integral/floating arguments)
-        # If different promotion semantics are required, it
-        # is the responsibility of the caller to promote
-        # manually before calling in to this function.
-        FLOOR_DIV,
-        # positive modulo operator
-        # If remainder is negative, this returns
-        # (remainder + divisor) % divisor else, it returns
-        # (dividend % divisor)
-        PMOD,
-        # operator % but following Python's sign rules for negatives
-        PYMOD,
-        # lhs ^ rhs
-        POW,
-        # int ^ int, used to avoid floating point precision loss.
-        # Returns 0 for negative exponents.
-        INT_POW,
-        # logarithm to the base
-        LOG_BASE,
-        # 2-argument arctangent
-        ATAN2,
-        # operator <<
-        SHIFT_LEFT,
-        # operator >>
-        SHIFT_RIGHT,
-        # operator >>> (from Java)
-        # Logical right shift. Casts to an unsigned value before shifting.
-        SHIFT_RIGHT_UNSIGNED,
-        # Returns true when both operands are null; false when one is null; the
-        # result of equality when both are non-null
-        NULL_EQUALS,
-        # Returns max of operands when both are non-null; returns the non-null
-        # operand when one is null; or invalid when both are null
-        NULL_MAX,
-        # Returns min of operands when both are non-null; returns the non-null
-        # operand when one is null; or invalid when both are null
-        NULL_MIN,
-        # generic binary operator to be generated with input
-        # ptx code
-        GENERIC_BINARY,
-        # operator && with Spark rules: (null, null) is null, (null, true) is null,
-        # (null, false) is false, and (valid, valid) == LOGICAL_AND(valid, valid)
-        NULL_LOGICAL_AND,
-        # operator || with Spark rules: (null, null) is null, (null, true) is true,
-        # (null, false) is null, and (valid, valid) == LOGICAL_OR(valid, valid)
-        NULL_LOGICAL_OR,
-        # invalid operation
-        INVALID_BINARY
-
-
 cdef extern from "<legate_dataframe/binaryop.hpp>" nogil:
     cpp_LogicalColumn cpp_binary_operation "binary_operation"(
         const cpp_LogicalColumn& lhs,
         const cpp_LogicalColumn& rhs,
-        binary_operator op,
+        string op,
         data_type output_type
     )
 
@@ -107,7 +31,7 @@ cdef extern from "<legate_dataframe/binaryop.hpp>" nogil:
 def binary_operation(
     lhs: LogicalColumn | ScalarLike,
     rhs: LogicalColumn | ScalarLike,
-    binary_operator op,
+    op: str,
     output_type: DTypeLike
 ) -> LogicalColumn:
     """Performs a binary operation between two columns or a column and a scalar.
@@ -127,7 +51,7 @@ def binary_operation(
     lhs
         The right operand
     op
-        The binary operator see `binary_operator`.
+        String for arrow compute function e.g. "add", "multiply"
     output_type
         The desired data type of the output column
 
@@ -165,6 +89,7 @@ def binary_operation(
 
     return LogicalColumn.from_handle(
         cpp_binary_operation(
-            lhs_col._handle, rhs_col._handle, op, as_data_type(output_type)
+            lhs_col._handle, rhs_col._handle, op.encode('utf-8'),
+            as_data_type(output_type)
         )
     )

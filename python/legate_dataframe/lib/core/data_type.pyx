@@ -10,7 +10,9 @@ from pylibcudf.types cimport DataType
 from pylibcudf.types cimport data_type as cpp_cudf_type
 
 import cudf
+import pyarrow as pa
 from cudf._lib.types import PYLIBCUDF_TO_SUPPORTED_NUMPY_TYPES, dtype_to_pylibcudf_type
+from pylibcudf.interop import from_arrow
 
 
 cdef cpp_cudf_type as_data_type(data_type_like):
@@ -26,6 +28,11 @@ cdef cpp_cudf_type as_data_type(data_type_like):
         Coerced C++ cudf type.
     """
     cdef DataType d_type
+
+    # arrow
+    if isinstance(data_type_like, pa.DataType):
+        data_type_like = from_arrow(data_type_like)
+
     if isinstance(data_type_like, DataType):
         d_type = data_type_like
         return d_type.c_obj

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,8 @@ namespace legate::dataframe {
  *
  * @param lhs         The left operand column
  * @param rhs         The right operand column
- * @param op          The binary operator
+ * @param op          An arrow compute function - see arrow docs for supported operations e.g.
+ * "add", "power"
  * @param output_type The desired data type of the output column
  * @return            Output column of `output_type` type containing the result of
  *                    the binary operation
@@ -50,7 +51,7 @@ namespace legate::dataframe {
  */
 LogicalColumn binary_operation(const LogicalColumn& lhs,
                                const LogicalColumn& rhs,
-                               cudf::binary_operator op,
+                               std::string op,
                                cudf::data_type output_type);
 
 }  // namespace legate::dataframe

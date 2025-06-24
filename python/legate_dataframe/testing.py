@@ -207,6 +207,34 @@ def get_column_set(dtypes, nulls=True):
         yield pytest.param(series._column, id=f"col({dtype}, nulls={nulls})")
 
 
+# To replace the above eventually as cudf is removed from tests
+def get_pyarrow_column_set(dtypes, nulls=True):
+    """Return a set of columns with the given dtypes
+
+    Can be used to test a pytest fixture to generate a set of columns.
+
+    Parameters
+    ----------
+    dtypes : sequence of dtypes
+        The dtypes for the returned columns.
+    nulls : boolean, optional
+        If set  to``False`` the returned columns do not contain booleans.
+
+    Yields
+    ------
+    parameter : pytest.param
+        Pytest parameters each containing a columns.
+    """
+    data = np.arange(-1000, 1000)
+    np.random.seed(0)
+
+    for dtype in dtypes:
+        mask = np.random.randint(2, size=len(data), dtype=bool) if nulls else None
+        series = pa.array(data, type=dtype, mask=mask)
+
+        yield pytest.param(series, id=f"col({dtype}, nulls={nulls})")
+
+
 def guess_available_mem():
     """Function that guesses the available GPU and SYSMEM memory in MiB based
     on the ``LEGATE_CONFIG`` environment variable.

@@ -8,7 +8,7 @@ from libcpp cimport bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string
 
-from pyarrow cimport CArray
+from pyarrow.lib cimport CArray, CScalar
 from pylibcudf.libcudf.column.column cimport column, column_view
 from pylibcudf.libcudf.scalar.scalar cimport scalar
 from pylibcudf.types cimport data_type
@@ -25,6 +25,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         cpp_LogicalColumn(column_view cudf_col) except +
         cpp_LogicalColumn(scalar &cudf_scalar) except +
         cpp_LogicalColumn(shared_ptr[CArray] arrow_array) except +
+        cpp_LogicalColumn(shared_ptr[CScalar] arrow_array) except +
 
         @staticmethod
         cpp_LogicalColumn empty_like(const cpp_LogicalColumn& other) except +

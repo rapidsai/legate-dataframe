@@ -18,7 +18,6 @@ import math
 import cudf
 import numpy as np
 import pyarrow as pa
-import pylibcudf
 import pytest
 from legate.core import TaskTarget, get_legate_runtime, get_machine
 from pyarrow import csv
@@ -72,8 +71,7 @@ def test_write(tmp_path, df):
 def test_read(tmp_path, df, npartitions=2):
     filenames = str(tmp_path) + "/*.csv"
     write_partitioned_csv(df, tmp_path, npartitions=npartitions)
-    cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
-    tbl = csv_read(filenames, dtypes=cudf_types)
+    tbl = csv_read(filenames, dtypes=df.schema.types)
     assert_arrow_table_equal(tbl.to_arrow(), df)
 
 
@@ -81,8 +79,7 @@ def test_read_single_rows(tmp_path):
     filenames = str(tmp_path) + "/*.csv"
     df = pa.table({"a": np.arange(1, dtype="int64")})
     write_partitioned_csv(df, tmp_path, npartitions=1)
-    cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
-    tbl = csv_read(filenames, dtypes=cudf_types)
+    tbl = csv_read(filenames, dtypes=df.schema.types)
     assert_arrow_table_equal(tbl.to_arrow(), df)
 
 
@@ -111,8 +108,7 @@ def test_read_many_files_per_rank(tmp_path):
     write_partitioned_csv(df, tmp_path, npartitions=npartitions)
     # Test that we really have many files hoped for:
     assert len(glob.glob(filenames)) == npartitions
-    cudf_types = [pylibcudf.interop.from_arrow(t) for t in df.schema.types]
-    tbl = csv_read(filenames, dtypes=cudf_types)
+    tbl = csv_read(filenames, dtypes=df.schema.types)
 
     assert_arrow_table_equal(tbl.to_arrow().sort_by("a"), df)
 

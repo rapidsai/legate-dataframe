@@ -179,6 +179,17 @@ class LogicalColumn {
   LogicalColumn(std::shared_ptr<arrow::Array> arrow_array);
 
   /**
+   * @brief Create a scalar column from a local arrow scalar
+   *
+   * This call blocks the client's control flow and scatter the data to all
+   * legate nodes.
+   * This column will be marked and treated as scalar.
+   *
+   * @param arrow_scalar The local arrow scalar to copy into a logical column
+   */
+  LogicalColumn(std::shared_ptr<arrow::Scalar> arrow_scalar);
+
+  /**
    * @brief Create a scalar column from a local cudf scalar
    *
    * This call blocks the client's control flow and scatter the data to all

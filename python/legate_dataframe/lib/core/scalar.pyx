@@ -9,6 +9,7 @@ import numbers
 import cudf
 import legate.core
 import numpy
+import pyarrow as pa
 
 from cudf._lib.scalar cimport DeviceScalar
 
@@ -39,6 +40,9 @@ cdef LogicalColumn cpp_scalar_col_from_python(scalar: ScalarLike):
     #       `legate.core.Scalar`.
     if isinstance(scalar, legate.core.Scalar):
         scalar = scalar.value()
+
+    if isinstance(scalar, pa.Scalar):
+        return LogicalColumn.from_arrow(scalar)
 
     # NOTE: Converting to a cudf scalar isn't really ideal, as we copy
     #       to the device, just to copy it back again to get a legate one.

@@ -383,8 +383,7 @@ class AggregationHelper final {
         auto cudf_int64 = cudf::data_type{cudf::type_id::INT64};
         auto counts     = get_result(*cudf::make_count_aggregation(), cudf_int64, std::nullopt);
 
-        return legate::dataframe::binary_operation(
-          sum, counts, cudf::binary_operator::DIV, output_type);
+        return legate::dataframe::binary_operation(sum, counts, "div", output_type);
       }
       default: {
         auto first_pass_res = get_first_pass_result(agg, output_type);

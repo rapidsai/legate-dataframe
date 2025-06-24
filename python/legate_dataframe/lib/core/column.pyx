@@ -14,7 +14,7 @@ from libcpp.utility cimport move
 
 from cudf._lib.column cimport Column as cudfColumn
 from cudf._lib.scalar cimport DeviceScalar
-from pyarrow.lib cimport pyarrow_unwrap_array, pyarrow_wrap_array
+from pyarrow.lib cimport pyarrow_unwrap_array, pyarrow_unwrap_scalar, pyarrow_wrap_array
 from pylibcudf.libcudf.column.column cimport column
 
 from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
@@ -110,8 +110,8 @@ cdef class LogicalColumn:
             )
 
     @staticmethod
-    def from_arrow(array) -> LogicalColumn:
-        """Create a logical column from a local arrow array.
+    def from_arrow(array_or_scalar) -> LogicalColumn:
+        """Create a logical column from a local arrow array or scalar.
 
         This call blocks the client's control flow.
 
@@ -124,10 +124,22 @@ cdef class LogicalColumn:
         -------
             New logical column
         """
-        cdef shared_ptr[CArray] arrow_array = pyarrow_unwrap_array(array)
-        if arrow_array.get() == NULL:
-            raise TypeError("not an array")
-        return LogicalColumn.from_handle(cpp_LogicalColumn(arrow_array))
+        cdef shared_ptr[CArray] arrow_array
+        cdef shared_ptr[CScalar] arrow_scalar
+        if isinstance(array_or_scalar, pa.Scalar):
+            arrow_scalar = pyarrow_unwrap_scalar(array_or_scalar)
+            if arrow_scalar.get() == NULL:
+                raise TypeError("not a scalar")
+            return LogicalColumn.from_handle(cpp_LogicalColumn(arrow_scalar))
+        elif isinstance(array_or_scalar, pa.Array):
+            arrow_array = pyarrow_unwrap_array(array_or_scalar)
+            if arrow_array.get() == NULL:
+                raise TypeError("not an array")
+            return LogicalColumn.from_handle(cpp_LogicalColumn(arrow_array))
+        else:
+            raise TypeError(
+                "from_arrow() only supports pyarrow arrays and scalars."
+            )
 
     @staticmethod
     def empty_like_logical_column(LogicalColumn col) -> LogicalColumn:
