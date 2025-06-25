@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "gmock/gmock-matchers.h"
 #include <arrow/api.h>
 #include <arrow/compute/api.h>
 #include <cudf/binaryop.hpp>
@@ -141,37 +142,45 @@ std::vector<std::string> ops = {"add",
                                 "shift_left",
                                 "shift_right"};
 
-TYPED_TEST(BinaryOpsTest, AddColCol)
+TYPED_TEST(BinaryOpsTest, ColCol)
 {
   LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}));
   LogicalColumn rhs(narrow<TypeParam>({5, 6, 7, 8}));
   CompareArrow(lhs, rhs, ops);
 }
 
-TYPED_TEST(BinaryOpsTest, AddColColWithNull)
+TYPED_TEST(BinaryOpsTest, ColColWithNull)
 {
   LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}), {1, 0, 1, 0});
   LogicalColumn rhs(narrow<TypeParam>({5, 6, 7, 8}), {1, 0, 1, 0});
   CompareArrow(lhs, rhs, ops);
 }
 
-TYPED_TEST(BinaryOpsTest, AddColScalar)
+TYPED_TEST(BinaryOpsTest, ColScalar)
 {
   LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}));
   LogicalColumn rhs(narrow<TypeParam>({1}), {}, true);
   CompareArrow(lhs, rhs, ops);
 }
 
-TYPED_TEST(BinaryOpsTest, AddColScalarWithNull)
+TYPED_TEST(BinaryOpsTest, ColScalarWithNull)
 {
   LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}), {1, 0, 1, 0});
   LogicalColumn rhs(narrow<TypeParam>({1}), {1}, true);
   CompareArrow(lhs, rhs, ops);
 }
 
-TYPED_TEST(BinaryOpsTest, AddScalarCol)
+TYPED_TEST(BinaryOpsTest, ScalarCol)
 {
   LogicalColumn lhs(narrow<TypeParam>({1}), {}, true);
   LogicalColumn rhs(narrow<TypeParam>({1, 2, 3, 4}));
   CompareArrow(lhs, rhs, ops);
+}
+
+TEST(BinaryOpsTest, BadOp)
+{
+  LogicalColumn lhs(narrow<int32_t>({1, 2, 3, 4}));
+  LogicalColumn rhs(narrow<int32_t>({5, 6, 7, 8}));
+  EXPECT_THAT([=]() { binary_operation(lhs, rhs, "bad_op", lhs.cudf_type()); },
+              testing::ThrowsMessage<std::invalid_argument>(testing::HasSubstr("operator")));
 }

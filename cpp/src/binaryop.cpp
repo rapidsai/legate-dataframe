@@ -36,44 +36,27 @@ cudf::binary_operator arrow_to_cudf_binary_op(std::string op)
   // where an equivalent cudf binary operator exists.
   // https://arrow.apache.org/docs/cpp/compute.html#element-wise-scalar-functions
   // https://docs.rapids.ai/api/libcudf/stable/group__transformation__binaryops
-  if (op == "add") {
-    return cudf::binary_operator::ADD;
-  } else if (op == "divide") {
-    return cudf::binary_operator::DIV;
-  } else if (op == "multiply") {
-    return cudf::binary_operator::MUL;
-  } else if (op == "power") {
-    return cudf::binary_operator::POW;
-  } else if (op == "subtract") {
-    return cudf::binary_operator::SUB;
-  } else if (op == "bit_wise_and") {
-    return cudf::binary_operator::BITWISE_AND;
-  } else if (op == "bit_wise_or") {
-    return cudf::binary_operator::BITWISE_OR;
-  } else if (op == "bit_wise_xor") {
-    return cudf::binary_operator::BITWISE_XOR;
-  } else if (op == "shift_left") {
-    return cudf::binary_operator::SHIFT_LEFT;
-  } else if (op == "shift_right") {
-    return cudf::binary_operator::SHIFT_RIGHT;
-  } else if (op == "logb") {
-    return cudf::binary_operator::LOG_BASE;
-  } else if (op == "atan2") {
-    return cudf::binary_operator::ATAN2;
-  } else if (op == "equal") {
-    return cudf::binary_operator::EQUAL;
-  } else if (op == "greater") {
-    return cudf::binary_operator::GREATER;
-  } else if (op == "greater_equal") {
-    return cudf::binary_operator::GREATER_EQUAL;
-  } else if (op == "less") {
-    return cudf::binary_operator::LESS;
-  } else if (op == "less_equal") {
-    return cudf::binary_operator::LESS_EQUAL;
-  } else if (op == "not_equal") {
-    return cudf::binary_operator::NOT_EQUAL;
-  }
+  std::unordered_map<std::string, cudf::binary_operator> arrow_to_cudf_ops = {
+    {"add", cudf::binary_operator::ADD},
+    {"divide", cudf::binary_operator::DIV},
+    {"multiply", cudf::binary_operator::MUL},
+    {"power", cudf::binary_operator::POW},
+    {"subtract", cudf::binary_operator::SUB},
+    {"bit_wise_and", cudf::binary_operator::BITWISE_AND},
+    {"bit_wise_or", cudf::binary_operator::BITWISE_OR},
+    {"bit_wise_xor", cudf::binary_operator::BITWISE_XOR},
+    {"shift_left", cudf::binary_operator::SHIFT_LEFT},
+    {"shift_right", cudf::binary_operator::SHIFT_RIGHT},
+    {"logb", cudf::binary_operator::LOG_BASE},
+    {"atan2", cudf::binary_operator::ATAN2},
+    {"equal", cudf::binary_operator::EQUAL},
+    {"greater", cudf::binary_operator::GREATER},
+    {"greater_equal", cudf::binary_operator::GREATER_EQUAL},
+    {"less", cudf::binary_operator::LESS},
+    {"less_equal", cudf::binary_operator::LESS_EQUAL},
+    {"not_equal", cudf::binary_operator::NOT_EQUAL}};
 
+  if (arrow_to_cudf_ops.find(op) != arrow_to_cudf_ops.end()) { return arrow_to_cudf_ops[op]; }
   throw std::invalid_argument("Could not find cudf binary operator matching: " + op);
   return cudf::binary_operator::INVALID_BINARY;
 }
@@ -171,9 +154,21 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
                                std::string op,
                                cudf::data_type output_type)
 {
-  auto runtime  = legate::Runtime::get_runtime();
-  bool nullable = lhs.nullable() || rhs.nullable();
+  auto runtime = legate::Runtime::get_runtime();
 
+  // Check if the op is valid before we enter the task
+  // This allows us to to throw nicely
+  if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) > 0) {
+    // Throws if op doesn't exist
+    task::arrow_to_cudf_binary_op(op);
+  } else {
+    auto result = arrow::compute::GetFunctionRegistry()->GetFunction(op);
+    if (!result.ok()) {
+      throw std::invalid_argument("Could not find arrow binary operator matching: " + op);
+    }
+  }
+
+  bool nullable      = lhs.nullable() || rhs.nullable();
   auto scalar_result = lhs.is_scalar() && rhs.is_scalar();
   auto ret           = LogicalColumn::empty_like(std::move(output_type), nullable, scalar_result);
   legate::AutoTask task =
