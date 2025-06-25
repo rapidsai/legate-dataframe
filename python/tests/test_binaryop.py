@@ -65,11 +65,16 @@ def test_scalar_input(array, op, scalar):
 
     res = binary_operation(col, scalar, op, array.type)
 
-    expect = pa.compute.call_function(op, [array, scalar])
+    pa_scalar = (
+        pa.scalar(scalar.value())
+        if isinstance(scalar, legate.core.Scalar)
+        else pa.scalar(scalar)
+    )
+    expect = pa.compute.call_function(op, [array, pa_scalar]).cast(array.type)
     assert expect == res.to_arrow()
 
     res = binary_operation(scalar, col, op, array.type)
-    expect = pa.compute.call_function(op, [scalar, array])
+    expect = pa.compute.call_function(op, [pa_scalar, array]).cast(array.type)
     assert expect == res.to_arrow()
 
     result = binary_operation(scalar, scalar, op, array.type)

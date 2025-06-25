@@ -28,89 +28,150 @@
 using namespace legate::dataframe;
 
 template <typename T>
-struct BinaryOpsTest : public testing::Test {
-  std::vector<std::string> binary_ops = {
-    "add", "divide", "multiply", "power", "subtract",
-    /*
-    "bit_wise_and",
-    "bit_wise_or",
-    "bit_wise_xor",
-    "shift_left",
-    "shift_right",
-    "logb",
-    "atan2",
-    "equal",
-    "greater",
-    "greater_equal",
-    "less",
-    "less_equal",
-    "not_equal"
-    */
-  };
+struct BinaryOpsTest : public testing::Test {};
 
-  void CompareArrow(const LogicalColumn& lhs, const LogicalColumn& rhs)
-  {
-    for (const auto& op : binary_ops) {
-      std::vector<arrow::Datum> args(2);
-      if (lhs.is_scalar()) {
-        auto scalar = ARROW_RESULT(lhs.get_arrow()->GetScalar(0));
-        args[0]     = scalar;
-      } else {
-        args[0] = lhs.get_arrow();
-      }
-      if (rhs.is_scalar()) {
-        auto scalar = ARROW_RESULT(rhs.get_arrow()->GetScalar(0));
-        args[1]     = scalar;
-      } else {
-        args[1] = rhs.get_arrow();
-      }
-      auto expected = (*arrow::compute::CallFunction(op, args)).make_array();
-      expected      = ARROW_RESULT(arrow::compute::Cast(expected,
-                                                   to_arrow_type(lhs.cudf_type().id()),
-                                                   arrow::compute::CastOptions::Unsafe()))
-                   .make_array();
-      auto result = binary_operation(lhs, rhs, op, lhs.cudf_type()).get_arrow();
-      EXPECT_TRUE(expected->Equals(*result)) << "Failed for operation: " << op;
+// Edge cases for unsupported operations or inconsistent implementations between cudf/arrow
+bool skip(std::string const& op, legate::Type const& type)
+{
+  bool use_cudf =
+    legate::Runtime::get_runtime()->get_machine().count(legate::mapping::TaskTarget::GPU) > 0;
+  if (use_cudf) {
+    // Cudf integer power appears broken
+    // https://github.com/rapidsai/cudf/issues/10178#issuecomment-3004143727
+    if (op == "power" && type.to_string().find("int") != std::string::npos) { return true; }
+
+    // cudf does not support equality for numeric types for some reason
+    std::set<std::string> comparisons = {
+      "equal", "greater", "greater_equal", "less", "less_equal", "not_equal"};
+    if (comparisons.count(op)) { return true; }
+
+    // cudf does something different overflow
+    // Avoid these operations on small types
+    std::set<std::string> overflow_ops          = {"shift_left", "shift_right", "power"};
+    std::set<legate::Type::Code> small_integers = {legate::Type::Code::INT8,
+                                                   legate::Type::Code::INT16,
+                                                   legate::Type::Code::UINT8,
+                                                   legate::Type::Code::UINT16};
+    if (overflow_ops.count(op) && small_integers.count(type.code())) { return true; }
+  }
+
+  // Atan2 and logb dont make much sense on integers
+  std::set<std::string> float_ops          = {"atan2", "logb"};
+  std::set<legate::Type::Code> float_types = {legate::Type::Code::FLOAT32,
+                                              legate::Type::Code::FLOAT64,
+                                              legate::Type::Code::FLOAT16,
+                                              legate::Type::Code::COMPLEX64,
+                                              legate::Type::Code::COMPLEX128};
+  if (float_ops.count(op) && !float_types.count(type.code())) { return true; }
+
+  // We don't support bitwise operations on floating point types
+  std::set<std::string> bitwise_ops = {
+    "bit_wise_and", "bit_wise_or", "bit_wise_xor", "shift_left", "shift_right"};
+  if (bitwise_ops.count(op) && float_types.count(type.code())) { return true; }
+
+  return false;
+}
+
+void CompareArrow(const LogicalColumn& lhs,
+                  const LogicalColumn& rhs,
+                  const std::vector<std::string>& binary_ops)
+{
+  for (const auto& op : binary_ops) {
+    if (skip(op, lhs.type()) || skip(op, rhs.type())) { continue; }
+    std::vector<arrow::Datum> args(2);
+    if (lhs.is_scalar()) {
+      auto scalar = ARROW_RESULT(lhs.get_arrow()->GetScalar(0));
+      args[0]     = scalar;
+    } else {
+      args[0] = lhs.get_arrow();
+    }
+    if (rhs.is_scalar()) {
+      auto scalar = ARROW_RESULT(rhs.get_arrow()->GetScalar(0));
+      args[1]     = scalar;
+    } else {
+      args[1] = rhs.get_arrow();
+    }
+    auto expected = (*arrow::compute::CallFunction(op, args)).make_array();
+    expected      = ARROW_RESULT(arrow::compute::Cast(expected,
+                                                 to_arrow_type(lhs.cudf_type().id()),
+                                                 arrow::compute::CastOptions::Unsafe()))
+                 .make_array();
+    auto result = binary_operation(lhs, rhs, op, lhs.cudf_type()).get_arrow();
+
+    // For integers check exact equality, for floats check approximate equality
+    std::set<legate::Type::Code> float_types = {legate::Type::Code::FLOAT32,
+                                                legate::Type::Code::FLOAT64,
+                                                legate::Type::Code::FLOAT16,
+                                                legate::Type::Code::COMPLEX64,
+                                                legate::Type::Code::COMPLEX128};
+    if (float_types.count(lhs.type().code())) {
+      arrow::EqualOptions options;
+      EXPECT_TRUE(expected->ApproxEquals(*result, options.nans_equal(true)))
+        << "Failed for operation: " << op << " LHS: " << lhs.repr() << " RHS: " << rhs.repr()
+        << " Expected: " << expected->ToString() << " Result: " << result->ToString();
+    } else {
+      EXPECT_TRUE(expected->Equals(*result))
+        << "Failed for operation: " << op << " LHS: " << lhs.repr() << " RHS: " << rhs.repr()
+        << " Expected: " << expected->ToString() << " Result: " << result->ToString();
     }
   }
-};
+}
 
 using NumericTypesWithoutBool = ::testing::
   Types<int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, float, double>;
 
 TYPED_TEST_SUITE(BinaryOpsTest, NumericTypesWithoutBool);
 
+std::vector<std::string> ops = {"add",
+                                "subtract",
+                                "multiply",
+                                "divide",
+                                "power",
+                                "logb",
+                                "atan2",
+                                "equal",
+                                "greater",
+                                "greater_equal",
+                                "less",
+                                "less_equal",
+                                "not_equal",
+                                "bit_wise_and",
+                                "bit_wise_or",
+                                "bit_wise_xor",
+                                "shift_left",
+                                "shift_right"};
+
 TYPED_TEST(BinaryOpsTest, AddColCol)
 {
-  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}));
-  LogicalColumn rhs(narrow<TypeParam>({4, 5, 6, 7}));
-  this->CompareArrow(lhs, rhs);
+  LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}));
+  LogicalColumn rhs(narrow<TypeParam>({5, 6, 7, 8}));
+  CompareArrow(lhs, rhs, ops);
 }
 
 TYPED_TEST(BinaryOpsTest, AddColColWithNull)
 {
-  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}), {1, 0, 1, 0});
-  LogicalColumn rhs(narrow<TypeParam>({4, 5, 6, 7}), {1, 0, 1, 0});
-  this->CompareArrow(lhs, rhs);
+  LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}), {1, 0, 1, 0});
+  LogicalColumn rhs(narrow<TypeParam>({5, 6, 7, 8}), {1, 0, 1, 0});
+  CompareArrow(lhs, rhs, ops);
 }
 
 TYPED_TEST(BinaryOpsTest, AddColScalar)
 {
-  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}));
+  LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}));
   LogicalColumn rhs(narrow<TypeParam>({1}), {}, true);
-  this->CompareArrow(lhs, rhs);
+  CompareArrow(lhs, rhs, ops);
 }
 
 TYPED_TEST(BinaryOpsTest, AddColScalarWithNull)
 {
-  LogicalColumn lhs(narrow<TypeParam>({0, 1, 2, 3}), {1, 0, 1, 0});
+  LogicalColumn lhs(narrow<TypeParam>({1, 2, 3, 4}), {1, 0, 1, 0});
   LogicalColumn rhs(narrow<TypeParam>({1}), {1}, true);
-  this->CompareArrow(lhs, rhs);
+  CompareArrow(lhs, rhs, ops);
 }
 
 TYPED_TEST(BinaryOpsTest, AddScalarCol)
 {
   LogicalColumn lhs(narrow<TypeParam>({1}), {}, true);
-  LogicalColumn rhs(narrow<TypeParam>({0, 1, 2, 3}));
-  this->CompareArrow(lhs, rhs);
+  LogicalColumn rhs(narrow<TypeParam>({1, 2, 3, 4}));
+  CompareArrow(lhs, rhs, ops);
 }
