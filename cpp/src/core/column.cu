@@ -142,7 +142,9 @@ T* maybe_bind_buffer(legate::PhysicalStore store, std::size_t size)
   if (store.is_unbound_store()) {
     out = store.create_output_buffer<T, 1>(legate::Point<1>(size), true).ptr(0);
   } else {
-    out = store.write_accessor<T, 1>().ptr(0);
+    auto acc = store.write_accessor<T, 1>();
+    assert(store.shape<1>().hi[0] == -1 || acc.accessor.is_dense_row_major(store.shape<1>()));
+    out = acc.ptr(store.shape<1>().lo[0]);
   }
   return out;
 }
