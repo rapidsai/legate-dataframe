@@ -56,10 +56,9 @@ struct copy_into_transposed_impl {
                   void* data_ptr,
                   std::optional<bool*> null_ptr,
                   cudf::table_view tbl,
-                  size_t offset,
                   legate::Scalar& null_value)
   {
-    copy_into_transposed_fn<T>{}(ctx, data_ptr, null_ptr, tbl, offset, null_value);
+    copy_into_transposed_fn<T>{}(ctx, data_ptr, null_ptr, tbl, null_value);
   }
 };
 
@@ -90,14 +89,13 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
       null_ptr = mask_acc.ptr(bounds.lo);
     }
 
-    copy_into_transposed_fn<T>{}(ctx, data_ptr, null_ptr, tbl, offset, null_value);
+    copy_into_transposed_fn<T>{}(ctx, data_ptr, null_ptr, tbl, null_value);
   }
 
   void operator()(TaskContext& ctx,
                   void* data_ptr_void,
                   std::optional<bool*> null_ptr,
                   cudf::table_view tbl,
-                  size_t offset,
                   legate::Scalar& null_value)
   {
     T* data_ptr = static_cast<T*>(data_ptr_void);
@@ -165,17 +163,10 @@ void copy_into_tranposed(TaskContext& ctx,
                          void* data_ptr,
                          std::optional<bool*> null_ptr,
                          cudf::table_view tbl,
-                         size_t offset,
                          legate::Scalar& null_value)
 {
-  cudf::type_dispatcher(tbl.column(0).type(),
-                        copy_into_transposed_impl{},
-                        ctx,
-                        data_ptr,
-                        null_ptr,
-                        tbl,
-                        offset,
-                        null_value);
+  cudf::type_dispatcher(
+    tbl.column(0).type(), copy_into_transposed_impl{}, ctx, data_ptr, null_ptr, tbl, null_value);
 }
 
 }  // namespace legate::dataframe

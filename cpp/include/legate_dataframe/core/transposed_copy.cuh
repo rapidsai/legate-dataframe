@@ -34,7 +34,6 @@ void copy_into_tranposed(TaskContext& ctx,
                          void* data_ptr,
                          std::optional<bool*> null_ptr,
                          cudf::table_view tbl,
-                         size_t offset,
                          legate::Scalar& null_value);
 
 }  // namespace legate::dataframe

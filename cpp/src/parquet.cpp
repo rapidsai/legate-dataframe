@@ -251,8 +251,7 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
         throw std::runtime_error("internal error: output smaller than expected.");
       }
       // Write to output array, this is a transposed copy.
-      copy_into_tranposed(
-        ctx, data_ptr, null_ptr, cast_tbl.view(), rows_already_written, null_value);
+      copy_into_tranposed(ctx, data_ptr, null_ptr, cast_tbl.view(), null_value);
 
       if (null_ptr.has_value()) { null_ptr = null_ptr.value() + cast_tbl.num_rows() * ncols; }
       data_ptr =
