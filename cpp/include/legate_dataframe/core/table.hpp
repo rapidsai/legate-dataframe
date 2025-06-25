@@ -397,8 +397,9 @@ class PhysicalTable {
    * @brief Move local cudf columns into this unbound physical table
    *
    * @param columns The cudf columns to move
+   * @param allow_copy If true, allow copying of columns if the stores are bound.
    */
-  void move_into(std::vector<std::unique_ptr<cudf::column>> columns)
+  void move_into(std::vector<std::unique_ptr<cudf::column>> columns, bool allow_copy = false)
   {
     if (columns.size() != columns_.size()) {
       throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
@@ -406,7 +407,7 @@ class PhysicalTable {
                                " != " + std::to_string(columns.size()));
     }
     for (size_t i = 0; i < columns.size(); ++i) {
-      columns_[i].move_into(std::move(columns[i]));
+      columns_[i].move_into(std::move(columns[i]), allow_copy);
     }
   }
 
@@ -414,8 +415,9 @@ class PhysicalTable {
    * @brief Move local arrow arrays into this unbound physical table
    *
    * @param columns The arrow arrays to move
+   * @param allow_copy If true, allow copying of columns if the stores are bound.
    */
-  void move_into(std::shared_ptr<arrow::Table> table)
+  void move_into(std::shared_ptr<arrow::Table> table, bool allow_copy = false)
   {
     if (static_cast<std::size_t>(table->num_columns()) != columns_.size()) {
       throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
@@ -429,7 +431,7 @@ class PhysicalTable {
       if (chunked_array->num_chunks() != 1) {
         throw std::runtime_error("LogicalTable.move_into(): expected an array with 1 chunk.");
       }
-      columns_[i].move_into(chunked_array->chunk(0));
+      columns_[i].move_into(chunked_array->chunk(0), allow_copy);
     }
   }
 
@@ -437,16 +439,23 @@ class PhysicalTable {
    * @brief Move local cudf table into this unbound physical table
    *
    * @param table The cudf table to move
+   * @param allow_copy If true, allow copying of columns if the stores are bound.
    */
-  void move_into(std::unique_ptr<cudf::table> table) { move_into(table->release()); }
+  void move_into(std::unique_ptr<cudf::table> table, bool allow_copy = false)
+  {
+    move_into(table->release(), allow_copy);
+  }
 
   /**
    * @brief Makes the unbound table empty. Valid only when the table is unbound.
+   *
+   * @param allow_copy If true, no error is given if the column is bound, this becomes
+   * a no-op instead.  (`allow_copy` just to match `move_into()`.)
    */
-  void bind_empty_data() const
+  void bind_empty_data(bool allow_copy = false) const
   {
     for (const auto& col : columns_) {
-      col.bind_empty_data();
+      col.bind_empty_data(allow_copy);
     }
   }
 
