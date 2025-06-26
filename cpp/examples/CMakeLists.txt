@@ -1,5 +1,5 @@
 # =============================================================================
-# Copyright (c) 2023-2024, NVIDIA CORPORATION.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License. You may obtain a copy of the License at
@@ -17,8 +17,7 @@ set(TEST_NAME hello_world)
 
 add_executable(hello_world hello.cpp)
 set_target_properties(hello_world PROPERTIES INSTALL_RPATH "\$ORIGIN/..")
-# Note that fmt::fmt should not be required, but seems to be for debug builds.
-target_link_libraries(hello_world PRIVATE LegateDataframe::LegateDataframe CUDA::cudart fmt::fmt)
+target_link_libraries(hello_world PRIVATE LegateDataframe::LegateDataframe CUDA::cudart)
 
 if(CMAKE_COMPILER_IS_GNUCXX)
   set(LegateDataframe_CXX_FLAGS "-Wall;-Werror;-Wno-unknown-pragmas")
