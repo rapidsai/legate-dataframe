@@ -14,7 +14,6 @@ from legate_dataframe.lib.core.scalar cimport cpp_scalar_col_from_python
 
 from numpy.typing import DTypeLike
 
-from legate_dataframe.lib.core.scalar import ScalarLike
 from legate_dataframe.utils import _track_provenance
 
 

@@ -61,7 +61,6 @@ requirements:
     - rapids-build-backend >=0.3.0,<0.4.0.dev0
     - scikit-build-core >=0.10.0
     - cudf {{ rapids_version }}  # pulls in pyarrow?
-    - pynvjitlink<=0.6
     - libcudf {{ rapids_version }}
     - librmm {{ rapids_version }}
     - pylibcudf {{ rapids_version }}
