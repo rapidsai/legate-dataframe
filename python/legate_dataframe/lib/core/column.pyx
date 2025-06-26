@@ -13,9 +13,9 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 
 from cudf._lib.column cimport Column as cudfColumn
-from cudf._lib.scalar cimport DeviceScalar
 from pyarrow.lib cimport pyarrow_unwrap_array, pyarrow_unwrap_scalar, pyarrow_wrap_array
 from pylibcudf.libcudf.column.column cimport column
+from pylibcudf.scalar cimport Scalar as PylibcudfScalar
 
 from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
 from legate_dataframe.lib.core.legate_task cimport get_auto_task_handle
@@ -82,7 +82,7 @@ cdef class LogicalColumn:
 
         This call blocks the client's control flow and scatter
         the data to all legate nodes.
-        If the input is a ``DeviceScalar`` the column will be marked as
+        If the input is a ``PylibcudfScalar`` the column will be marked as
         scalar.
 
         Parameters
@@ -95,12 +95,12 @@ cdef class LogicalColumn:
             New logical column
         """
         cdef cudfColumn col
-        cdef DeviceScalar scalar
+        cdef PylibcudfScalar scalar
         if isinstance(col_or_scalar, cudfColumn):
             col = <cudfColumn>col_or_scalar
             return LogicalColumn.from_handle(cpp_LogicalColumn(col.view()))
-        elif isinstance(col_or_scalar, DeviceScalar):
-            scalar = <DeviceScalar>col_or_scalar
+        elif isinstance(col_or_scalar, PylibcudfScalar):
+            scalar = <PylibcudfScalar>col_or_scalar
             return LogicalColumn.from_handle(
                 cpp_LogicalColumn(dereference(scalar.get_raw_ptr()))
             )
@@ -302,7 +302,7 @@ cdef class LogicalColumn:
         cdef unique_ptr[column] col = self._handle.get_cudf()
         return cudfColumn.from_unique_ptr(move(col))
 
-    def to_cudf_scalar(self) -> DeviceScalar:
+    def to_cudf_scalar(self):
         """Copy the logical column into a local cudf scalar
 
         This call blocks the client's control flow and fetches the data for the
@@ -320,7 +320,7 @@ cdef class LogicalColumn:
             If the column is not length 1 (scalar columns always are).
         """
         cdef unique_ptr[scalar] scalar = self._handle.get_cudf_scalar()
-        return DeviceScalar.from_unique_ptr(move(scalar))
+        return PylibcudfScalar.from_unique_ptr(move(scalar))
 
     def repr(self, size_t max_num_items=30) -> str:
         """Return a printable representational string

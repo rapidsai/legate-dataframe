@@ -7,13 +7,13 @@ import cudf
 import legate.core
 import numpy
 import pyarrow as pa
-from cudf._lib.scalar import DeviceScalar
+from pylibcudf.scalar import Scalar as PylibcudfScalar
 
 ScalarLike = (
     numpy.number
     | numbers.Number
     | cudf.Scalar
     | legate.core.Scalar
-    | DeviceScalar
+    | PylibcudfScalar
     | pa.Scalar
 )

@@ -70,6 +70,17 @@ include(cmake/Modules/ConfigureCUDA.cmake) # set other CUDA compilation flags
 # ##################################################################################################
 # * dependencies ----------------------------------------------------------------------------------
 
+# add third party dependencies using CPM
+rapids_cpm_init()
+
+# If CCCL versions don't get picked up correctly, we may need to add them early on here (right now
+# it seems fetching rmm/cudf manage to ensure we ge the right one.)
+include("${rapids-cmake-dir}/cpm/cccl.cmake")
+rapids_cpm_cccl()
+
+include(cmake/thirdparty/get_rmm.cmake)
+include(cmake/thirdparty/get_cudf.cmake)
+
 rapids_find_package(
   legate REQUIRED Legion LegionRuntime
   BUILD_EXPORT_SET LegateDataframe-exports
@@ -87,12 +98,6 @@ rapids_find_package(
   BUILD_EXPORT_SET LegateDataframe-exports
   INSTALL_EXPORT_SET LegateDataframe-exports
 )
-
-# add third party dependencies using CPM
-rapids_cpm_init()
-
-include(cmake/thirdparty/get_rmm.cmake)
-include(cmake/thirdparty/get_cudf.cmake)
 
 if(LegateDataframe_BUILD_TESTS)
   # find or install GoogleTest
@@ -120,6 +125,11 @@ set_target_properties(
              POSITION_INDEPENDENT_CODE ON
              INTERFACE_POSITION_INDEPENDENT_CODE ON
 )
+
+# Need to add this define, as is done in legate CMakeLists.txt as well for __half support.  If
+# __half support fails elsewhere it may be needed there. This may be a CCCL 2.7.0 issue and become
+# unnecessary in the future.
+target_compile_definitions("LegateDataframe" PUBLIC _LIBCUDACXX_HAS_NVFP16=1)
 
 list(APPEND LDF_CUDA_FLAGS --expt-extended-lambda)
 list(APPEND LDF_CUDA_FLAGS --expt-relaxed-constexpr)

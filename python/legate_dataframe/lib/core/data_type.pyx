@@ -4,7 +4,6 @@
 # distutils: language = c++
 # cython: language_level=3
 
-from cudf._lib.types cimport underlying_type_t_type_id
 from pylibcudf.libcudf.types cimport type_id
 from pylibcudf.types cimport DataType
 from pylibcudf.types cimport data_type as cpp_cudf_type
@@ -76,9 +75,7 @@ cdef cpp_cudf_type_to_cudf_dtype(cpp_cudf_type libcudf_type):
             scale=-libcudf_type.scale()
         )
     else:
-        return PYLIBCUDF_TO_SUPPORTED_NUMPY_TYPES[
-            <underlying_type_t_type_id>(tid)
-        ]
+        return PYLIBCUDF_TO_SUPPORTED_NUMPY_TYPES[tid]
 
 
 cdef bint is_legate_compatible(cpp_cudf_type libcudf_type):
