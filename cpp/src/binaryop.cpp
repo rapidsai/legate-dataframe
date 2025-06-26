@@ -30,7 +30,7 @@
 
 namespace legate::dataframe::task {
 
-cudf::binary_operator arrow_to_cudf_binary_op(std::string op)
+cudf::binary_operator arrow_to_cudf_binary_op(std::string op, legate::Type output_type)
 {
   // Arrow binary operators taken from the below list,
   // where an equivalent cudf binary operator exists.
@@ -55,6 +55,12 @@ cudf::binary_operator arrow_to_cudf_binary_op(std::string op)
     {"less", cudf::binary_operator::LESS},
     {"less_equal", cudf::binary_operator::LESS_EQUAL},
     {"not_equal", cudf::binary_operator::NOT_EQUAL}};
+
+  // Cudf has a special case for powers with integers
+  // https://github.com/rapidsai/cudf/issues/10178#issuecomment-3004143727
+  if (op == "power" && output_type.to_string().find("int") != std::string::npos) {
+    return cudf::binary_operator::INT_POW;
+  }
 
   if (arrow_to_cudf_ops.find(op) != arrow_to_cudf_ops.end()) { return arrow_to_cudf_ops[op]; }
   throw std::invalid_argument("Could not find cudf binary operator matching: " + op);
@@ -110,10 +116,11 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-    auto op        = arrow_to_cudf_binary_op(argument::get_next_scalar<std::string>(ctx));
+    auto arrow_op  = argument::get_next_scalar<std::string>(ctx);
     const auto lhs = argument::get_next_input<PhysicalColumn>(ctx);
     const auto rhs = argument::get_next_input<PhysicalColumn>(ctx);
     auto output    = argument::get_next_output<PhysicalColumn>(ctx);
+    auto op        = arrow_to_cudf_binary_op(arrow_op, output.type());
 
     std::unique_ptr<cudf::column> ret;
     /*
@@ -160,7 +167,7 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
   // This allows us to to throw nicely
   if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) > 0) {
     // Throws if op doesn't exist
-    task::arrow_to_cudf_binary_op(op);
+    task::arrow_to_cudf_binary_op(op, to_legate_type(output_type.id()));
   } else {
     auto result = arrow::compute::GetFunctionRegistry()->GetFunction(op);
     if (!result.ok()) {

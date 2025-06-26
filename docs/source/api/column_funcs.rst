@@ -31,6 +31,3 @@ Related options/enums
 
 .. autodata:: legate_dataframe.lib.unaryop.unary_operator
     :no-value:
-
-.. autodata:: legate_dataframe.lib.binaryop.binary_operator
-    :no-value:

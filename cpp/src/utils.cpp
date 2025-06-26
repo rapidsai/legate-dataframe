@@ -322,9 +322,8 @@ std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
     case cudf::type_id::FLOAT64: {
       return arrow::float64();
     }
-    // Don't use arrow::boolean() - arrow::BooleanArray uses bitpacking
     case cudf::type_id::BOOL8: {
-      return arrow::uint8();
+      return arrow::boolean();
     }
     case cudf::type_id::STRING: {
       return arrow::utf8();

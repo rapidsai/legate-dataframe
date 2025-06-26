@@ -4,20 +4,13 @@
 # distutils: language = c++
 # cython: language_level=3
 
-import numbers
-
 import cudf
 import legate.core
-import numpy
 import pyarrow as pa
 
 from cudf._lib.scalar cimport DeviceScalar
 
 from legate_dataframe.lib.core.column cimport LogicalColumn
-
-ScalarLike = (
-    numpy.number | numbers.Number | cudf.Scalar | legate.core.Scalar | DeviceScalar
-)
 
 
 cdef LogicalColumn cpp_scalar_col_from_python(scalar: ScalarLike):

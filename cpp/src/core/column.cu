@@ -381,9 +381,14 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
   } else {
     auto physical_array = array_->get_physical_array();
     auto nbytes         = array_->volume() * array_->type().size();
-    std::shared_ptr<arrow::Buffer> data =
-      ARROW_RESULT(arrow::AllocateBuffer(nbytes * sizeof(int8_t)));
-    std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(physical_array.data()), nbytes);
+    std::shared_ptr<arrow::Buffer> data;
+    if (this->type().code() == legate::Type::Code::BOOL) {
+      // Convert to bit packed
+      data = null_mask_bools_to_bits(physical_array.data());
+    } else {
+      data = ARROW_RESULT(arrow::AllocateBuffer(nbytes * sizeof(int8_t)));
+      std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(physical_array.data()), nbytes);
+    }
     std::shared_ptr<arrow::Buffer> null_bitmask;
     if (array_->nullable()) { null_bitmask = null_mask_bools_to_bits(physical_array.null_mask()); }
     auto array_data =
@@ -508,9 +513,17 @@ std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
     }
   } else {
     auto nbytes = array_.shape<1>().volume() * array_.type().size();
-    // 1. Wrap the data in an arrow buffer
-    auto buffer = std::make_shared<arrow::Buffer>(
-      reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(array_.data())), nbytes);
+    // 1. Create arrow data buffer - try to use the existing data
+    std::shared_ptr<arrow::Buffer> buffer;
+    if (this->type().code() == legate::Type::Code::BOOL) {
+      // Arrow stores bool bit packed so we must copy
+      buffer = null_mask_bools_to_bits(array_.data());
+    } else {
+      // For other types, we can use the existing data directly
+      buffer = std::make_shared<arrow::Buffer>(
+        reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(array_.data())), nbytes);
+    }
+
     // 2. Handle null mask
     std::shared_ptr<arrow::Buffer> null_bitmask;
     if (array_.nullable()) { null_bitmask = null_mask_bools_to_bits(array_.null_mask()); }

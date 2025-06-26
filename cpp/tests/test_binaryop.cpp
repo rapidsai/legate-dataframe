@@ -34,18 +34,14 @@ struct BinaryOpsTest : public testing::Test {};
 // Edge cases for unsupported operations or inconsistent implementations between cudf/arrow
 bool skip(std::string const& op, legate::Type const& type)
 {
+  std::set<std::string> arithmetic_ops = {"add", "subtract", "multiply", "divide", "power"};
+  std::set<std::string> float_ops      = {"atan2", "logb"};
+  std::set<std::string> bitwise_ops    = {
+    "bit_wise_and", "bit_wise_or", "bit_wise_xor", "shift_left", "shift_right"};
+
   bool use_cudf =
     legate::Runtime::get_runtime()->get_machine().count(legate::mapping::TaskTarget::GPU) > 0;
   if (use_cudf) {
-    // Cudf integer power appears broken
-    // https://github.com/rapidsai/cudf/issues/10178#issuecomment-3004143727
-    if (op == "power" && type.to_string().find("int") != std::string::npos) { return true; }
-
-    // cudf does not support equality for numeric types for some reason
-    std::set<std::string> comparisons = {
-      "equal", "greater", "greater_equal", "less", "less_equal", "not_equal"};
-    if (comparisons.count(op)) { return true; }
-
     // cudf does something different overflow
     // Avoid these operations on small types
     std::set<std::string> overflow_ops          = {"shift_left", "shift_right", "power"};
@@ -56,8 +52,13 @@ bool skip(std::string const& op, legate::Type const& type)
     if (overflow_ops.count(op) && small_integers.count(type.code())) { return true; }
   }
 
+  // Arithmetic or bitwise operations on bools are not supported
+  if (type.code() == legate::Type::Code::BOOL) {
+    if (arithmetic_ops.count(op)) { return true; }
+    if (bitwise_ops.count(op)) { return true; }
+  }
+
   // Atan2 and logb dont make much sense on integers
-  std::set<std::string> float_ops          = {"atan2", "logb"};
   std::set<legate::Type::Code> float_types = {legate::Type::Code::FLOAT32,
                                               legate::Type::Code::FLOAT64,
                                               legate::Type::Code::FLOAT16,
@@ -66,8 +67,6 @@ bool skip(std::string const& op, legate::Type const& type)
   if (float_ops.count(op) && !float_types.count(type.code())) { return true; }
 
   // We don't support bitwise operations on floating point types
-  std::set<std::string> bitwise_ops = {
-    "bit_wise_and", "bit_wise_or", "bit_wise_xor", "shift_left", "shift_right"};
   if (bitwise_ops.count(op) && float_types.count(type.code())) { return true; }
 
   return false;
@@ -92,12 +91,19 @@ void CompareArrow(const LogicalColumn& lhs,
     } else {
       args[1] = rhs.get_arrow();
     }
+
+    // Specify bool output for equality comparisons
+    std::set<std::string> equality_ops = {
+      "equal", "greater", "greater_equal", "less", "less_equal", "not_equal"};
+    auto output_type = lhs.cudf_type();
+    if (equality_ops.count(op)) { output_type = cudf::data_type{cudf::type_id::BOOL8}; }
+
     auto expected = (*arrow::compute::CallFunction(op, args)).make_array();
     expected      = ARROW_RESULT(arrow::compute::Cast(expected,
-                                                 to_arrow_type(lhs.cudf_type().id()),
+                                                 to_arrow_type(output_type.id()),
                                                  arrow::compute::CastOptions::Unsafe()))
                  .make_array();
-    auto result = binary_operation(lhs, rhs, op, lhs.cudf_type()).get_arrow();
+    auto result = binary_operation(lhs, rhs, op, output_type).get_arrow();
 
     // For integers check exact equality, for floats check approximate equality
     std::set<legate::Type::Code> float_types = {legate::Type::Code::FLOAT32,
@@ -118,8 +124,17 @@ void CompareArrow(const LogicalColumn& lhs,
   }
 }
 
-using NumericTypesWithoutBool = ::testing::
-  Types<int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, float, double>;
+using NumericTypesWithoutBool = ::testing::Types<int8_t,
+                                                 int16_t,
+                                                 int32_t,
+                                                 int64_t,
+                                                 uint8_t,
+                                                 uint16_t,
+                                                 uint32_t,
+                                                 uint64_t,
+                                                 float,
+                                                 double,
+                                                 bool>;
 
 TYPED_TEST_SUITE(BinaryOpsTest, NumericTypesWithoutBool);
 
