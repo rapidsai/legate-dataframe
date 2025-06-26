@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -7,7 +7,6 @@
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
 from legate_dataframe.lib.core.scalar cimport cpp_scalar_col_from_python
 
-from legate_dataframe.lib.core.scalar import ScalarLike
 from legate_dataframe.utils import _track_provenance
 
 
