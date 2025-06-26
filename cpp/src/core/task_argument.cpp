@@ -47,11 +47,10 @@ void add_parallel_launch_task(legate::AutoTask& task, int min_num_tasks)
   // TODO: in order to force a parallel launch, we send a dummy column along.
   //       When `legate::ManualTask` support `legate::LogicalArray`, we should use a
   //       manual task instead.
-  auto dummy_fill  = legate::Scalar(0);
-  auto dummy_array = runtime->create_array({min_gpu_chunk * min_num_tasks}, dummy_fill.type());
-  runtime->issue_fill(dummy_array, dummy_fill);
-  LogicalColumn dummy_column{dummy_array};
-  add_next_input(task, dummy_column);
+  // Hope that this type leads to a 0 size dummy allocation.
+  auto type        = legate::fixed_array_type(legate::int8(), 0);
+  auto dummy_array = runtime->create_array({min_gpu_chunk * min_num_tasks}, type);
+  task.add_output(dummy_array);
 }
 
 void add_parallel_launch_task(legate::AutoTask& task)
@@ -61,5 +60,16 @@ void add_parallel_launch_task(legate::AutoTask& task)
   add_parallel_launch_task(task, num_processors);
 }
 
-void get_parallel_launch_task(TaskContext& ctx) { get_next_input<task::PhysicalColumn>(ctx); }
+void add_parallel_launch_task_2d(legate::AutoTask& task)
+{
+  static size_t min_gpu_chunk = get_min_gpu_chunk();
+  auto runtime                = legate::Runtime::get_runtime();
+  auto min_num_tasks          = runtime->get_machine().count();
+
+  auto type        = legate::fixed_array_type(legate::int8(), 0);
+  auto dummy_array = runtime->create_array({min_gpu_chunk * min_num_tasks, 1}, type);
+  task.add_output(dummy_array);
+}
+
+void get_parallel_launch_task(TaskContext& ctx) { ctx.get_next_output_arg(); }
 }  // namespace legate::dataframe::argument

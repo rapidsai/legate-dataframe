@@ -17,6 +17,7 @@
 #pragma once
 
 #include <legate.h>
+#include <optional>
 
 #include <cudf/table/table_view.hpp>
 #include <legate_dataframe/core/task_context.hpp>
@@ -27,6 +28,12 @@ void copy_into_tranposed(TaskContext& ctx,
                          legate::PhysicalArray& array,
                          cudf::table_view tbl,
                          size_t offset,
+                         legate::Scalar& null_value);
+
+void copy_into_tranposed(TaskContext& ctx,
+                         void* data_ptr,
+                         std::optional<bool*> null_ptr,
+                         cudf::table_view tbl,
                          legate::Scalar& null_value);
 
 }  // namespace legate::dataframe

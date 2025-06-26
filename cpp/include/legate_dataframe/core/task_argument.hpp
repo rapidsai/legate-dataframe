@@ -186,6 +186,12 @@ void add_parallel_launch_task(legate::AutoTask& task, int min_num_tasks);
  */
 void add_parallel_launch_task(legate::AutoTask& task);
 
+/*
+ * Similar to `add_parallel_launch_task()`, but an `Nx1` dimensional array because
+ * different dimensions don't seem to mix well right now (as of legate 25.05).
+ */
+void add_parallel_launch_task_2d(legate::AutoTask& task);
+
 /**
  * @brief Handle of task launched using `add_parallel_launch_task()`
  */
