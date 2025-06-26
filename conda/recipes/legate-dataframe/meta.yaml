@@ -61,6 +61,7 @@ requirements:
     - rapids-build-backend >=0.3.0,<0.4.0.dev0
     - scikit-build-core >=0.10.0
     - cudf {{ rapids_version }}  # pulls in pyarrow?
+    - pynvjitlink<=0.6
     - libcudf {{ rapids_version }}
     - librmm {{ rapids_version }}
     - pylibcudf {{ rapids_version }}
@@ -101,6 +102,7 @@ outputs:
         - numpy >=1.23,<3.0.0a0
         - rmm {{ rapids_version }}
         - cudf {{ rapids_version }}
+        - pynvjitlink<=0.6
     ignore_run_exports_from:
       - cupynumeric  # only a build dependency to help resolver
     run_exports:
