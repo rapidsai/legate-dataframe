@@ -224,9 +224,9 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     auto [files, row_groups] =
       find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
 
-    // Read a few hundred MiB at a time (assumes datatype isn't very narrow).
-    // (The actual decompression etc. will be done in larger chunks.)
-    auto chunksize = ((1 << 25) + ncols - 1) / ncols;
+    // Read a few hundred MiB at a time (actual limit is a multiple due to decompression
+    // and that may also just need more memory as well, there may be other components).
+    auto chunksize = 500 * 1024 * 1024;
 
     auto src = cudf::io::source_info(files);
     auto opt = cudf::io::parquet_reader_options::builder(src);
