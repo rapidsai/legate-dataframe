@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 #include <legate.h>
 
+#include "test_utils.hpp"
 #include <cudf/replace.hpp>
 #include <cudf_test/base_fixture.hpp>
 #include <cudf_test/column_utilities.hpp>
@@ -29,9 +30,9 @@
 using namespace legate::dataframe;
 
 template <typename T>
-struct NullOpsTest : public cudf::test::BaseFixture {};
+struct NullOpsTest : public testing::Test {};
 
-TYPED_TEST_SUITE(NullOpsTest, cudf::test::FixedWidthTypesWithoutFixedPoint);
+TYPED_TEST_SUITE(NullOpsTest, NumericTypes);
 
 TYPED_TEST(NullOpsTest, FillWithScalar)
 {
