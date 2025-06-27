@@ -84,7 +84,7 @@ cdef class LogicalColumn:
 
         This call blocks the client's control flow and scatter
         the data to all legate nodes.
-        If the input is a ``PylibcudfScalar`` the column will be marked as
+        If the input is a cudf/pylibcudf scalar the column will be marked as
         scalar.
 
         Parameters
@@ -299,7 +299,7 @@ cdef class LogicalColumn:
         return pyarrow_wrap_array(self._handle.get_arrow())
 
     def to_cudf(self):
-        """Copy the logical column into a local cudf series
+        """Copy the logical column into a local cudf column.
 
         This call blocks the client's control flow and fetches the data for the
         whole column to the current node.
