@@ -23,6 +23,7 @@
 #include <arrow/io/memory.h>
 #include <parquet/arrow/reader.h>
 #include <parquet/arrow/schema.h>
+#include <parquet/arrow/writer.h>
 #include <parquet/file_reader.h>
 
 #include <cudf/concatenate.hpp>
@@ -47,6 +48,27 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
  public:
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetWrite}};
+
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
+    const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto table           = argument::get_next_input<PhysicalTable>(ctx);
+    const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".parquet";
+    auto outfile               = ARROW_RESULT(arrow::io::FileOutputStream::Open(filepath));
+    auto props                 = parquet::WriterProperties::Builder().build();
+    auto arrow_props           = parquet::ArrowWriterProperties::Builder().build();
+
+    // TODO: memory pool should come from legate
+    auto status = parquet::arrow::WriteTable(*table.arrow_table_view(column_names),
+                                             arrow::default_memory_pool(),
+                                             outfile,
+                                             parquet::DEFAULT_MAX_ROW_GROUP_LENGTH,
+                                             props,
+                                             arrow_props);
+  }
 
   static void gpu_variant(legate::TaskContext context)
   {
@@ -128,6 +150,66 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
  public:
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetRead}};
+
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
+    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
+    PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
+    argument::get_parallel_launch_task(ctx);
+
+    if (file_paths.size() != ngroups_per_file.size()) {
+      throw std::runtime_error("internal error: file path and nrows size mismatch");
+    }
+
+    auto [my_groups_offset, my_num_groups] =
+      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+
+    if (my_num_groups == 0) {
+      tbl_arg.bind_empty_data();
+      return;
+    }
+
+    // Arrow wants column indices instead of names
+    // Find the columns
+    std::vector<int> column_indices;
+    column_indices.reserve(columns.size());
+    {
+      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths.at(0)));
+      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
+      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
+      std::shared_ptr<arrow::Schema> schema;
+      status = arrow_reader->GetSchema(&schema);
+
+      for (const auto& col : columns) {
+        auto idx = schema->GetFieldIndex(col);
+        if (idx < 0) {
+          throw std::runtime_error("Column " + col + " not found in Parquet schema.");
+        }
+        column_indices.push_back(idx);
+      }
+    }
+
+    // Iterate over files
+    auto [files, row_groups] =
+      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
+    std::vector<std::shared_ptr<arrow::Table>> tables;
+    for (int i = 0; i < files.size(); i++) {
+      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
+      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
+      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
+      std::unique_ptr<arrow::RecordBatchReader> batch_reader;
+      status = arrow_reader->GetRecordBatchReader(row_groups[i], column_indices, &batch_reader);
+      tables.push_back(ARROW_RESULT(batch_reader->ToTable()));
+    }
+
+    // Concatenate the tables
+    auto table = ARROW_RESULT(arrow::ConcatenateTables(tables));
+    tbl_arg.move_into(std::move(table));
+  }
 
   static void gpu_variant(legate::TaskContext context)
   {
