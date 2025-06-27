@@ -137,10 +137,6 @@ dependencies:
       - output_types: conda
         matrices:
           - matrix:
-              py: "3.10"
-            packages:
-              - python=3.10
-          - matrix:
               py: "3.11"
             packages:
               - python=3.11
@@ -150,7 +146,7 @@ dependencies:
               - python=3.12
           - matrix:
             packages:
-              - python>=3.10,<3.13
+              - python>=3.11,<3.13
 
   docs:
     common:

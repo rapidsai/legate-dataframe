@@ -50,7 +50,7 @@ jobs:
         include:
           - ARCH: "amd64"
             CUDA_VER: "12.5.1"
-            PY_VER: "3.10"
+            PY_VER: "3.11"
           - ARCH: "amd64"
             CUDA_VER: "12.5.1"
             PY_VER: "3.12"
@@ -83,14 +83,14 @@ jobs:
       #
       #  * architectures: amd64 only
       #  * CUDA: >=12.2
-      #  * Python: 3.10, 3.11, 3.12  (3.11 used in doc building)
+      #  * Python: 3.11, 3.12  (3.12 also used in doc building)
       #
       # Valid set of RAPIDS ci-conda image tags: https://hub.docker.com/r/rapidsai/ci-conda/tags
       matrix:
         include:
           - ARCH: "amd64"
             CUDA_VER: "12.5.1"
-            PY_VER: "3.10"
+            PY_VER: "3.11"
           - ARCH: "amd64"
             CUDA_VER: "12.5.1"
             PY_VER: "3.12"
