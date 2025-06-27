@@ -10,7 +10,10 @@ from pylibcudf.types cimport data_type as cpp_cudf_type
 
 import cudf
 import pyarrow as pa
-from cudf._lib.types import PYLIBCUDF_TO_SUPPORTED_NUMPY_TYPES, dtype_to_pylibcudf_type
+from cudf.utils.dtypes import (
+    PYLIBCUDF_TO_SUPPORTED_NUMPY_TYPES,
+    dtype_to_pylibcudf_type,
+)
 from pylibcudf.interop import from_arrow
 
 

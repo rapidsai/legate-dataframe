@@ -9,22 +9,27 @@ from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.testing import assert_frame_equal, std_dataframe_set
 
 
-@pytest.mark.parametrize("cudf_col", [cudf.DataFrame({"a": range(10)})._columns[0]])
+@pytest.mark.parametrize("cudf_col", [cudf.DataFrame({"a": range(10)})["a"]])
 def test_column_round_trip(cudf_col):
-    col = LogicalColumn.from_cudf(cudf_col)
-    cudf_res = col.to_cudf()
+    # We support cudf and pylibcudf columns (and series) but return columns
+    cmp_col = cudf_col._column
+    for col in [cudf_col, cudf_col._column, cudf_col._column.to_pylibcudf("read")]:
+        col = LogicalColumn.from_cudf(cudf_col)
+        cudf_res = col.to_cudf()
 
-    assert not col.is_scalar()
-    assert_column_equal(cudf_col, cudf_res)
+        assert not col.is_scalar()
+        assert_column_equal(cmp_col, cudf_res)
 
 
 def test_scalar_column_round_trip():
-    cudf_scalar = cudf.Scalar(3).device_value
-    col = LogicalColumn.from_cudf(cudf_scalar)
-    assert col.is_scalar()
+    cudf_scalar = cudf.Scalar(3)
+    # We support both cudf and pylibcudf scalars (but return cudf ones)
+    for scalar in [cudf_scalar, cudf_scalar.device_value]:
+        col = LogicalColumn.from_cudf(scalar)
+        assert col.is_scalar()
 
-    cudf_res = col.to_cudf_scalar()
-    assert cudf_res.value == cudf_scalar.value
+        cudf_res = col.to_cudf_scalar()
+        assert cudf_res.value == cudf_scalar.value
 
 
 def test_non_scalar_column_error():

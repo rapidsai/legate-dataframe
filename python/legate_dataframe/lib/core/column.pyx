@@ -12,8 +12,10 @@ from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.utility cimport move
 
-from cudf._lib.column cimport Column as cudfColumn
+import cudf
+
 from pyarrow.lib cimport pyarrow_unwrap_array, pyarrow_unwrap_scalar, pyarrow_wrap_array
+from pylibcudf.column cimport Column as PylibcudfColumn
 from pylibcudf.libcudf.column.column cimport column
 from pylibcudf.scalar cimport Scalar as PylibcudfScalar
 
@@ -94,15 +96,22 @@ cdef class LogicalColumn:
         -------
             New logical column
         """
-        cdef cudfColumn col
+        cdef PylibcudfColumn col
         cdef PylibcudfScalar scalar
-        if isinstance(col_or_scalar, cudfColumn):
-            col = <cudfColumn>col_or_scalar
+        if isinstance(col_or_scalar, cudf.Series):
+            col_or_scalar = col_or_scalar._column.to_pylibcudf("read")
+        elif isinstance(col_or_scalar, cudf.core.column.column.ColumnBase):
+            col_or_scalar = col_or_scalar.to_pylibcudf("read")
+        elif isinstance(col_or_scalar, cudf.Scalar):
+            col_or_scalar = col_or_scalar.device_value
+
+        if isinstance(col_or_scalar, PylibcudfColumn):
+            col = <PylibcudfColumn>col_or_scalar
             return LogicalColumn.from_handle(cpp_LogicalColumn(col.view()))
         elif isinstance(col_or_scalar, PylibcudfScalar):
             scalar = <PylibcudfScalar>col_or_scalar
             return LogicalColumn.from_handle(
-                cpp_LogicalColumn(dereference(scalar.get_raw_ptr()))
+                cpp_LogicalColumn(dereference(scalar.get()))
             )
         else:
             raise TypeError(
@@ -281,6 +290,7 @@ cdef class LogicalColumn:
 
     def to_arrow(self) -> pa.Array:
         """Copy column to an arrow array
+
         Returns
         -------
             An arrow array
@@ -288,19 +298,20 @@ cdef class LogicalColumn:
         """
         return pyarrow_wrap_array(self._handle.get_arrow())
 
-    def to_cudf(self) -> cudfColumn:
-        """Copy the logical column into a local cudf column
+    def to_cudf(self):
+        """Copy the logical column into a local cudf series
 
         This call blocks the client's control flow and fetches the data for the
         whole column to the current node.
 
         Returns
         -------
-            A cudf column that owns its data.
+            A cudf series that owns its data.
 
         """
         cdef unique_ptr[column] col = self._handle.get_cudf()
-        return cudfColumn.from_unique_ptr(move(col))
+        pylibcudf_col = PylibcudfColumn.from_libcudf(move(col))
+        return cudf.core.column.column.ColumnBase.from_pylibcudf(pylibcudf_col)
 
     def to_cudf_scalar(self):
         """Copy the logical column into a local cudf scalar
@@ -320,7 +331,8 @@ cdef class LogicalColumn:
             If the column is not length 1 (scalar columns always are).
         """
         cdef unique_ptr[scalar] scalar = self._handle.get_cudf_scalar()
-        return PylibcudfScalar.from_unique_ptr(move(scalar))
+        pylibcudf_scalar = PylibcudfScalar.from_libcudf(move(scalar))
+        return cudf.Scalar.from_pylibcudf(pylibcudf_scalar)
 
     def repr(self, size_t max_num_items=30) -> str:
         """Return a printable representational string
