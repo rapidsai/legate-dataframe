@@ -146,6 +146,29 @@ struct create_result_store_fn {
 
 }  // namespace
 
+// Arrow wants column indices instead of names
+// Find the columns
+std::vector<int> GetArrowColumnIndices(const std::string& file_path,
+                                       const std::vector<std::string>& columns)
+{
+  // Open the file and get the schema
+  auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(file_path));
+  std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
+  auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
+  std::shared_ptr<arrow::Schema> schema;
+  status = arrow_reader->GetSchema(&schema);
+
+  // Find the column indices
+  std::vector<int> column_indices;
+  column_indices.reserve(columns.size());
+  for (const auto& col : columns) {
+    auto idx = schema->GetFieldIndex(col);
+    if (idx < 0) { throw std::runtime_error("Column " + col + " not found in Parquet schema."); }
+    column_indices.push_back(idx);
+  }
+  return column_indices;
+}
+
 class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
  public:
   static inline const auto TASK_CONFIG =
@@ -173,25 +196,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       return;
     }
 
-    // Arrow wants column indices instead of names
-    // Find the columns
-    std::vector<int> column_indices;
-    column_indices.reserve(columns.size());
-    {
-      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths.at(0)));
-      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
-      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
-      std::shared_ptr<arrow::Schema> schema;
-      status = arrow_reader->GetSchema(&schema);
-
-      for (const auto& col : columns) {
-        auto idx = schema->GetFieldIndex(col);
-        if (idx < 0) {
-          throw std::runtime_error("Column " + col + " not found in Parquet schema.");
-        }
-        column_indices.push_back(idx);
-      }
-    }
+    auto column_indices = GetArrowColumnIndices(file_paths.at(0), columns);
 
     // Iterate over files
     auto [files, row_groups] =
@@ -252,6 +257,79 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetReadArray}};
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
+    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<2>>(ctx);
+    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
+    auto null_value              = ctx.get_next_scalar_arg();
+    auto out                     = ctx.get_next_output_arg();
+    argument::get_parallel_launch_task(ctx);
+
+    auto [my_groups_offset, my_num_groups] =
+      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+
+    if (file_paths.size() != ngroups_per_file.size()) {
+      throw std::runtime_error("internal error: file path and nrows size mismatch");
+    }
+    if (my_num_groups == 0) {
+      out.data().bind_empty_data();
+      if (out.nullable()) { out.null_mask().bind_empty_data(); }
+      return;
+    }
+
+    const size_t ncols = columns.size();
+
+    legate::Rect<2> start = row_group_ranges.at(my_groups_offset);
+    legate::Rect<2> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
+
+    auto num_output_rows = end.hi[0] - start.lo[0] + 1;
+    void* data_ptr       = legate::type_dispatch(out.data().code(),
+                                           create_result_store_fn{},
+                                           out.data(),
+                                           legate::Point<2>({num_output_rows, ncols}));
+    std::optional<bool*> null_ptr;
+    if (out.nullable()) {
+      auto null_buf = out.null_mask().create_output_buffer<bool, 2>(
+        legate::Point<2>({num_output_rows, ncols}), true);
+      auto ptr = null_buf.ptr({0, 0});
+      null_ptr = ptr;
+    }
+
+    if (columns.size() != start.hi[1] - start.lo[1] + 1) {
+      throw std::runtime_error("internal error: columns size and result shape mismatch");
+    }
+
+    auto column_indices = GetArrowColumnIndices(file_paths.at(0), columns);
+    // Iterate over files
+    auto [files, row_groups] =
+      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
+    size_t rows_already_written = 0;
+    std::vector<std::shared_ptr<arrow::Table>> tables;
+    for (int i = 0; i < files.size(); i++) {
+      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
+      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
+      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
+      std::unique_ptr<arrow::RecordBatchReader> batch_reader;
+      status     = arrow_reader->GetRecordBatchReader(row_groups[i], column_indices, &batch_reader);
+      auto table = ARROW_RESULT(batch_reader->ToTable());
+
+      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + table->num_rows()) {
+        throw std::runtime_error("internal error: output smaller than expected.");
+      }
+
+      // Write to output array, this is a transposed copy.
+      copy_into_tranposed(ctx, data_ptr, null_ptr, table, null_value, out.data().type());
+
+      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + table->num_rows() * ncols; }
+      data_ptr =
+        static_cast<char*>(data_ptr) + table->num_rows() * ncols * out.data().type().size();
+      rows_already_written += table->num_rows();
+    }
+  }
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
