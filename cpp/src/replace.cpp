@@ -42,10 +42,18 @@ class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::Replace
 
     const auto input = argument::get_next_input<PhysicalColumn>(ctx);
     auto scalar_col  = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output      = argument::get_next_output<PhysicalColumn>(ctx);
 
-    auto datum_result = ARROW_RESULT(arrow::compute::CallFunction(
-      "coalesce", {input.arrow_array_view(), scalar_col.arrow_array_view()}));
+    auto arrow_input = input.arrow_array_view();
+
+    auto scalar = ARROW_RESULT(scalar_col.arrow_array_view()->GetScalar(0));
+    auto output = argument::get_next_output<PhysicalColumn>(ctx);
+
+    // Cast the scalar to the input type if necessary
+    if (*scalar->type != *arrow_input->type()) {
+      scalar = ARROW_RESULT(scalar->CastTo(input.arrow_array_view()->type()));
+    }
+    auto datum_result =
+      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {arrow_input, scalar}));
     output.move_into(std::move(datum_result.make_array()));
   }
 
