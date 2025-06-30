@@ -13,101 +13,132 @@
 # limitations under the License.
 
 import glob
+import math
 
-import cudf
-import cupy
-import dask_cudf
 import legate.core
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.parquet import parquet_read, parquet_read_array, parquet_write
 from legate_dataframe.lib.replace import replace_nulls
-from legate_dataframe.testing import assert_frame_equal, std_dataframe_set
+from legate_dataframe.testing import (
+    assert_arrow_table_equal,
+    assert_frame_equal,
+    std_dataframe_set_cpu,
+)
 
 
-@pytest.mark.parametrize("df", std_dataframe_set())
+def write_partitioned_parquet(table, path, npartitions=1):
+    if table.num_rows == 0:
+        pq.write_table(table, f"{path}/part-0.parquet")
+    partition_size = int(math.floor(table.num_rows / npartitions))
+    for i in range(npartitions):
+        start = i * partition_size
+        end = min((i + 1) * partition_size, table.num_rows)
+        if i == npartitions - 1:
+            # Last partition may be larger if not evenly divisible
+            end = table.num_rows
+        if start >= end:
+            break
+        partition = table[start:end]
+        pq.write_table(partition, f"{path}/part-{i}.parquet")
+
+
+@pytest.mark.parametrize("df", std_dataframe_set_cpu())
 def test_write(tmp_path, df):
-    print(tmp_path)
-    tbl = LogicalTable.from_cudf(df)
+    tbl = LogicalTable.from_arrow(df)
 
     parquet_write(tbl, path=tmp_path)
     get_legate_runtime().issue_execution_fence(block=True)
 
-    res = dask_cudf.read_parquet(tmp_path).compute().reset_index(drop=True)
-    assert_frame_equal(res, df)
+    # Read the files back with pyarrow then compare with the original
+    files = sorted(glob.glob(str(tmp_path) + "/*.parquet"))
+    tables = [pq.read_table(file) for file in files]
+
+    # Concatenate the tables
+    combined_table = pa.concat_tables(tables)
+
+    assert_arrow_table_equal(combined_table, df)
 
 
 @pytest.mark.parametrize("columns", [None, ["b"], ["a", "b"], ["b", "a"], []])
-@pytest.mark.parametrize("df", std_dataframe_set())
-def test_read(tmp_path, df, columns, npartitions=2, glob_string="/*"):
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_parquet(path=tmp_path, index=False)
+@pytest.mark.parametrize("df", std_dataframe_set_cpu())
+def test_read(tmp_path, df, columns, glob_string="/*"):
+    pq.write_table(df, str(tmp_path) + "/test.parquet")
 
-    has_cols = columns is None or all(c in df.keys() for c in columns)
+    has_cols = columns is None or all(c in df.column_names for c in columns)
     if not has_cols:
         with pytest.raises(ValueError):
             parquet_read(str(tmp_path) + glob_string, columns=columns)
     else:
         tbl = parquet_read(str(tmp_path) + glob_string, columns=columns)
         if columns is not None:
-            df = df.loc[:, columns]
+            df = df.select(columns)
 
         if tbl.get_column_names():
-            assert_frame_equal(tbl, df)
+            assert_arrow_table_equal(tbl.to_arrow(), df)
         else:
             # Table is empty (and has no rows). cudf has an index, though.
-            assert len(df.keys()) == 0
+            assert len(df.column_names) == 0
 
 
 def test_read_single_rows(tmp_path, glob_string="/*"):
-    df = cudf.DataFrame({"a": cupy.arange(1, dtype="int64")})
-    ddf = dask_cudf.from_cudf(df, npartitions=1)
-    ddf.to_parquet(path=tmp_path, index=False)
+    df = pa.table({"a": np.arange(1, dtype="int64")})
+    pq.write_table(df, str(tmp_path) + "/test.parquet")
     tbl = parquet_read(str(tmp_path) + glob_string)
-    assert_frame_equal(tbl, df)
+    assert_arrow_table_equal(tbl.to_arrow(), df)
 
 
 def test_read_many_files_per_rank(tmp_path, glob_string="/*"):
     # Use uneven number to test splitting
-    df = cudf.DataFrame({"a": cupy.arange(983, dtype="int64")})
+    df = pa.table({"a": np.arange(983, dtype="int64")})
     npartitions = 100
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_parquet(path=tmp_path, index=False)
-    # Test that we really have many files hoped for:
+    write_partitioned_parquet(df, tmp_path, npartitions=npartitions)
     assert len(glob.glob(str(tmp_path) + glob_string)) == npartitions
     tbl = parquet_read(str(tmp_path) + glob_string)
 
     # NOTE: Right now the C-code does not attempt to "natural" sort parquet
     #       files.  So more with more than 10 files the order of rows is not
     #       preserved at this time.
-    assert_frame_equal(tbl.to_cudf().sort_values(by="a"), df)
+    assert_arrow_table_equal(tbl.to_arrow().sort_by("a"), df)
 
 
 def test_read_array(tmp_path, npartitions=2, glob_string="/*"):
     cn = pytest.importorskip("cupynumeric")
 
-    c = cudf.Series(cupy.arange(2, 10002, dtype="float32"))
-    c = c.mask([True, False] * 5000)
-    df = cudf.DataFrame(
-        {
-            "a": cupy.arange(10000, dtype="float32"),
-            "b": cupy.arange(1, 10001, dtype="float32"),
-            "c": c,  # only column with masked values
-            "d": cupy.arange(3, 10003, dtype="float32"),
-        }
+    c = pa.array(
+        np.arange(2, 10002, dtype="float32"), mask=np.array([True, False] * 5000)
     )
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_parquet(path=tmp_path, index=False)
+    # we have to explicitly tell pyarrow these arrays are non-nullable for some reason
+    df = pa.table(
+        {
+            "a": pa.array(np.arange(10000, dtype="float32")),
+            "b": np.arange(1, 10001, dtype="float32"),
+            "c": c,  # only column with masked values
+            "d": np.arange(3, 10003, dtype="float32"),
+        },
+        schema=pa.schema(
+            [
+                ("a", pa.float32(), False),
+                ("b", pa.float32(), False),
+                ("c", pa.float32(), True),  # nullable column
+                ("d", pa.float32(), False),
+            ]
+        ),
+    )
 
+    write_partitioned_parquet(df, tmp_path, npartitions=npartitions)
     tbl = parquet_read(str(tmp_path) + glob_string, columns=["b", "a", "d", "c"])
     tbl = LogicalTable(
         [
             tbl["b"],
             tbl["a"],
             tbl["d"],
-            replace_nulls(tbl["c"], cudf.Scalar(0.5, "float32")),
+            replace_nulls(tbl["c"], pa.scalar(0.5, "float32")),
         ],
         ["b", "a", "d", "c"],
     )
@@ -123,6 +154,9 @@ def test_read_array(tmp_path, npartitions=2, glob_string="/*"):
     assert arr.dtype == arr_from_tbl.dtype
     assert cn.array_equal(arr_from_tbl, arr)
 
+    assert arr.dtype == arr_from_tbl.dtype
+    assert np.array_equal(arr_from_tbl, arr)
+
     # Check if the mask behavior seems right for column "c"
     arr = parquet_read_array(str(tmp_path) + glob_string, columns=["c"])
     col_from_arr = LogicalColumn(arr.project(1, 0))
@@ -134,14 +168,14 @@ def test_read_array(tmp_path, npartitions=2, glob_string="/*"):
 def test_read_array_cast(tmp_path, npartitions=2, glob_string="/*"):
     cn = pytest.importorskip("cupynumeric")
 
-    df = cudf.DataFrame(
+    df = pa.table(
         {
-            "a": cupy.arange(10000, dtype="float32"),
-            "b": cupy.arange(1, 10001, dtype="float64"),
-        }
+            "a": np.arange(10000, dtype="float32"),
+            "b": np.arange(1, 10001, dtype="float64"),
+        },
+        schema=pa.schema([("a", pa.float32(), False), ("b", pa.float64(), False)]),
     )
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_parquet(path=tmp_path, index=False)
+    write_partitioned_parquet(df, tmp_path, npartitions=npartitions)
 
     null_value = legate.core.Scalar(0, legate.core.float32)
     arr = parquet_read_array(
@@ -161,10 +195,12 @@ def test_read_array_large(tmp_path, npartitions=1, glob_string="/*"):
     cn = pytest.importorskip("cupynumeric")
 
     # Create an array so large, that we should chunk (should be fine for testing)
-    df = cudf.DataFrame({"a": cupy.ones(2**26, dtype="uint8")})
-    ddf = dask_cudf.from_cudf(df, npartitions=npartitions)
-    ddf.to_parquet(path=tmp_path, index=False)
-    del df, ddf
+    df = pa.table(
+        {"a": np.ones(2**26, dtype="uint8")},
+        schema=pa.schema([("a", pa.uint8(), False)]),
+    )
+    pq.write_table(df, str(tmp_path) + "/test.parquet")
+    del df
 
     null_value = legate.core.Scalar(0, legate.core.uint8)
     arr = parquet_read_array(

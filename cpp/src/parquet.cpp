@@ -197,7 +197,6 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     }
 
     auto column_indices = GetArrowColumnIndices(file_paths.at(0), columns);
-
     // Iterate over files
     auto [files, row_groups] =
       find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
@@ -210,10 +209,12 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       status = arrow_reader->GetRecordBatchReader(row_groups[i], column_indices, &batch_reader);
       tables.push_back(ARROW_RESULT(batch_reader->ToTable()));
     }
-
     // Concatenate the tables
-    auto table = ARROW_RESULT(arrow::ConcatenateTables(tables));
-    tbl_arg.move_into(std::move(table));
+    if (tables.size() == 0) {
+      tbl_arg.bind_empty_data();
+    } else {
+      tbl_arg.move_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
+    }
   }
 
   static void gpu_variant(legate::TaskContext context)

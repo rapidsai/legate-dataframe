@@ -426,8 +426,10 @@ class PhysicalTable {
     auto combined = table->CombineChunks().ValueOrDie();
     for (int i = 0; i < combined->num_columns(); ++i) {
       auto chunked_array = combined->column(i);
-      if (chunked_array->num_chunks() != 1) {
-        throw std::runtime_error("LogicalTable.move_into(): expected an array with 1 chunk.");
+      std::shared_ptr<arrow::Array> contiguous_array;
+      if (chunked_array->num_chunks() == 0) {
+        columns_[i].bind_empty_data();
+        continue;
       }
       columns_[i].move_into(chunked_array->chunk(0));
     }
