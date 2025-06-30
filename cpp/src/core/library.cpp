@@ -133,7 +133,8 @@ legate::Library create_and_registrate_library()
     }
   }
   // Set with_has_allocations globally since currently all tasks allocate (and libcudf may also)
-  auto options = legate::VariantOptions{}.with_has_allocations(true);
+  auto options =
+    legate::VariantOptions{}.with_has_allocations(true).with_elide_device_ctx_sync(true);
   auto context = runtime->find_or_create_library(library_name,
                                                  legate::ResourceConfig{},
                                                  std::make_unique<Mapper>(),

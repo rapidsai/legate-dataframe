@@ -48,6 +48,11 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetWrite}};
 
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
+                                                .with_has_allocations(true)
+                                                .with_elide_device_ctx_sync(true)
+                                                .with_has_side_effect(true);
+
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};

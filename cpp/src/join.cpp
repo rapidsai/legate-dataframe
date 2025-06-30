@@ -201,8 +201,10 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
  public:
   static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Join}};
 
-  static constexpr auto GPU_VARIANT_OPTIONS =
-    legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
+                                                .with_has_allocations(true)
+                                                .with_concurrent(true)
+                                                .with_elide_device_ctx_sync(true);
 
   static void gpu_variant(legate::TaskContext context)
   {
