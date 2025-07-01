@@ -104,7 +104,5 @@ TEST(StringsParquetTest, ReadWrite)
 
   LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet");
 
-  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()))
-    << "Expected: " << tbl_a.get_arrow()->ToString() << "\n"
-    << "Actual: " << tbl_b.get_arrow()->ToString();
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }

@@ -107,14 +107,16 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
     auto index_end   = thrust::make_counting_iterator<size_t>(tbl.num_rows() * tbl.num_columns());
 
     if (!null_ptr.has_value()) {
-      auto get_value_func =
-        cuda::proclaim_return_type<T>([input   = *device_input,
-                                       divisor = tbl.num_columns(),
-                                       val     = null_value.value<T>()] __device__(size_t idx) {
+      // Our null value may be empty if the user didn't specify one (e.g. when there are no nulls).
+      // Accessing the empty scalar would then cause an exception.
+      T scalar{};
+      if (null_value.size() > 0) { scalar = null_value.value<T>(); }
+      auto get_value_func = cuda::proclaim_return_type<T>(
+        [input = *device_input, divisor = tbl.num_columns(), scalar] __device__(size_t idx) {
           if (input.column(idx % divisor).is_valid(idx / divisor)) {
             return input.column(idx % divisor).element<T>(idx / divisor);
           } else {
-            return val;
+            return scalar;
           }
         });
 

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import glob
-import math
 
 import legate.core
 import numpy as np
@@ -35,7 +34,7 @@ from legate_dataframe.testing import (
 def write_partitioned_parquet(table, path, npartitions=1):
     if table.num_rows == 0:
         pq.write_table(table, f"{path}/part-0.parquet")
-    partition_size = int(math.floor(table.num_rows / npartitions))
+    partition_size = table.num_rows // npartitions
     for i in range(npartitions):
         start = i * partition_size
         end = min((i + 1) * partition_size, table.num_rows)
@@ -154,9 +153,6 @@ def test_read_array(tmp_path, npartitions=2, glob_string="/*"):
     assert arr.dtype == arr_from_tbl.dtype
     assert cn.array_equal(arr_from_tbl, arr)
 
-    assert arr.dtype == arr_from_tbl.dtype
-    assert np.array_equal(arr_from_tbl, arr)
-
     # Check if the mask behavior seems right for column "c"
     arr = parquet_read_array(str(tmp_path) + glob_string, columns=["c"])
     col_from_arr = LogicalColumn(arr.project(1, 0))
@@ -178,7 +174,9 @@ def test_read_array_boolean(tmp_path):
 
     pq.write_table(df, str(tmp_path) + "/test.parquet")
 
-    array = parquet_read_array(str(tmp_path) + "/*")
+    array = parquet_read_array(
+        str(tmp_path) + "/*", null_value=legate.core.Scalar(False, legate.core.bool_)
+    )
     assert (np.array(array).squeeze() == df.column("a").to_numpy()).all()
 
 

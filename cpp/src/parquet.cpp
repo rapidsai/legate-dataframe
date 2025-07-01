@@ -146,29 +146,6 @@ struct create_result_store_fn {
 
 }  // namespace
 
-// Arrow wants column indices instead of names
-// Find the columns
-std::vector<int> GetArrowColumnIndices(const std::string& file_path,
-                                       const std::vector<std::string>& columns)
-{
-  // Open the file and get the schema
-  auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(file_path));
-  std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
-  auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
-  std::shared_ptr<arrow::Schema> schema;
-  status = arrow_reader->GetSchema(&schema);
-
-  // Find the column indices
-  std::vector<int> column_indices;
-  column_indices.reserve(columns.size());
-  for (const auto& col : columns) {
-    auto idx = schema->GetFieldIndex(col);
-    if (idx < 0) { throw std::runtime_error("Column " + col + " not found in Parquet schema."); }
-    column_indices.push_back(idx);
-  }
-  return column_indices;
-}
-
 class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
  public:
   static inline const auto TASK_CONFIG =
@@ -179,6 +156,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     TaskContext ctx{context};
     const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
@@ -196,7 +174,6 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
       return;
     }
 
-    auto column_indices = GetArrowColumnIndices(file_paths.at(0), columns);
     // Iterate over files
     auto [files, row_groups] =
       find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
@@ -223,6 +200,7 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
 
     const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
@@ -263,6 +241,7 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     TaskContext ctx{context};
     const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<2>>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
@@ -304,7 +283,6 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
       throw std::runtime_error("internal error: columns size and result shape mismatch");
     }
 
-    auto column_indices = GetArrowColumnIndices(file_paths.at(0), columns);
     // Iterate over files
     auto [files, row_groups] =
       find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
@@ -337,6 +315,7 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
 
     const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<2>>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
@@ -438,6 +417,7 @@ const auto reg_id_ = []() -> char {
 struct ParquetReadInfo {
   std::vector<std::string> file_paths;
   std::vector<std::string> column_names;
+  std::vector<int> column_indices;
   std::vector<cudf::data_type> column_types;
   std::vector<bool> column_nullable;
   std::vector<size_t> nrow_groups;
@@ -505,6 +485,12 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
     }
   }
 
+  std::vector<int> column_indices;
+  column_indices.reserve(column_names.size());
+  for (auto name : column_names) {
+    column_indices.push_back(schema->GetFieldIndex(name));
+  }
+
   // We read by row groups, because this is how the decompression works.
   // If the row groups are huge, that may not be ideal, but there is not much
   // we can do about it at the moment.
@@ -545,6 +531,7 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
 
   return {std::move(file_paths),
           std::move(column_names),
+          std::move(column_indices),
           std::move(column_types),
           std::move(column_nullable),
           std::move(nrow_groups),
@@ -589,6 +576,7 @@ LogicalTable parquet_read(const std::string& glob_string,
     runtime->create_task(get_library(), task::ParquetRead::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, info.file_paths);
   argument::add_next_scalar_vector(task, info.column_names);
+  argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
   argument::add_next_scalar(task, info.nrow_groups_total);
   argument::add_next_output(task, ret);
@@ -651,6 +639,7 @@ legate::LogicalArray parquet_read_array(const std::string& glob_string,
     runtime->create_task(get_library(), task::ParquetReadArray::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, info.file_paths);
   argument::add_next_scalar_vector(task, info.column_names);
+  argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
   argument::add_next_scalar_vector(task, info.row_group_ranges_vec);
   argument::add_next_scalar(task, info.nrow_groups_total);
