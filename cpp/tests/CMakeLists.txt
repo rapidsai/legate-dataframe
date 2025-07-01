@@ -37,10 +37,9 @@ set_target_properties(
 set(LDF_TEST_CUDA_FLAGS --expt-extended-lambda --expt-relaxed-constexpr)
 target_compile_options(cpp_tests PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${LDF_TEST_CUDA_FLAGS}>")
 
-# Note that fmt::fmt should not be required, but seems to be for debug builds.
 target_link_libraries(
   cpp_tests PRIVATE LegateDataframe cudf cudf::cudftestutil cudf::cudftestutil_impl GTest::gmock
-                    GTest::gtest fmt::fmt $<TARGET_NAME_IF_EXISTS:conda_env>
+                    GTest::gtest $<TARGET_NAME_IF_EXISTS:conda_env>
 )
 rapids_test_add(
   NAME cpp_tests

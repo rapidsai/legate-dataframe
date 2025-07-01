@@ -1,5 +1,5 @@
 # =============================================================================
-# Copyright (c) 2024, NVIDIA CORPORATION.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License. You may obtain a copy of the License at
@@ -25,4 +25,4 @@ find_package(LegateDataframe REQUIRED)
 add_executable(third_party_hello third_party_hello.cpp)
 
 # Note that fmt::fmt should not be required, but seems to be (in the rest for debug builds).
-target_link_libraries(third_party_hello PRIVATE LegateDataframe::LegateDataframe fmt::fmt)
+target_link_libraries(third_party_hello PRIVATE LegateDataframe::LegateDataframe)
