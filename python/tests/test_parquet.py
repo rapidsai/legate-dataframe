@@ -165,6 +165,23 @@ def test_read_array(tmp_path, npartitions=2, glob_string="/*"):
     assert_frame_equal(col_from_arr, col)
 
 
+def test_read_array_boolean(tmp_path):
+    # booleans are a special case in arrow
+    df = pa.table(
+        {
+            "a": np.resize([True, False], 1000),
+        },
+        schema=pa.schema(
+            [("a", pa.bool_(), False)],
+        ),
+    )
+
+    pq.write_table(df, str(tmp_path) + "/test.parquet")
+
+    array = parquet_read_array(str(tmp_path) + "/*")
+    assert (np.array(array).squeeze() == df.column("a").to_numpy()).all()
+
+
 def test_read_array_cast(tmp_path, npartitions=2, glob_string="/*"):
     cn = pytest.importorskip("cupynumeric")
 

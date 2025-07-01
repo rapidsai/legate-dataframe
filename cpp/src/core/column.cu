@@ -364,7 +364,7 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
       const auto num_chars                = chars.data().shape<1>().volume();
 
       std::shared_ptr<arrow::Buffer> data =
-        ARROW_RESULT(arrow::AllocateBuffer(std::max(num_chars, size_t(1))));
+        ARROW_RESULT(arrow::AllocateBuffer(num_chars * sizeof(int8_t)));
       std::memcpy(data->mutable_data(), read_accessor_as_1d_bytes(chars), num_chars);
 
       std::shared_ptr<arrow::Buffer> null_bitmask;

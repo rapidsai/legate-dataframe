@@ -177,6 +177,7 @@ def std_dataframe_set_cpu() -> List[pa.Table]:
             {
                 "a": np.arange(10000, dtype="int32"),
                 "b": np.arange(-10000, 0, dtype="float64"),
+                "c": np.resize([True, False], 10000).astype(np.bool_),
             }
         ),
         pa.table({"a": ["a", "bb", "ccc"]}),

@@ -198,12 +198,24 @@ struct TransposeVisitor {
     }
     return arrow::Status::OK();
   }
-  /*
   arrow::Status Visit(const arrow::BooleanArray& array)
   {
+    auto out = static_cast<bool*>(data_ptr);
+    if (!null_ptr.has_value()) {
+      for (auto row_idx = row_offset; row_idx < row_offset + array.length(); row_idx++) {
+        out[num_columns * row_idx + column_idx] = array.IsValid(row_idx - row_offset)
+                                                    ? array.Value(row_idx - row_offset)
+                                                    : null_value.value<bool>();
+      }
+    } else {
+      auto null_data = null_ptr.value();
+      for (auto row_idx = row_offset; row_idx < row_offset + array.length(); row_idx++) {
+        null_data[num_columns * row_idx + column_idx] = array.IsValid(row_idx - row_offset);
+        out[num_columns * row_idx + column_idx]       = array.Value(row_idx - row_offset);
+      }
+    }
     return arrow::Status::OK();
   }
-  */
   arrow::Status Visit(const arrow::Array& array)
   {
     return arrow::Status::NotImplemented("Not implemented for array of type ",
