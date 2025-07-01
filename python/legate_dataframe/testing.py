@@ -50,7 +50,18 @@ def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> cudf.DataF
 
 
 def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
-    assert left.equals(right), f"Arrow tables are not equal:\n{left}\n{right}"
+    # arrow has an annoying nullable attribute in its schema that is not well respected by its various functions
+    # i.e. it is possible to have a non-nullable column with null values without problems
+    # Set the nullable attribute to match the left table
+    assert left.schema.names == right.schema.names
+    fields = []
+    for name in left.schema.names:
+        left_field = left.schema.field(name)
+        right_field = right.schema.field(name)
+        fields.append(pa.field(right_field.name, right_field.type, left_field.nullable))
+    new_schema = pa.schema(fields)
+    right_copy = pa.table(right, schema=new_schema)
+    assert left.equals(right_copy), f"Arrow tables are not equal:\n{left}\n{right}"
 
 
 def assert_frame_equal(
