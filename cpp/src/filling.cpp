@@ -31,6 +31,30 @@ class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
  public:
   static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Sequence}};
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    auto global_size = argument::get_next_scalar<size_t>(ctx);
+    auto global_init = argument::get_next_scalar<int64_t>(ctx);
+    auto output      = argument::get_next_output<PhysicalColumn>(ctx);
+    argument::get_parallel_launch_task(ctx);
+    auto [local_start, local_size] = evenly_partition_work(global_size, ctx.rank, ctx.nranks);
+    auto local_init                = global_init + local_start;
+
+    if (local_size == 0) {
+      output.bind_empty_data();
+      return;
+    }
+
+    arrow::Int64Builder long_builder = arrow::Int64Builder();
+    long_builder.Reserve(local_size);
+    for (size_t i = 0; i < local_size; i++) {
+      long_builder.UnsafeAppend(local_init + i);
+    }
+    auto local_array = ARROW_RESULT(long_builder.Finish());
+    output.move_into(std::move(local_array));
+  }
+
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
