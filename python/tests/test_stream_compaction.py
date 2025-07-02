@@ -18,7 +18,12 @@ import pytest
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
-from legate_dataframe.testing import assert_frame_equal, std_dataframe_set
+from legate_dataframe.testing import (
+    assert_frame_equal,
+    assert_matches_polars,
+    get_pyarrow_column_set,
+    std_dataframe_set,
+)
 
 
 @pytest.mark.parametrize("cudf_df", std_dataframe_set())
@@ -71,3 +76,15 @@ def test_apply_boolean_mask_errors(bad_mask):
 
     with pytest.raises(ValueError):
         apply_boolean_mask(lg_df, bad_mask)
+
+
+@pytest.mark.parametrize(
+    "arrow_column", get_pyarrow_column_set(["int32", "float32", "int64"])
+)
+def test_column_replace_null_polars(arrow_column):
+    pl = pytest.importorskip("polars")
+
+    q = pl.DataFrame({"a": arrow_column}).lazy()
+    q = q.filter(pl.col("a") > 0.5)
+
+    assert_matches_polars(q)
