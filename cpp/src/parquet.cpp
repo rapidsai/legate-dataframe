@@ -323,8 +323,6 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     auto out                     = ctx.get_next_output_arg();
     argument::get_parallel_launch_task(ctx);
 
-    auto expected_type_id = to_cudf_type_id(out.type().code());
-
     auto [my_groups_offset, my_num_groups] =
       evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
 
@@ -378,25 +376,16 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     size_t rows_already_written = 0;
     while (reader.has_next()) {
       auto tbl = reader.read_chunk().tbl;
-      /* Check if all columns are of the right type and cast them if not. */
-      auto column_vec = tbl->release();
-      for (auto& col : column_vec) {
-        if (col->type().id() != expected_type_id) {
-          col = cudf::cast(col->view(), cudf::data_type{expected_type_id}, ctx.stream(), ctx.mr());
-        }
-      }
-      auto cast_tbl = cudf::table(std::move(column_vec));
 
-      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + cast_tbl.num_rows()) {
+      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + tbl->num_rows()) {
         throw std::runtime_error("internal error: output smaller than expected.");
       }
       // Write to output array, this is a transposed copy.
-      copy_into_tranposed(ctx, data_ptr, null_ptr, cast_tbl.view(), null_value);
+      copy_into_tranposed(ctx, data_ptr, null_ptr, tbl->release(), null_value, out.data().type());
 
-      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + cast_tbl.num_rows() * ncols; }
-      data_ptr =
-        static_cast<char*>(data_ptr) + cast_tbl.num_rows() * ncols * out.data().type().size();
-      rows_already_written += cast_tbl.num_rows();
+      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + tbl->num_rows() * ncols; }
+      data_ptr = static_cast<char*>(data_ptr) + tbl->num_rows() * ncols * out.data().type().size();
+      rows_already_written += tbl->num_rows();
     }
   }
 };

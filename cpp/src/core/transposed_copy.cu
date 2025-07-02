@@ -23,6 +23,8 @@
 #include <rmm/exec_policy.hpp>
 
 #include <cudf/table/table_device_view.cuh>
+#include <cudf/unary.hpp>
+#include <legate_dataframe/core/column.hpp>
 
 #include <arrow/compute/api.h>
 #include <legate_dataframe/core/task_context.hpp>
@@ -148,28 +150,47 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
 
 void copy_into_tranposed(TaskContext& ctx,
                          legate::PhysicalArray& array,
-                         cudf::table_view tbl,
+                         std::vector<std::unique_ptr<cudf::column>> columns,
                          size_t offset,
                          legate::Scalar& null_value)
 {
-  for (auto&& col : tbl) {
-    if (to_cudf_type_id(array.type().code()) != col.type().id()) {
-      throw std::runtime_error("internal error: column types changed between files?");
+  auto expected_type_id = to_cudf_type_id(array.type().code());
+  for (auto& col : columns) {
+    if (col->type().id() != expected_type_id) {
+      col = cudf::cast(col->view(), cudf::data_type{expected_type_id}, ctx.stream(), ctx.mr());
     }
   }
-
-  cudf::type_dispatcher(
-    tbl.column(0).type(), copy_into_transposed_impl{}, ctx, array, tbl, offset, null_value);
+  auto cast_tbl = cudf::table(std::move(columns));
+  cudf::type_dispatcher(cudf::data_type(expected_type_id),
+                        copy_into_transposed_impl{},
+                        ctx,
+                        array,
+                        cast_tbl.view(),
+                        offset,
+                        null_value);
 }
 
 void copy_into_tranposed(TaskContext& ctx,
                          void* data_ptr,
                          std::optional<bool*> null_ptr,
-                         cudf::table_view tbl,
-                         legate::Scalar& null_value)
+                         std::vector<std::unique_ptr<cudf::column>> columns,
+                         legate::Scalar& null_value,
+                         legate::Type type)
 {
-  cudf::type_dispatcher(
-    tbl.column(0).type(), copy_into_transposed_impl{}, ctx, data_ptr, null_ptr, tbl, null_value);
+  auto expected_type_id = to_cudf_type_id(type.code());
+  for (auto& col : columns) {
+    if (col->type().id() != expected_type_id) {
+      col = cudf::cast(col->view(), cudf::data_type{expected_type_id}, ctx.stream(), ctx.mr());
+    }
+  }
+  auto cast_tbl = cudf::table(std::move(columns));
+  cudf::type_dispatcher(cudf::data_type(expected_type_id),
+                        copy_into_transposed_impl{},
+                        ctx,
+                        data_ptr,
+                        null_ptr,
+                        cast_tbl.view(),
+                        null_value);
 }
 
 struct TransposeVisitor {
