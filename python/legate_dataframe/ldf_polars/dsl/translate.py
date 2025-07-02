@@ -261,7 +261,11 @@ def _(node: pl_ir.Cache, translator: Translator, schema: Schema) -> ir.IR:
 
 @_translate_ir.register
 def _(node: pl_ir.DataFrameScan, translator: Translator, schema: Schema) -> ir.IR:
-    raise NotImplementedError("DataFrameScan not supported")
+    return ir.DataFrameScan(
+        schema,
+        node.df,
+        node.projection,
+    )
 
 
 @_translate_ir.register

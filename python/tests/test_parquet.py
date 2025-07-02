@@ -27,6 +27,7 @@ from legate_dataframe.lib.replace import replace_nulls
 from legate_dataframe.testing import (
     assert_arrow_table_equal,
     assert_frame_equal,
+    assert_matches_polars,
     std_dataframe_set_cpu,
 )
 
@@ -222,3 +223,19 @@ def test_read_array_large(tmp_path, npartitions=1, glob_string="/*"):
         str(tmp_path) + glob_string, columns=["a"], null_value=null_value
     )
     assert cn.asarray(arr).sum() == 2**26
+
+
+@pytest.mark.parametrize("columns", [None, ["b"], ["a", "b"], ["b", "a"], []])
+@pytest.mark.parametrize("df", std_dataframe_set_cpu())
+def test_read_polars(tmp_path, df, columns):
+    if len(df.column_names) == 0:
+        return
+
+    pl = pytest.importorskip("polars")
+    pq.write_table(df, tmp_path / "test.parquet")
+
+    q = pl.scan_parquet(tmp_path / "test.parquet")
+    if columns is not None:
+        q = q.select(columns)
+
+    assert_matches_polars(q, allow_exceptions=pl.exceptions.ColumnNotFoundError)

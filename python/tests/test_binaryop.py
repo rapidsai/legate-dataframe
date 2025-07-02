@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import operator
+
 import legate.core
 import numpy as np
 import pyarrow as pa
@@ -19,16 +21,11 @@ import pytest
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.binaryop import binary_operation
-from legate_dataframe.testing import get_pyarrow_column_set
-
-
-def gen_random_series(nelem: int, num_nans: int) -> pa.Array:
-    rng = np.random.default_rng(42)
-    a = rng.random(nelem)
-    nans = np.zeros(nelem, dtype=bool)
-    nans[rng.choice(a.size, num_nans, replace=False)] = True
-    return pa.array(a, mask=nans)
-
+from legate_dataframe.testing import (
+    assert_matches_polars,
+    gen_random_series,
+    get_pyarrow_column_set,
+)
 
 ops = ["add", "subtract", "multiply"]
 
@@ -79,3 +76,23 @@ def test_scalar_input(array, op, scalar):
 
     result = binary_operation(scalar, scalar, op, array.type)
     assert result.is_scalar()  # if both inputs are scalar, the result is also
+
+
+operators = ["add", "sub", "mul"]
+
+
+@pytest.mark.parametrize("op", operators)
+def test_binary_operation_polars(op):
+    pl = pytest.importorskip("polars")
+
+    a = gen_random_series(nelem=1000, num_nans=10)
+    b = gen_random_series(nelem=1000, num_nans=10)
+    a_s = pl.from_arrow(a)
+    b_s = pl.from_arrow(b)
+
+    # Need to work with a lazyframe, as there is no lazy series.
+    q = pl.LazyFrame({"a": a_s, "b": b_s}).with_columns(
+        a_b=getattr(operator, op)(pl.col("a"), pl.col("b"))
+    )
+    print(q.collect(), q.legate.collect())
+    assert_matches_polars(q)

@@ -28,7 +28,7 @@ class BinOp(Expr):
     def __init__(
         self,
         dtype: plc.DataType,
-        op: plc.binaryop.BinaryOperator,
+        op: str,
         left: Expr,
         right: Expr,
     ) -> None:
@@ -41,45 +41,46 @@ class BinOp(Expr):
         self.op = op
         self.children = (left, right)
         self.is_pointwise = True
-        if not plc.binaryop.is_supported_operation(
-            self.dtype, left.dtype, right.dtype, op
-        ):
-            raise NotImplementedError(
-                f"Operation {op.name} not supported "
-                f"for types {left.dtype.id().name} and {right.dtype.id().name} "
-                f"with output type {self.dtype.id().name}"
-            )
+        # TODO: Would be nice to have, but I don't want to map via plc to get there...
+        # if not plc.binaryop.is_supported_operation(
+        #     self.dtype, left.dtype, right.dtype, op
+        # ):
+        #     raise NotImplementedError(
+        #         f"Operation {op.name} not supported "
+        #         f"for types {left.dtype.id().name} and {right.dtype.id().name} "
+        #         f"with output type {self.dtype.id().name}"
+        #     )
 
-    _BOOL_KLEENE_MAPPING: ClassVar[
-        dict[plc.binaryop.BinaryOperator, plc.binaryop.BinaryOperator]
-    ] = {
-        plc.binaryop.BinaryOperator.BITWISE_AND: plc.binaryop.BinaryOperator.NULL_LOGICAL_AND,
-        plc.binaryop.BinaryOperator.BITWISE_OR: plc.binaryop.BinaryOperator.NULL_LOGICAL_OR,
-        plc.binaryop.BinaryOperator.LOGICAL_AND: plc.binaryop.BinaryOperator.NULL_LOGICAL_AND,
-        plc.binaryop.BinaryOperator.LOGICAL_OR: plc.binaryop.BinaryOperator.NULL_LOGICAL_OR,
+    _BOOL_KLEENE_MAPPING: ClassVar[dict[plc.binaryop.BinaryOperator, str]] = {
+        # Commented out ones are currently unsupported on the C-side or not clearly mapped
+        # due to nullable handling (also below)
+        # plc.binaryop.BinaryOperator.BITWISE_AND: plc.binaryop.BinaryOperator.NULL_LOGICAL_AND,
+        # plc.binaryop.BinaryOperator.BITWISE_OR: plc.binaryop.BinaryOperator.NULL_LOGICAL_OR,
+        # plc.binaryop.BinaryOperator.LOGICAL_AND: plc.binaryop.BinaryOperator.NULL_LOGICAL_AND,
+        # plc.binaryop.BinaryOperator.LOGICAL_OR: plc.binaryop.BinaryOperator.NULL_LOGICAL_OR,
     }
 
-    _MAPPING: ClassVar[dict[pl_expr.Operator, plc.binaryop.BinaryOperator]] = {
-        pl_expr.Operator.Eq: plc.binaryop.BinaryOperator.EQUAL,
-        pl_expr.Operator.EqValidity: plc.binaryop.BinaryOperator.NULL_EQUALS,
-        pl_expr.Operator.NotEq: plc.binaryop.BinaryOperator.NOT_EQUAL,
-        pl_expr.Operator.NotEqValidity: plc.binaryop.BinaryOperator.NULL_NOT_EQUALS,
-        pl_expr.Operator.Lt: plc.binaryop.BinaryOperator.LESS,
-        pl_expr.Operator.LtEq: plc.binaryop.BinaryOperator.LESS_EQUAL,
-        pl_expr.Operator.Gt: plc.binaryop.BinaryOperator.GREATER,
-        pl_expr.Operator.GtEq: plc.binaryop.BinaryOperator.GREATER_EQUAL,
-        pl_expr.Operator.Plus: plc.binaryop.BinaryOperator.ADD,
-        pl_expr.Operator.Minus: plc.binaryop.BinaryOperator.SUB,
-        pl_expr.Operator.Multiply: plc.binaryop.BinaryOperator.MUL,
-        pl_expr.Operator.Divide: plc.binaryop.BinaryOperator.DIV,
-        pl_expr.Operator.TrueDivide: plc.binaryop.BinaryOperator.TRUE_DIV,
-        pl_expr.Operator.FloorDivide: plc.binaryop.BinaryOperator.FLOOR_DIV,
-        pl_expr.Operator.Modulus: plc.binaryop.BinaryOperator.PYMOD,
-        pl_expr.Operator.And: plc.binaryop.BinaryOperator.BITWISE_AND,
-        pl_expr.Operator.Or: plc.binaryop.BinaryOperator.BITWISE_OR,
-        pl_expr.Operator.Xor: plc.binaryop.BinaryOperator.BITWISE_XOR,
-        pl_expr.Operator.LogicalAnd: plc.binaryop.BinaryOperator.LOGICAL_AND,
-        pl_expr.Operator.LogicalOr: plc.binaryop.BinaryOperator.LOGICAL_OR,
+    _MAPPING: ClassVar[dict[pl_expr.Operator, str]] = {
+        pl_expr.Operator.Eq: "equal",
+        # pl_expr.Operator.EqValidity: "equal",
+        pl_expr.Operator.NotEq: "not_equal",
+        # pl_expr.Operator.NotEqValidity: "not_equal",
+        pl_expr.Operator.Lt: "less",
+        pl_expr.Operator.LtEq: "less_equal",
+        pl_expr.Operator.Gt: "greater",
+        pl_expr.Operator.GtEq: "greater_equal",
+        pl_expr.Operator.Plus: "add",
+        pl_expr.Operator.Minus: "subtract",
+        pl_expr.Operator.Multiply: "multiply",
+        pl_expr.Operator.Divide: "divide",
+        # pl_expr.Operator.TrueDivide: "true_divide",
+        # pl_expr.Operator.FloorDivide: plc.binaryop.BinaryOperator.FLOOR_DIV,
+        # pl_expr.Operator.Modulus: plc.binaryop.BinaryOperator.PYMOD,
+        pl_expr.Operator.And: "bit_wise_and",
+        pl_expr.Operator.Or: "bit_wise_or",
+        pl_expr.Operator.Xor: "bit_wise_xor",
+        # pl_expr.Operator.LogicalAnd: plc.binaryop.BinaryOperator.LOGICAL_AND,
+        # pl_expr.Operator.LogicalOr: plc.binaryop.BinaryOperator.LOGICAL_OR,
     }
 
     def do_evaluate(

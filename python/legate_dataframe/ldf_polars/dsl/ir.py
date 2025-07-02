@@ -14,9 +14,11 @@ can be considered as functions:
 from __future__ import annotations
 
 import json
+import random
 import time
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import polars as pl
 import pylibcudf as plc
 
 import legate_dataframe.ldf_polars.dsl.expr as expr
@@ -40,7 +42,7 @@ __all__ = [
     "IR",
     "Cache",
     # "ConditionalJoin",
-    # "DataFrameScan",
+    "DataFrameScan",
     # "Distinct",
     "ErrorNode",
     "Filter",
@@ -657,6 +659,71 @@ class Cache(IR):
         except KeyError:
             (value,) = self.children
             return cache.setdefault(self.key, value.evaluate(cache=cache, timer=timer))
+
+
+class DataFrameScan(IR):
+    """
+    Input from an existing polars DataFrame.
+
+    This typically arises from ``q.collect().lazy()``
+    """
+
+    __slots__ = ("_id_for_hash", "df", "projection")
+    _non_child = ("schema", "df", "projection")
+    df: Any
+    """Polars internal PyDataFrame object."""
+    projection: tuple[str, ...] | None
+    """List of columns to project out."""
+
+    def __init__(
+        self,
+        schema: Schema,
+        df: Any,
+        projection: Sequence[str] | None,
+    ):
+        self.schema = schema
+        self.df = df
+        self.projection = tuple(projection) if projection is not None else None
+        self._non_child_args = (
+            schema,
+            pl.DataFrame._from_pydf(df),
+            self.projection,
+        )
+        self.children = ()
+        self._id_for_hash = random.randint(0, 2**64 - 1)
+
+    def get_hashable(self) -> Hashable:
+        """
+        Hashable representation of the node.
+
+        The (heavy) dataframe object is not hashed. No two instances of
+        ``DataFrameScan`` will have the same hash, even if they have the
+        same schema, projection, and config options, and data.
+        """
+        schema_hash = tuple(self.schema.items())
+        return (
+            type(self),
+            schema_hash,
+            self._id_for_hash,
+            self.projection,
+        )
+
+    @classmethod
+    def do_evaluate(
+        cls,
+        schema: Schema,
+        df: Any,
+        projection: tuple[str, ...] | None,
+    ) -> DataFrame:
+        """Evaluate and return a dataframe."""
+        if projection is not None:
+            df = df.select(projection)
+        df = DataFrame.from_polars(df)
+        assert all(
+            c.obj.type() == dtype
+            for c, dtype in zip(df.columns, schema.values(), strict=True)
+        )
+        return df
 
 
 class Select(IR):

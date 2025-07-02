@@ -27,6 +27,7 @@ from legate_dataframe.lib.csv import csv_read, csv_write
 from legate_dataframe.testing import (
     assert_arrow_table_equal,
     assert_frame_equal,
+    assert_matches_polars,
     std_dataframe_set_cpu,
 )
 
@@ -240,3 +241,17 @@ def test_num_rows_split(tmp_path, offset):
 
     read_tbl = csv_read(str(tmp_path) + "/*", dtypes=["int64"])
     assert read_tbl.num_rows() == 1000
+
+
+def test_read_polars(tmp_path):
+    # Test basic polars csv reading.
+    pl = pytest.importorskip("polars")
+
+    df = cudf.DataFrame({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
+    df.to_csv(tmp_path / "tmp.csv", index=False)
+
+    q = pl.scan_csv(tmp_path / "tmp.csv")
+    assert_matches_polars(q)
+    # Check that selection push-through works
+    q = q.select([pl.col("a"), pl.col("c")])
+    assert_matches_polars(q)

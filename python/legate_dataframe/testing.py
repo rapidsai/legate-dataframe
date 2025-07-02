@@ -58,7 +58,11 @@ def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
     for name in left.schema.names:
         left_field = left.schema.field(name)
         right_field = right.schema.field(name)
-        fields.append(pa.field(right_field.name, right_field.type, left_field.nullable))
+        type_ = right_field.type
+        # Accept if there is a mismatch with large vs. non-large strings
+        if type_ == pa.large_string() and left_field.type == pa.string():
+            type_ = pa.string()
+        fields.append(pa.field(right_field.name, type_, left_field.nullable))
     new_schema = pa.schema(fields)
     right_copy = pa.table(right, schema=new_schema)
     assert left.equals(right_copy), f"Arrow tables are not equal:\n{left}\n{right}"
@@ -113,6 +117,39 @@ def assert_frame_equal(
         right=rhs,
         **kwargs,
     )
+
+
+def assert_matches_polars(query: Any, allow_exceptions=()) -> None:
+    """Check that a polars query is equivalent when collected via
+    legate or polars.
+
+    Parameters
+    ----------
+    query
+        A polars query.
+    allow_exceptions
+        A tuple of exceptions or an exception that are allowed to be
+        raised if their type (not text) matches, we accept that.
+    """
+    # Import currently ensures `.legate.collect()` is available
+    import legate_dataframe.ldf_polars  # noqa: F401
+
+    exception = None
+    try:
+        res_polars = query.collect().to_arrow()
+    except allow_exceptions as e:
+        print("caught exception")
+        exception = e
+    try:
+        res_legate = query.legate.collect().to_arrow()
+    except allow_exceptions as e:
+        if type(exception) is type(e):
+            return  # OK, types match so we accept this.
+        if exception is not None:
+            raise exception
+        raise
+
+    assert_arrow_table_equal(res_legate, res_polars)
 
 
 def get_empty_series(dtype, nullable: bool) -> cudf.Series:
@@ -188,6 +225,14 @@ def std_dataframe_set_cpu() -> List[pa.Table]:
             }
         ),
     ]
+
+
+def gen_random_series(nelem: int, num_nans: int) -> pa.Array:
+    rng = np.random.default_rng(42)
+    a = rng.random(nelem)
+    nans = np.zeros(nelem, dtype=bool)
+    nans[rng.choice(a.size, num_nans, replace=False)] = True
+    return pa.array(a, mask=nans)
 
 
 def get_column_set(dtypes, nulls=True):
