@@ -16,13 +16,14 @@
 import cudf
 import cupy
 import numpy as np
+import pyarrow as pa
 import pytest
 from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.sort import NullOrder, Order, sort
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
-from legate_dataframe.testing import assert_frame_equal
+from legate_dataframe.testing import assert_frame_equal, assert_matches_polars
 
 
 @pytest.mark.parametrize(
@@ -224,3 +225,53 @@ def test_errors_incorrect_args(keys, column_order, null_precedence):
         sort(
             lg_df, keys=keys, column_order=column_order, null_precedence=null_precedence
         )
+
+
+@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("nulls_last", [True, False])
+def test_sort_polars(descending, nulls_last):
+    pl = pytest.importorskip("polars")
+
+    # set a single value to null, so that unstable sorting is still unique
+    mask = np.zeros(10_000, dtype=bool)
+    mask[5000] = True
+    pl.DataFrame(
+        {
+            "a": pa.array(np.random.random(10_000), mask=mask),
+            "b": np.random.random(10_000),
+        }
+    )
+    q = pl.DataFrame({"a": [1, 2, 3], "b": [1, 2, 3]}).lazy()
+
+    assert_matches_polars(q.sort("a", nulls_last=nulls_last, descending=descending))
+    assert_matches_polars(
+        q.sort(["b", "a"], nulls_last=nulls_last, descending=descending)
+    )
+
+
+@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("nulls_last", [True, False])
+def test_sort_polars_stable(descending, nulls_last):
+    pl = pytest.importorskip("polars")
+
+    # Here make sure that identical values (maybe nulls) exist
+    mask = np.random.randint(2, size=10_000, dtype=bool)
+    pl.DataFrame(
+        {
+            "a": pa.array(np.random.random(10_000), mask=mask),
+            "b": np.random.randint(100, size=10_000),
+        }
+    )
+    q = pl.DataFrame({"a": [1, 2, 3], "b": [1, 2, 3]}).lazy()
+
+    assert_matches_polars(
+        q.sort("a", nulls_last=nulls_last, descending=descending, maintain_order=True)
+    )
+    assert_matches_polars(
+        q.sort(
+            ["b", "a"],
+            nulls_last=nulls_last,
+            descending=descending,
+            maintain_order=True,
+        )
+    )
