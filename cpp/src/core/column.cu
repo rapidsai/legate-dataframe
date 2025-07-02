@@ -496,10 +496,15 @@ std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
     if (array_.type().code() == legate::Type::Code::STRING) {
       const legate::StringPhysicalArray a = array_.as_string_array();
       const legate::PhysicalArray chars   = a.chars();
-      const auto num_chars                = chars.data().shape<1>().volume();
-
-      auto data = std::make_shared<arrow::Buffer>(
-        reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(chars)), num_chars);
+      auto num_chars                      = chars.data().shape<1>().volume();
+      // Its possible to have an empty string, in which we want to avoid giving arrow a null ptr
+      std::shared_ptr<arrow::Buffer> data;
+      if (num_chars == 0) {
+        data = ARROW_RESULT(arrow::AllocateBuffer(1));
+      } else {
+        data = std::make_shared<arrow::Buffer>(
+          reinterpret_cast<const uint8_t*>(read_accessor_as_1d_bytes(chars)), num_chars);
+      }
 
       std::shared_ptr<arrow::Buffer> null_bitmask;
       if (a.nullable()) { null_bitmask = null_mask_bools_to_bits(array_.null_mask()); }

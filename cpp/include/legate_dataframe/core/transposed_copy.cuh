@@ -26,14 +26,22 @@ namespace legate::dataframe {
 
 void copy_into_tranposed(TaskContext& ctx,
                          legate::PhysicalArray& array,
-                         cudf::table_view tbl,
+                         std::vector<std::unique_ptr<cudf::column>> columns,
                          size_t offset,
                          legate::Scalar& null_value);
 
 void copy_into_tranposed(TaskContext& ctx,
                          void* data_ptr,
                          std::optional<bool*> null_ptr,
-                         cudf::table_view tbl,
-                         legate::Scalar& null_value);
+                         std::vector<std::unique_ptr<cudf::column>> columns,
+                         legate::Scalar& null_value,
+                         legate::Type type);
+
+void copy_into_tranposed(TaskContext& ctx,
+                         void* data_ptr,
+                         std::optional<bool*> null_ptr,
+                         std::shared_ptr<arrow::Table> table,
+                         legate::Scalar& null_value,
+                         legate::Type type);
 
 }  // namespace legate::dataframe

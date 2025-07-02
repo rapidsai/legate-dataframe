@@ -20,6 +20,7 @@
 
 #include <cudf/replace.hpp>
 
+#include <arrow/compute/api.h>
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
@@ -34,6 +35,23 @@ class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::Replace
  public:
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ReplaceNullsWithScalar}};
+
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const auto input = argument::get_next_input<PhysicalColumn>(ctx);
+    auto scalar_col  = argument::get_next_input<PhysicalColumn>(ctx);
+
+    auto arrow_input = input.arrow_array_view();
+
+    auto scalar = ARROW_RESULT(scalar_col.arrow_array_view()->GetScalar(0));
+    auto output = argument::get_next_output<PhysicalColumn>(ctx);
+
+    auto datum_result =
+      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {arrow_input, scalar}));
+    output.move_into(std::move(datum_result.make_array()));
+  }
 
   static void gpu_variant(legate::TaskContext context)
   {
