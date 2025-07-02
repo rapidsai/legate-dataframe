@@ -9,7 +9,6 @@ from functools import cached_property
 from typing import TYPE_CHECKING, cast
 
 import polars as pl
-import pylibcudf as plc
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.ldf_polars.containers import Column
@@ -80,11 +79,12 @@ class DataFrame:
 
     @classmethod
     def from_polars(cls, df: pl.DataFrame) -> Self:
-        # Unlike cudf_polars, we don't want to do this implicitly anyway...
-        raise NotImplementedError("Can't convert from polars, yet.")
+        """Convert from a polars DataFrame."""
+        table = LogicalTable.from_arrow(df.to_arrow())
+        return cls.from_table(table)
 
     @classmethod
-    def from_table(cls, table: plc.Table) -> Self:
+    def from_table(cls, table: LogicalTable) -> Self:
         """
         Create from a legate-dataframe logical table.
 
