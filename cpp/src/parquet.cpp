@@ -23,6 +23,7 @@
 #include <arrow/io/memory.h>
 #include <parquet/arrow/reader.h>
 #include <parquet/arrow/schema.h>
+#include <parquet/arrow/writer.h>
 #include <parquet/file_reader.h>
 
 #include <cudf/concatenate.hpp>
@@ -47,6 +48,27 @@ class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
  public:
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetWrite}};
+
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
+    const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto table           = argument::get_next_input<PhysicalTable>(ctx);
+    const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".parquet";
+    auto outfile               = ARROW_RESULT(arrow::io::FileOutputStream::Open(filepath));
+    auto props                 = parquet::WriterProperties::Builder().build();
+    auto arrow_props           = parquet::ArrowWriterProperties::Builder().build();
+
+    // TODO: memory pool should come from legate
+    auto status = parquet::arrow::WriteTable(*table.arrow_table_view(column_names),
+                                             arrow::default_memory_pool(),
+                                             outfile,
+                                             parquet::DEFAULT_MAX_ROW_GROUP_LENGTH,
+                                             props,
+                                             arrow_props);
+  }
 
   static void gpu_variant(legate::TaskContext context)
   {
@@ -129,12 +151,56 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetRead}};
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
+    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
+    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
+    PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
+    argument::get_parallel_launch_task(ctx);
+
+    if (file_paths.size() != ngroups_per_file.size()) {
+      throw std::runtime_error("internal error: file path and nrows size mismatch");
+    }
+
+    auto [my_groups_offset, my_num_groups] =
+      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+
+    if (my_num_groups == 0) {
+      tbl_arg.bind_empty_data();
+      return;
+    }
+
+    // Iterate over files
+    auto [files, row_groups] =
+      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
+    std::vector<std::shared_ptr<arrow::Table>> tables;
+    for (int i = 0; i < files.size(); i++) {
+      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
+      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
+      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
+      std::unique_ptr<arrow::RecordBatchReader> batch_reader;
+      status = arrow_reader->GetRecordBatchReader(row_groups[i], column_indices, &batch_reader);
+      tables.push_back(ARROW_RESULT(batch_reader->ToTable()));
+    }
+    // Concatenate the tables
+    if (tables.size() == 0) {
+      tbl_arg.bind_empty_data();
+    } else {
+      tbl_arg.move_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
+    }
+  }
+
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
 
     const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
@@ -170,12 +236,12 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
   static inline const auto TASK_CONFIG =
     legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetReadArray}};
 
-  static void gpu_variant(legate::TaskContext context)
+  static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
-
     const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<2>>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
@@ -183,7 +249,79 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     auto out                     = ctx.get_next_output_arg();
     argument::get_parallel_launch_task(ctx);
 
-    auto expected_type_id = to_cudf_type_id(out.type().code());
+    auto [my_groups_offset, my_num_groups] =
+      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+
+    if (file_paths.size() != ngroups_per_file.size()) {
+      throw std::runtime_error("internal error: file path and nrows size mismatch");
+    }
+    if (my_num_groups == 0) {
+      out.data().bind_empty_data();
+      if (out.nullable()) { out.null_mask().bind_empty_data(); }
+      return;
+    }
+
+    const size_t ncols = columns.size();
+
+    legate::Rect<2> start = row_group_ranges.at(my_groups_offset);
+    legate::Rect<2> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
+
+    auto num_output_rows = end.hi[0] - start.lo[0] + 1;
+    void* data_ptr       = legate::type_dispatch(out.data().code(),
+                                           create_result_store_fn{},
+                                           out.data(),
+                                           legate::Point<2>({num_output_rows, ncols}));
+    std::optional<bool*> null_ptr;
+    if (out.nullable()) {
+      auto null_buf = out.null_mask().create_output_buffer<bool, 2>(
+        legate::Point<2>({num_output_rows, ncols}), true);
+      auto ptr = null_buf.ptr({0, 0});
+      null_ptr = ptr;
+    }
+
+    if (columns.size() != start.hi[1] - start.lo[1] + 1) {
+      throw std::runtime_error("internal error: columns size and result shape mismatch");
+    }
+
+    // Iterate over files
+    auto [files, row_groups] =
+      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
+    size_t rows_already_written = 0;
+    std::vector<std::shared_ptr<arrow::Table>> tables;
+    for (int i = 0; i < files.size(); i++) {
+      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
+      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
+      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
+      std::unique_ptr<arrow::RecordBatchReader> batch_reader;
+      status     = arrow_reader->GetRecordBatchReader(row_groups[i], column_indices, &batch_reader);
+      auto table = ARROW_RESULT(batch_reader->ToTable());
+
+      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + table->num_rows()) {
+        throw std::runtime_error("internal error: output smaller than expected.");
+      }
+
+      // Write to output array, this is a transposed copy.
+      copy_into_tranposed(ctx, data_ptr, null_ptr, table, null_value, out.data().type());
+
+      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + table->num_rows() * ncols; }
+      data_ptr =
+        static_cast<char*>(data_ptr) + table->num_rows() * ncols * out.data().type().size();
+      rows_already_written += table->num_rows();
+    }
+  }
+  static void gpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
+    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
+    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<2>>(ctx);
+    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
+    auto null_value              = ctx.get_next_scalar_arg();
+    auto out                     = ctx.get_next_output_arg();
+    argument::get_parallel_launch_task(ctx);
 
     auto [my_groups_offset, my_num_groups] =
       evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
@@ -238,25 +376,16 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     size_t rows_already_written = 0;
     while (reader.has_next()) {
       auto tbl = reader.read_chunk().tbl;
-      /* Check if all columns are of the right type and cast them if not. */
-      auto column_vec = tbl->release();
-      for (auto& col : column_vec) {
-        if (col->type().id() != expected_type_id) {
-          col = cudf::cast(col->view(), cudf::data_type{expected_type_id}, ctx.stream(), ctx.mr());
-        }
-      }
-      auto cast_tbl = cudf::table(std::move(column_vec));
 
-      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + cast_tbl.num_rows()) {
+      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + tbl->num_rows()) {
         throw std::runtime_error("internal error: output smaller than expected.");
       }
       // Write to output array, this is a transposed copy.
-      copy_into_tranposed(ctx, data_ptr, null_ptr, cast_tbl.view(), null_value);
+      copy_into_tranposed(ctx, data_ptr, null_ptr, tbl->release(), null_value, out.data().type());
 
-      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + cast_tbl.num_rows() * ncols; }
-      data_ptr =
-        static_cast<char*>(data_ptr) + cast_tbl.num_rows() * ncols * out.data().type().size();
-      rows_already_written += cast_tbl.num_rows();
+      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + tbl->num_rows() * ncols; }
+      data_ptr = static_cast<char*>(data_ptr) + tbl->num_rows() * ncols * out.data().type().size();
+      rows_already_written += tbl->num_rows();
     }
   }
 };
@@ -277,6 +406,7 @@ const auto reg_id_ = []() -> char {
 struct ParquetReadInfo {
   std::vector<std::string> file_paths;
   std::vector<std::string> column_names;
+  std::vector<int> column_indices;
   std::vector<cudf::data_type> column_types;
   std::vector<bool> column_nullable;
   std::vector<size_t> nrow_groups;
@@ -344,6 +474,12 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
     }
   }
 
+  std::vector<int> column_indices;
+  column_indices.reserve(column_names.size());
+  for (auto name : column_names) {
+    column_indices.push_back(schema->GetFieldIndex(name));
+  }
+
   // We read by row groups, because this is how the decompression works.
   // If the row groups are huge, that may not be ideal, but there is not much
   // we can do about it at the moment.
@@ -384,6 +520,7 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
 
   return {std::move(file_paths),
           std::move(column_names),
+          std::move(column_indices),
           std::move(column_types),
           std::move(column_nullable),
           std::move(nrow_groups),
@@ -428,6 +565,7 @@ LogicalTable parquet_read(const std::string& glob_string,
     runtime->create_task(get_library(), task::ParquetRead::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, info.file_paths);
   argument::add_next_scalar_vector(task, info.column_names);
+  argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
   argument::add_next_scalar(task, info.nrow_groups_total);
   argument::add_next_output(task, ret);
@@ -490,6 +628,7 @@ legate::LogicalArray parquet_read_array(const std::string& glob_string,
     runtime->create_task(get_library(), task::ParquetReadArray::TASK_CONFIG.task_id());
   argument::add_next_scalar_vector(task, info.file_paths);
   argument::add_next_scalar_vector(task, info.column_names);
+  argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
   argument::add_next_scalar_vector(task, info.row_group_ranges_vec);
   argument::add_next_scalar(task, info.nrow_groups_total);

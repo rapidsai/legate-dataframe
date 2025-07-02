@@ -23,7 +23,10 @@
 #include <rmm/exec_policy.hpp>
 
 #include <cudf/table/table_device_view.cuh>
+#include <cudf/unary.hpp>
+#include <legate_dataframe/core/column.hpp>
 
+#include <arrow/compute/api.h>
 #include <legate_dataframe/core/task_context.hpp>
 #include <legate_dataframe/utils.hpp>
 
@@ -106,14 +109,16 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
     auto index_end   = thrust::make_counting_iterator<size_t>(tbl.num_rows() * tbl.num_columns());
 
     if (!null_ptr.has_value()) {
-      auto get_value_func =
-        cuda::proclaim_return_type<T>([input   = *device_input,
-                                       divisor = tbl.num_columns(),
-                                       val     = null_value.value<T>()] __device__(size_t idx) {
+      // Our null value may be empty if the user didn't specify one (e.g. when there are no nulls).
+      // Accessing the empty scalar would then cause an exception.
+      T scalar{};
+      if (null_value.size() > 0) { scalar = null_value.value<T>(); }
+      auto get_value_func = cuda::proclaim_return_type<T>(
+        [input = *device_input, divisor = tbl.num_columns(), scalar] __device__(size_t idx) {
           if (input.column(idx % divisor).is_valid(idx / divisor)) {
             return input.column(idx % divisor).element<T>(idx / divisor);
           } else {
-            return val;
+            return scalar;
           }
         });
 
@@ -145,28 +150,138 @@ struct copy_into_transposed_fn<T, std::enable_if_t<cudf::is_rep_layout_compatibl
 
 void copy_into_tranposed(TaskContext& ctx,
                          legate::PhysicalArray& array,
-                         cudf::table_view tbl,
+                         std::vector<std::unique_ptr<cudf::column>> columns,
                          size_t offset,
                          legate::Scalar& null_value)
 {
-  for (auto&& col : tbl) {
-    if (to_cudf_type_id(array.type().code()) != col.type().id()) {
-      throw std::runtime_error("internal error: column types changed between files?");
+  auto expected_type_id = to_cudf_type_id(array.type().code());
+  for (auto& col : columns) {
+    if (col->type().id() != expected_type_id) {
+      col = cudf::cast(col->view(), cudf::data_type{expected_type_id}, ctx.stream(), ctx.mr());
     }
   }
-
-  cudf::type_dispatcher(
-    tbl.column(0).type(), copy_into_transposed_impl{}, ctx, array, tbl, offset, null_value);
+  auto cast_tbl = cudf::table(std::move(columns));
+  cudf::type_dispatcher(cudf::data_type(expected_type_id),
+                        copy_into_transposed_impl{},
+                        ctx,
+                        array,
+                        cast_tbl.view(),
+                        offset,
+                        null_value);
 }
 
 void copy_into_tranposed(TaskContext& ctx,
                          void* data_ptr,
                          std::optional<bool*> null_ptr,
-                         cudf::table_view tbl,
-                         legate::Scalar& null_value)
+                         std::vector<std::unique_ptr<cudf::column>> columns,
+                         legate::Scalar& null_value,
+                         legate::Type type)
 {
-  cudf::type_dispatcher(
-    tbl.column(0).type(), copy_into_transposed_impl{}, ctx, data_ptr, null_ptr, tbl, null_value);
+  auto expected_type_id = to_cudf_type_id(type.code());
+  for (auto& col : columns) {
+    if (col->type().id() != expected_type_id) {
+      col = cudf::cast(col->view(), cudf::data_type{expected_type_id}, ctx.stream(), ctx.mr());
+    }
+  }
+  auto cast_tbl = cudf::table(std::move(columns));
+  cudf::type_dispatcher(cudf::data_type(expected_type_id),
+                        copy_into_transposed_impl{},
+                        ctx,
+                        data_ptr,
+                        null_ptr,
+                        cast_tbl.view(),
+                        null_value);
+}
+
+struct TransposeVisitor {
+  void* data_ptr;
+  std::optional<bool*> null_ptr;
+  legate::Scalar& null_value;
+  int column_idx;
+  std::size_t num_columns;
+  std::size_t row_offset;
+  template <typename Type>
+  arrow::Status Visit(const arrow::NumericArray<Type>& array)
+  {
+    using T         = typename std::decay_t<decltype(array)>::TypeClass::c_type;
+    auto array_data = array.raw_values();
+    auto out        = static_cast<T*>(data_ptr);
+    if (!null_ptr.has_value()) {
+      for (auto row_idx = row_offset; row_idx < row_offset + array.length(); row_idx++) {
+        out[num_columns * row_idx + column_idx] = array.IsValid(row_idx - row_offset)
+                                                    ? array_data[row_idx - row_offset]
+                                                    : null_value.value<T>();
+      }
+    } else {
+      auto null_data = null_ptr.value();
+      for (auto row_idx = row_offset; row_idx < row_offset + array.length(); row_idx++) {
+        null_data[num_columns * row_idx + column_idx] = array.IsValid(row_idx - row_offset);
+        out[num_columns * row_idx + column_idx]       = array_data[row_idx - row_offset];
+      }
+    }
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::BooleanArray& array)
+  {
+    auto out = static_cast<bool*>(data_ptr);
+    if (!null_ptr.has_value()) {
+      for (auto row_idx = row_offset; row_idx < row_offset + array.length(); row_idx++) {
+        out[num_columns * row_idx + column_idx] = array.IsValid(row_idx - row_offset)
+                                                    ? array.Value(row_idx - row_offset)
+                                                    : null_value.value<bool>();
+      }
+    } else {
+      auto null_data = null_ptr.value();
+      for (auto row_idx = row_offset; row_idx < row_offset + array.length(); row_idx++) {
+        null_data[num_columns * row_idx + column_idx] = array.IsValid(row_idx - row_offset);
+        out[num_columns * row_idx + column_idx]       = array.Value(row_idx - row_offset);
+      }
+    }
+    return arrow::Status::OK();
+  }
+  arrow::Status Visit(const arrow::Array& array)
+  {
+    return arrow::Status::NotImplemented("Not implemented for array of type ",
+                                         array.type()->ToString());
+  }
+};
+
+void copy_into_tranposed(TaskContext& ctx,
+                         void* data_ptr,
+                         std::optional<bool*> null_ptr,
+                         std::shared_ptr<arrow::Table> table,
+                         legate::Scalar& null_value,
+                         legate::Type type)
+{
+  // Iterate over columns and copy them into the data_ptr.
+  // If the array is nullable, replace with value
+  for (int i = 0; i < table->num_columns(); i++) {
+    auto chunked_array     = table->column(i);
+    std::size_t row_offset = 0;
+    for (int chunk = 0; chunk < chunked_array->num_chunks(); chunk++) {
+      auto array = chunked_array->chunk(chunk);
+      TransposeVisitor visitor{.data_ptr    = data_ptr,
+                               .null_ptr    = null_ptr,
+                               .null_value  = null_value,
+                               .column_idx  = i,
+                               .num_columns = static_cast<std::size_t>(table->num_columns()),
+                               .row_offset  = row_offset};
+
+      // Cast if necessary
+      auto target_arrow_type = to_arrow_type(to_cudf_type_id(type.code()));
+      if (array->type_id() != target_arrow_type->id()) {
+        auto casted_array = ARROW_RESULT(arrow::compute::Cast(*array, target_arrow_type));
+        array             = std::move(casted_array);
+      }
+
+      auto status = arrow::VisitArrayInline(*array, &visitor);
+      if (!status.ok()) {
+        throw std::invalid_argument("from_arrow(): failed to transpose arrow array: " +
+                                    status.ToString());
+      }
+      row_offset += array->length();
+    }
+  }
 }
 
 }  // namespace legate::dataframe
