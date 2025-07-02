@@ -17,6 +17,7 @@
 #include <cudf/types.hpp>
 #include <legate.h>
 
+#include <arrow/compute/api.h>
 #include <cudf/unary.hpp>
 
 #include <legate_dataframe/core/column.hpp>
@@ -32,6 +33,17 @@ namespace task {
 class CastTask : public Task<CastTask, OpCode::Cast> {
  public:
   static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Cast}};
+
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    const auto input = argument::get_next_input<PhysicalColumn>(ctx);
+    auto output      = argument::get_next_output<PhysicalColumn>(ctx);
+
+    auto cast = ARROW_RESULT(arrow::compute::Cast(
+      input.arrow_array_view(), input.arrow_type(), arrow::compute::CastOptions::Unsafe()));
+    output.move_into(std::move(cast.make_array()));
+  }
 
   static void gpu_variant(legate::TaskContext context)
   {
