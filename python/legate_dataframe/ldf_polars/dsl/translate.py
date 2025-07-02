@@ -504,6 +504,7 @@ def _(
     if dtype.id() == plc.TypeId.LIST:  # pragma: no cover
         # TODO: Remove once pylibcudf.Scalar supports lists
         return expr.LiteralColumn(dtype, pl.Series(node.value))
+    print(node, node.value, dtype)
     return expr.Literal(dtype, node.value)
 
 

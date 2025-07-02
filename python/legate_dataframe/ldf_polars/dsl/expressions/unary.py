@@ -13,7 +13,6 @@ import pylibcudf as plc
 from legate_dataframe import LogicalColumn
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
-from legate_dataframe.ldf_polars.dsl.expressions.literal import Literal
 from legate_dataframe.ldf_polars.utils import dtypes
 from legate_dataframe.lib import replace, unaryop
 
@@ -171,17 +170,10 @@ class UnaryFunction(Expr):
             )
         elif self.name == "fill_null":
             column = self.children[0].evaluate(df, context=context)
-            if column.null_count == 0:
-                return column
-            if isinstance(self.children[1], Literal):
-                arg = cudf.Scalar(self.children[1].value, dtype=self.dtype)
-            else:
-                arg = self.children[1].evaluate(df, context=context)
-                # TODO: may need to cast, at least for polars>1.28 for scalar columns
-                if not arg.is_scalar:
-                    raise NotImplementedError(
-                        "fill_null with non-scalar not implemented"
-                    )
+            arg = self.children[1].evaluate(df, context=context).obj
+            # TODO: may need to cast, at least for polars>1.28 for scalar columns
+            if not arg.is_scalar():
+                raise NotImplementedError("fill_null with non-scalar not implemented")
 
             return Column(replace.replace_nulls(column.obj, arg))
         elif self.name in self._OP_MAPPING:
