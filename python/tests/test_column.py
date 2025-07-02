@@ -22,7 +22,7 @@ def test_column_name_by_index():
 
     assert_frame_equal(df["a"]._column, tbl.get_column(0).to_cudf())
     assert_frame_equal(df["b"]._column, tbl.get_column(1).to_cudf())
-    assert tbl.get_column_names() == ["a", "b"]
+    assert tbl.get_column_names() == ("a", "b")
     assert_frame_equal(df["a"]._column, tbl[0].to_cudf())
     assert_frame_equal(df["b"]._column, tbl[1].to_cudf())
 
@@ -42,7 +42,7 @@ def test_column_name_by_string():
 
     assert_frame_equal(df["a"]._column, tbl.get_column("a").to_cudf())
     assert_frame_equal(df["b"]._column, tbl.get_column("b").to_cudf())
-    assert tbl.get_column_names() == ["a", "b"]
+    assert tbl.get_column_names() == ("a", "b")
     assert_frame_equal(df["a"]._column, tbl["a"].to_cudf())
     assert_frame_equal(df["b"]._column, tbl["b"].to_cudf())
 
