@@ -84,6 +84,7 @@ operators = ["add", "sub", "mul"]
 @pytest.mark.parametrize("op", operators)
 def test_binary_operation_polars(op):
     pl = pytest.importorskip("polars")
+    import legate_dataframe.ldf_polars  # noqa: F401
 
     a = gen_random_series(nelem=1000, num_nans=10)
     b = gen_random_series(nelem=1000, num_nans=10)
