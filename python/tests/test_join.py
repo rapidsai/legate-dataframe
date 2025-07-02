@@ -181,6 +181,7 @@ def test_join_basic_polars(how, arrow_lhs, arrow_rhs, left_on, right_on):
     try:
         assert_matches_polars(q.sort(q.columns))
     except ValueError as e:
+        # are failing on string columns which are also tested
         if str(e) == "unsupported Arrow datatype":
             pytest.xfail("unsupported Arrow datatype")
         raise
