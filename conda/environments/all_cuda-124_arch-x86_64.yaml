@@ -33,6 +33,7 @@ dependencies:
 - ninja
 - numpy >=1.23,<3.0.0a0
 - openssh
+- polars>=1.25,<1.32
 - pydata-sphinx-theme>=0.16.0
 - pylibcudf==25.04.*,>=0.0.0a0
 - pynvjitlink<=0.6

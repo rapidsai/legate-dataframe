@@ -4,6 +4,10 @@
 import pathlib
 from typing import Iterable
 
+import polars as plc
+import pyarrow as pa
+from numpy.typing import DTypeLike
+
 from legate_dataframe.lib.core.table import LogicalTable
 
 def csv_write(
@@ -12,8 +16,9 @@ def csv_write(
 def csv_read(
     glob_string: pathlib.Path | str,
     *,
+    dtypes: Iterable[DTypeLike | plc.DataType | pa.DataType],
     na_filter: bool = False,
     delimiter: str = ",",
-    usecols: Iterable[str | int] | None,
-    names: Iterable[str] | None,
+    usecols: Iterable[str | int] | None = None,
+    names: Iterable[str] | None = None,
 ) -> LogicalTable: ...

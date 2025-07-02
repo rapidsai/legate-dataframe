@@ -14,7 +14,7 @@ from legate_dataframe.lib.core.column cimport LogicalColumn
 
 
 cdef LogicalColumn cpp_scalar_col_from_python(scalar: ScalarLike):
-    """Convert any supported Python scalar to a scalar column.
+    """Convert or ensure any supported Python scalar is a scalar column.
 
     .. note::
         This is a helper, but we may want to force users to create the
@@ -29,6 +29,13 @@ cdef LogicalColumn cpp_scalar_col_from_python(scalar: ScalarLike):
         Scalar argument
     """
     cdef PylibcudfScalar cudf_scalar
+
+    if isinstance(scalar, LogicalColumn):
+        if not scalar.is_scalar():
+            raise ValueError(
+                "expected a scalar logical column, but column is not scalar.")
+        return <LogicalColumn>scalar
+
     # TODO: it would be good to provide a direct conversion from
     #       `legate.core.Scalar`.
     if isinstance(scalar, legate.core.Scalar):
