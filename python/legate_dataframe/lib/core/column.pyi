@@ -11,14 +11,14 @@ from legate.core import StoreTarget
 from pylibcudf.column import Column as PylibcudfColumn
 from pylibcudf.scalar import Scalar as PylibcudfScalar
 
+from legate_dataframe.lib.core.data_type import DataType
+
 _CudfTypes = (
     cudf.core.column.column.ColumnBase
     | cudf.core.series.Series
     | PylibcudfColumn
     | PylibcudfScalar
 )
-
-from legate_dataframe.lib.core.data_type import DataType
 
 class LogicalColumn:
     def __init__(self, obj: Any) -> None: ...
