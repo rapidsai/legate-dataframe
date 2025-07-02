@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import cudf
+import pyarrow as pa
 import pylibcudf as plc
 
 from legate_dataframe import LogicalColumn
@@ -18,8 +19,6 @@ from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, E
 if TYPE_CHECKING:
     from collections.abc import Hashable
 
-    import pyarrow as pa
-
     from legate_dataframe.ldf_polars.containers import DataFrame
 
 __all__ = ["Literal", "LiteralColumn"]
@@ -28,11 +27,14 @@ __all__ = ["Literal", "LiteralColumn"]
 class Literal(Expr):
     __slots__ = ("value",)
     _non_child = ("dtype", "value")
-    value: pa.Scalar[Any]
+    value: Any  # Python scalar
 
-    def __init__(self, dtype: plc.DataType, value: pa.Scalar[Any]) -> None:
+    def __init__(self, dtype: plc.DataType, value: Any) -> None:
+        if value is None and dtype.id() == plc.TypeId.EMPTY:
+            # TypeId.EMPTY not supported by libcudf
+            # cuDF Python also maps EMPTY to INT8
+            dtype = plc.types.DataType(plc.types.TypeId.INT8)
         self.dtype = dtype
-        assert value.type == plc.interop.to_arrow(dtype)
         self.value = value
         self.children = ()
         self.is_pointwise = True
@@ -44,7 +46,12 @@ class Literal(Expr):
         context: ExecutionContext = ExecutionContext.FRAME,
     ) -> Column:
         """Evaluate this expression given a dataframe for context."""
-        return Column(LogicalColumn.from_cudf(cudf.Scalar(self.value, self.dtype)))
+        # Hack via pyarrow, we may do that in the future.  Otherwise, we will
+        # be able to go via plc.scalar.Scalar.from_py(val, dtype) in newer plc.
+        pa_dtype = plc.interop._to_arrow_datatype(self.dtype)
+        pa_scalar = pa.scalar(self.value, type=pa_dtype)
+
+        return Column(LogicalColumn.from_arrow(pa_scalar))
 
     @property
     def agg_request(self) -> NoReturn:  # noqa: D102
