@@ -47,7 +47,7 @@ class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
     }
 
     arrow::Int64Builder long_builder = arrow::Int64Builder();
-    long_builder.Reserve(local_size);
+    auto status                      = long_builder.Reserve(local_size);
     for (size_t i = 0; i < local_size; i++) {
       long_builder.UnsafeAppend(local_init + i);
     }

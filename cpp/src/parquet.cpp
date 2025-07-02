@@ -180,10 +180,10 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     std::vector<std::shared_ptr<arrow::Table>> tables;
     for (int i = 0; i < files.size(); i++) {
       auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
-      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
-      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
-      std::unique_ptr<arrow::RecordBatchReader> batch_reader;
-      status = arrow_reader->GetRecordBatchReader(row_groups[i], column_indices, &batch_reader);
+      auto arrow_reader =
+        ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
+      auto batch_reader =
+        ARROW_RESULT(arrow_reader->GetRecordBatchReader(row_groups[i], column_indices));
       tables.push_back(ARROW_RESULT(batch_reader->ToTable()));
     }
     // Concatenate the tables
@@ -290,10 +290,10 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     std::vector<std::shared_ptr<arrow::Table>> tables;
     for (int i = 0; i < files.size(); i++) {
       auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
-      std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
-      auto status = parquet::arrow::OpenFile(input, arrow::default_memory_pool(), &arrow_reader);
-      std::unique_ptr<arrow::RecordBatchReader> batch_reader;
-      status     = arrow_reader->GetRecordBatchReader(row_groups[i], column_indices, &batch_reader);
+      auto arrow_reader =
+        ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
+      auto batch_reader =
+        ARROW_RESULT(arrow_reader->GetRecordBatchReader(row_groups[i], column_indices));
       auto table = ARROW_RESULT(batch_reader->ToTable());
 
       if (end.hi[0] - start.lo[0] + 1 < rows_already_written + table->num_rows()) {
@@ -422,21 +422,14 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
   std::vector<std::string> file_paths = parse_glob(glob_string);
   if (file_paths.empty()) { throw std::invalid_argument("no parquet files specified"); }
 
-  // TODO: Using the default memory pool, hopefully it doesn't matter anyway here.
-  auto pool = arrow::default_memory_pool();
-
   // Open the first file to get schema information
   auto reader = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths[0]));
 
-  // Newer versions arrow have versions that return a result which is more convenient (also below)
-  std::unique_ptr<parquet::arrow::FileReader> parquet_reader;
-  auto status = parquet::arrow::OpenFile(reader, pool, &parquet_reader);
-  if (!status.ok()) {
-    throw std::runtime_error("failed to open parquet file: " + status.ToString());
-  }
+  // TODO: Using the default memory pool, hopefully it doesn't matter anyway here.
+  auto parquet_reader =
+    ARROW_RESULT(parquet::arrow::OpenFile(reader, arrow::default_memory_pool()));
   std::shared_ptr<arrow::Schema> schema;
-  status = parquet_reader->GetSchema(&schema);
-  if (!status.ok()) { throw std::runtime_error("failed to get schema: " + status.ToString()); }
+  auto status = parquet_reader->GetSchema(&schema);
 
   // Get the column metadata from the schema (depends on whether columns are specified)
   std::vector<std::string> column_names;
