@@ -285,7 +285,10 @@ legate::Type to_legate_type(arrow::Type::type code)
     case arrow::Type::STRING: {
       return legate::string_type();
     }
-    default: throw std::invalid_argument("unsupported Arrow datatype");
+    case arrow::Type::DURATION: {
+      return legate::int64();
+    }
+    default: throw std::invalid_argument("unsupported Arrow datatype: " + code);
   }
 }
 
