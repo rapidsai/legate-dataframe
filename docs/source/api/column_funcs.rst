@@ -28,6 +28,3 @@ Related options/enums
 
 .. autodata:: legate_dataframe.lib.timestamps.DatetimeComponent
     :no-value:
-
-.. autodata:: legate_dataframe.lib.unaryop.unary_operator
-    :no-value:

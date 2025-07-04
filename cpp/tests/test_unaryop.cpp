@@ -61,6 +61,9 @@ bool skip(std::string const& op, legate::Type const& type)
   if (type.code() == legate::Type::Code::BOOL && op != "invert") { return true; }
   if (type.code() != legate::Type::Code::BOOL && op == "invert") { return true; }
 
+  // negate op not supported for unsigned
+  if (type.to_string().find("uint") != std::string::npos && op == "negate") { return true; }
+
   std::set<legate::Type::Code> float_types = {legate::Type::Code::FLOAT32,
                                               legate::Type::Code::FLOAT64,
                                               legate::Type::Code::FLOAT16,
