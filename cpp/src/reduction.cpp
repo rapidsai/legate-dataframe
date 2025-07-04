@@ -26,6 +26,7 @@
 
 #include <legate.h>
 
+#include <arrow/compute/api.h>
 #include <cudf/aggregation.hpp>
 #include <cudf/column/column_factories.hpp>
 #include <cudf/detail/aggregation/aggregation.hpp>  // cudf::detail::target_type
@@ -72,6 +73,18 @@ std::unique_ptr<cudf::reduce_aggregation> make_reduce_aggregation(cudf::aggregat
   }
 }
 
+std::string cudf_to_arrow_compute_function(cudf::aggregation::Kind kind)
+{
+  switch (kind) {
+    case cudf::aggregation::Kind::SUM: return "sum";
+    case cudf::aggregation::Kind::PRODUCT: return "product";
+    case cudf::aggregation::Kind::MIN: return "min";
+    case cudf::aggregation::Kind::MAX: return "max";
+    case cudf::aggregation::Kind::MEAN: return "mean";
+    default:
+      throw std::invalid_argument("Unsupported aggregation kind for arrow compute function.");
+  }
+}
 }  // namespace
 
 class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
@@ -81,6 +94,45 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
 
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const auto input = argument::get_next_input<PhysicalColumn>(ctx);
+    auto agg_kind    = argument::get_next_scalar<cudf::aggregation::Kind>(ctx);
+    auto finalize    = argument::get_next_scalar<bool>(ctx);
+    auto initial     = argument::get_next_scalar<bool>(ctx);
+    auto output      = argument::get_next_output<PhysicalColumn>(ctx);
+
+    auto array = input.arrow_array_view();
+
+    if (agg_kind == cudf::aggregation::Kind::COUNT_VALID) {
+      assert(!initial);
+      if (!finalize) {
+        auto count = std::make_shared<arrow::Int64Scalar>(array->length() - array->null_count());
+        output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*count, 1)));
+      } else {
+        auto sum = ARROW_RESULT(arrow::compute::Sum(array)).scalar();
+        output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*sum, 1)));
+      }
+    } else {
+      auto agg      = make_reduce_aggregation(agg_kind);
+      auto function = cudf_to_arrow_compute_function(agg_kind);
+      if (initial) {
+        auto initial_col   = argument::get_next_input<PhysicalColumn>(ctx);
+        auto initial_array = initial_col.arrow_array_view();
+        auto result        = ARROW_RESULT(arrow::compute::CallFunction(function, {array})).scalar();
+        auto result_as_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*result, 1));
+        // Combine two arrays and reduce again
+        auto combined = ARROW_RESULT(arrow::Concatenate({result_as_array, initial_array}));
+        result        = ARROW_RESULT(arrow::compute::CallFunction(function, {combined})).scalar();
+        output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*result, 1)));
+      } else {
+        auto result = ARROW_RESULT(arrow::compute::CallFunction(function, {array}));
+        output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*result.scalar(), 1)));
+      }
+    }
+  }
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
