@@ -105,6 +105,7 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
     auto output      = argument::get_next_output<PhysicalColumn>(ctx);
 
     auto array = input.arrow_array_view();
+    std::cout << "Input array: " << array->ToString() << std::endl;
 
     if (agg_kind == cudf::aggregation::Kind::COUNT_VALID) {
       assert(!initial);
@@ -112,8 +113,8 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
         auto count = std::make_shared<arrow::Int64Scalar>(array->length() - array->null_count());
         output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*count, 1)));
       } else {
-        auto sum = ARROW_RESULT(arrow::compute::Sum(array)).scalar();
-        output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*sum, 1)));
+        auto sum = ARROW_RESULT(arrow::compute::Sum(array));
+        output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*sum.scalar(), 1)));
       }
     } else {
       auto agg      = make_reduce_aggregation(agg_kind);
@@ -129,6 +130,8 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
         output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*result, 1)));
       } else {
         auto result = ARROW_RESULT(arrow::compute::CallFunction(function, {array}));
+        std::cout << "Output type: " << output.type().to_string() << std::endl;
+        std::cout << "Result type: " << result.type()->ToString() << std::endl;
         output.move_into(ARROW_RESULT(arrow::MakeArrayFromScalar(*result.scalar(), 1)));
       }
     }
