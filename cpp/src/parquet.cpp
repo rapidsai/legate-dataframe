@@ -435,6 +435,7 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
     ARROW_RESULT(parquet::arrow::OpenFile(reader, arrow::default_memory_pool()));
   std::shared_ptr<arrow::Schema> schema;
   auto status = parquet_reader->GetSchema(&schema);
+  if (!status.ok()) { throw std::runtime_error("failed to get schema: " + status.ToString()); }
 
   // Get the column metadata from the schema (depends on whether columns are specified)
   std::vector<std::string> column_names;

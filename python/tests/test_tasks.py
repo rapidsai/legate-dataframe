@@ -27,7 +27,7 @@ def test_python_launched_tasks():
     col = LogicalColumn.from_cudf(cudf.Series(cupy.random.random(100))._column)
 
     # Launch an unary task using the Cython API
-    expect = unary_operation(col, UnaryOperator.ABS)
+    expect = unary_operation(col, "abs")
 
     # Launch an unary task using the Python API
 

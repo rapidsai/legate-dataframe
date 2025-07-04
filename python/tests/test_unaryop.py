@@ -49,7 +49,7 @@ ops = [
 
 @pytest.mark.parametrize("op", ops)
 def test_unary_operation(op):
-    if op in ("invert"):
+    if op == "invert":
         array = pa.array(np.random.randint(0, 2, size=1000).astype(bool))
     else:
         array = pa.array(np.random.random(1000))
