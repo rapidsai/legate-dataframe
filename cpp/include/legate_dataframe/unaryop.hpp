@@ -44,6 +44,6 @@ LogicalColumn cast(const LogicalColumn& col, cudf::data_type dtype);
  *
  * @returns Logical column of same size as `col` containing result of the operation
  */
-LogicalColumn unary_operation(const LogicalColumn& col, cudf::unary_operator op);
+LogicalColumn unary_operation(const LogicalColumn& col, std::string op);
 
 }  // namespace legate::dataframe
