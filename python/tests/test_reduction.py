@@ -4,7 +4,6 @@
 import cudf
 import cupy
 import pytest
-from pylibcudf import aggregation
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.reduction import reduce
@@ -17,7 +16,7 @@ def test_reduce_simple(agg):
     lg_col = LogicalColumn.from_cudf(cudf_col._column)
 
     cudf_res = getattr(cudf_col, agg)()
-    lg_res = reduce(lg_col, getattr(aggregation, agg)(), cudf_res.dtype)
+    lg_res = reduce(lg_col, agg, cudf_res.dtype)
 
     lg_res_scalar = lg_res.to_cudf_scalar()
     assert lg_res.is_scalar()  # the result should be marked as scalar
@@ -31,7 +30,7 @@ def test_empty_reduce_simple(agg):
     cudf_col = cudf.Series([], dtype="float64")
     lg_col = LogicalColumn.from_cudf(cudf_col._column)
 
-    lg_res = reduce(lg_col, getattr(aggregation, agg)(), cudf_col.dtype)
+    lg_res = reduce(lg_col, agg, cudf_col.dtype)
 
     lg_res_scalar = lg_res.to_cudf_scalar()
     assert lg_res.is_scalar()
@@ -52,7 +51,7 @@ def test_reduce_initial(agg, initial):
     cudf_res = getattr(cudf_col, agg)()
     lg_res = reduce(
         lg_col,
-        getattr(aggregation, agg)(),
+        agg,
         cudf_res.dtype,
         initial=cudf.Scalar(initial, cudf_col.dtype),
     )

@@ -196,6 +196,11 @@ struct ArrowToPhysicalArrayVisitor {
 // Binds the legate array if it is unbound
 void from_arrow(legate::PhysicalArray array, std::shared_ptr<arrow::Array> arrow_array)
 {
+  if (array.type() != to_legate_type(arrow_array->type_id())) {
+    throw std::invalid_argument("from_arrow(): type mismatch: " + array.type().to_string() +
+                                " != " + arrow_array->type()->ToString());
+  }
+
   if (array.nullable()) {
     bool* null_mask;
     // If the array is a string, its null mask lives in a different place
