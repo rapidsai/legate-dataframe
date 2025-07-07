@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import cudf
+import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
 from pylibcudf.unary import UnaryOperator
@@ -81,6 +82,31 @@ def test_huge_string_roundtrip(size):
     del col_lg
 
     assert col_cudf_arrow == col_lg_arrow
+
+
+@pytest.mark.parametrize(
+    "slice_",
+    [
+        slice(None),
+        slice(0, 3),
+        slice(3, 7),
+        slice(-8, -2),
+        slice(1, 1),
+        slice(2, None),
+        slice(None, 8),
+    ],
+)
+def test_column_slice(slice_):
+    arr = pa.array(
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        mask=[False, True] * 5,
+    )
+    expected = arr[slice_]
+
+    lg_col = LogicalColumn.from_arrow(arr)
+
+    assert lg_col[slice_].to_arrow() == expected
+    assert lg_col.slice(slice_).to_arrow() == expected
 
 
 @pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")

@@ -2,12 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import cudf
+import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
-from legate_dataframe.testing import assert_frame_equal, guess_available_mem
+from legate_dataframe.testing import (
+    assert_arrow_table_equal,
+    assert_frame_equal,
+    guess_available_mem,
+)
 
 
 @pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
@@ -40,6 +45,33 @@ def test_offload_to():
     # Not sure if helpful, but delete and wait.
     del col_lg, tbl, results
     get_legate_runtime().issue_execution_fence(block=True)
+
+
+@pytest.mark.parametrize(
+    "slice_",
+    [
+        slice(None),
+        slice(0, 3),
+        slice(3, 7),
+        slice(-8, -2),
+        slice(1, 1),
+        slice(2, None),
+        slice(None, 8),
+    ],
+)
+def test_table_slice(slice_):
+    table = pa.table(
+        {
+            "a": pa.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            "b": pa.array([2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mask=[False, True] * 5),
+        }
+    )
+    lg_table = LogicalTable.from_arrow(table)
+
+    start, stop, _ = slice_.indices(lg_table.num_rows())
+    expected = table.slice(start, stop - start)
+    res = lg_table.slice(slice_)
+    assert_arrow_table_equal(res.to_arrow(), expected)
 
 
 @pytest.mark.parametrize(

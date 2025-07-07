@@ -19,7 +19,7 @@ from pylibcudf.column cimport Column as PylibcudfColumn
 from pylibcudf.libcudf.column.column cimport column
 from pylibcudf.scalar cimport Scalar as PylibcudfScalar
 
-from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
+from legate_dataframe.lib.core.legate cimport cpp_StoreTarget, from_python_slice
 from legate_dataframe.lib.core.legate_task cimport get_auto_task_handle
 from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
 
@@ -333,6 +333,28 @@ cdef class LogicalColumn:
         cdef unique_ptr[scalar] scalar = self._handle.get_cudf_scalar()
         pylibcudf_scalar = PylibcudfScalar.from_libcudf(move(scalar))
         return cudf.Scalar.from_pylibcudf(pylibcudf_scalar)
+
+    def __getitem__(self, slice_):
+        if not isinstance(slice_, slice):
+            raise TypeError("currently, LogicalColumn only supports simple slices.")
+
+        return LogicalColumn.from_handle(
+            self._handle.slice(from_python_slice(slice_))
+        )
+
+    def slice(self, slice_):
+        """Slice the column, same as `col[slice_]`.
+
+        Parameters
+        ----------
+        slice_ :
+            Python slice.  The return will be a view in the original data.
+
+        Returns
+        -------
+            The sliced logical column as a view.
+        """
+        return self[slice_]
 
     def repr(self, size_t max_num_items=30) -> str:
         """Return a printable representational string

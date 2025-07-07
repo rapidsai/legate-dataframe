@@ -408,6 +408,11 @@ std::unique_ptr<cudf::scalar> LogicalColumn::get_cudf_scalar(
   return std::move(cudf::get_element(col->view(), 0));
 }
 
+LogicalColumn LogicalColumn::slice(const legate::Slice& slice) const
+{
+  return LogicalColumn(array_->slice(0, slice), cudf_type_);
+}
+
 std::string LogicalColumn::repr(size_t max_num_items) const
 {
   std::stringstream ss;
