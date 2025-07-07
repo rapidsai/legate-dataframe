@@ -31,7 +31,7 @@ cudf::type_id to_cudf_type_id(legate::Type::Code code);
 std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code);
 cudf::data_type to_cudf_type(const arrow::DataType& arrow_type);
 legate::Type to_legate_type(cudf::type_id dtype);
-legate::Type to_legate_type(arrow::Type::type code);
+legate::Type to_legate_type(const arrow::DataType& arrow_type);
 
 std::string pprint_1d(cudf::column_view col,
                       cudf::size_type index,

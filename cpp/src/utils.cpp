@@ -101,8 +101,8 @@ cudf::type_id to_cudf_type_id(legate::Type::Code code)
       return cudf::type_id::STRING;
     }
     default:
-      throw std::runtime_error("Unsupported Legate datatype: " +
-                               legate::primitive_type(code).to_string());
+      throw std::invalid_argument("Unsupported Legate datatype: " +
+                                  legate::primitive_type(code).to_string());
   }
 }
 
@@ -160,7 +160,9 @@ cudf::data_type to_cudf_type(const arrow::DataType& arrow_type)
         return cudf::data_type{cudf::type_id::DURATION_NANOSECONDS};
       }
     }
-    default: throw std::invalid_argument("unsupported Arrow datatype");
+    default:
+      throw std::invalid_argument("Converting arrow type to cudf failed for type: " +
+                                  arrow_type.ToString());
   }
 }
 
@@ -246,9 +248,9 @@ legate::Type to_legate_type(cudf::type_id dtype)
   }
 }
 
-legate::Type to_legate_type(arrow::Type::type code)
+legate::Type to_legate_type(const arrow::DataType& arrow_type)
 {
-  switch (code) {
+  switch (arrow_type.id()) {
     case arrow::Type::BOOL: {
       return legate::bool_();
     }
@@ -288,7 +290,24 @@ legate::Type to_legate_type(arrow::Type::type code)
     case arrow::Type::DURATION: {
       return legate::int64();
     }
-    default: throw std::invalid_argument("unsupported Arrow datatype: " + code);
+    case arrow::Type::DATE32: {
+      return legate::int32();
+    }
+    case arrow::Type::DATE64: {
+      return legate::int64();
+    }
+    case arrow::Type::TIMESTAMP: {
+      return legate::int64();
+    }
+    case arrow::Type::TIME32: {
+      return legate::int32();
+    }
+    case arrow::Type::TIME64: {
+      return legate::int64();
+    }
+    default:
+      throw std::invalid_argument("Converting arrow type to legate failed for type: " +
+                                  arrow_type.ToString());
   }
 }
 
