@@ -420,8 +420,8 @@ class LogicalColumn {
   /**
    * @brief Slice the column
    *
-   * @param slice The Legate slice to the column. Note that legate slices are
-   * inclusive and do not support negative values!  TODO: Check!
+   * @param slice The Legate slice into the column.  Supports negative values,
+   * `Slice::OPEN`, and does not include stop index.
    * @return The sliced column
    */
   [[nodiscard]] LogicalColumn slice(const legate::Slice& slice) const;

@@ -263,8 +263,8 @@ class LogicalTable {
   /**
    * @brief Slice the table by rows.
    *
-   * @param slice A Legate slice to the table. Note that legate slices are
-   * inclusive and do not support negative values!  TODO: Check!
+   * @param slice A Legate slice into the table rows. Supports negative values,
+   * `Slice::OPEN`, and does not include stop index.
    * @return The sliced table
    */
   [[nodiscard]] LogicalTable slice(const legate::Slice& slice) const

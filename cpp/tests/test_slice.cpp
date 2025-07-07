@@ -17,15 +17,6 @@
 #include "test_utils.hpp"
 #include <arrow/api.h>
 
-#include <cudf/column/column_view.hpp>
-#include <cudf/groupby.hpp>
-#include <cudf/sorting.hpp>
-
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/table_utilities.hpp>
-#include <cudf_test/type_lists.hpp>
-
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/table.hpp>
 
@@ -35,8 +26,12 @@ TEST(SliceTest, SliceColumns)
 {
   LogicalColumn col(narrow<int32_t>({1, 2, 3, 4, 5}), {1, 0, 1, 0, 1});
 
-  auto result = col.slice(legate::Slice(0, 5));
-  auto expect = col.get_arrow()->Slice(0, 5);  // uses start, length
+  auto result = col.slice(legate::Slice(0, 0));
+  auto expect = col.get_arrow()->Slice(0, 0);
+  EXPECT_TRUE(expect->Equals(*result.get_arrow()));
+
+  result = col.slice(legate::Slice(0, 5));
+  expect = col.get_arrow()->Slice(0, 5);  // uses start, length
   EXPECT_TRUE(expect->Equals(*result.get_arrow()));
 
   result = col.slice(legate::Slice(1, 3));
@@ -44,6 +39,6 @@ TEST(SliceTest, SliceColumns)
   EXPECT_TRUE(expect->Equals(*result.get_arrow()));
 
   result = col.slice(legate::Slice(0, -2));
-  expect = col.get_arrow()->Slice(0, 3);  // uses start, length
+  expect = col.get_arrow()->Slice(0, 3);
   EXPECT_TRUE(expect->Equals(*result.get_arrow()));
 }
