@@ -73,19 +73,6 @@ std::unique_ptr<cudf::reduce_aggregation> make_reduce_aggregation(cudf::aggregat
   }
 }
 
-std::string cudf_to_arrow_compute_function(cudf::aggregation::Kind kind)
-{
-  switch (kind) {
-    case cudf::aggregation::Kind::SUM: return "sum";
-    case cudf::aggregation::Kind::PRODUCT: return "product";
-    case cudf::aggregation::Kind::MIN: return "min";
-    case cudf::aggregation::Kind::MAX: return "max";
-    case cudf::aggregation::Kind::MEAN: return "mean";
-    default:
-      throw std::invalid_argument("Unsupported aggregation kind for arrow compute function.");
-  }
-}
-
 std::unique_ptr<cudf::reduce_aggregation> make_cudf_reduce_aggregation(const std::string& agg_kind)
 {
   if (agg_kind == "sum") {
