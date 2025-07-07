@@ -92,7 +92,7 @@ class UnaryFunction(Expr):
         "arctanh": "atanh",
         "exp": "exp",
         "sqrt": "sqrt",
-        "cbrt": "cbrt",
+        # "cbrt": "cbrt",
         "ceil": "ceil",
         "floor": "floor",
         "abs": "abs",
