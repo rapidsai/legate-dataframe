@@ -16,7 +16,6 @@ import cudf
 import cupy
 import legate.core.types as lg_type
 from legate.core import get_legate_runtime
-from pylibcudf.unary import UnaryOperator
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.unaryop import unary_operation
@@ -27,7 +26,7 @@ def test_python_launched_tasks():
     col = LogicalColumn.from_cudf(cudf.Series(cupy.random.random(100))._column)
 
     # Launch an unary task using the Cython API
-    expect = unary_operation(col, UnaryOperator.ABS)
+    expect = unary_operation(col, "abs")
 
     # Launch an unary task using the Python API
 
@@ -38,8 +37,8 @@ def test_python_launched_tasks():
 
     # Then, we can create the task and provide the task arguments using the
     # exact same order as in the task implementation ("unaryop.cpp").
-    task = runtime.create_auto_task(lib, 8)  # TODO: get the enum of `UnaryOperator`
-    task.add_scalar_arg(UnaryOperator.ABS.value, dtype=lg_type.int32)
+    task = runtime.create_auto_task(lib, 8)
+    task.add_scalar_arg("abs", dtype=lg_type.string_type)
     col.add_as_next_task_input(task)
     result = LogicalColumn.empty_like_logical_column(col)
     result.add_as_next_task_output(task)

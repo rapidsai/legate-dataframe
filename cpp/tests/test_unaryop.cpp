@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "test_utils.hpp"
+#include <arrow/compute/api.h>
 #include <cstdint>
 #include <legate.h>
 
@@ -31,45 +33,113 @@
 using namespace legate::dataframe;
 
 template <typename T>
-struct UnaryOpsTest : public cudf::test::BaseFixture {};
+struct UnaryOpsTest : testing::Test {};
 
-TYPED_TEST_SUITE(UnaryOpsTest, cudf::test::NumericTypes);
-
-TYPED_TEST(UnaryOpsTest, Abs)
+TYPED_TEST_SUITE(UnaryOpsTest, NumericTypes);
+namespace {
+bool skip(std::string const& op, legate::Type const& type)
 {
-  constexpr auto op = cudf::unary_operator::ABS;
-  cudf::test::fixed_width_column_wrapper<TypeParam> a({-1, -2, -3, -4});
-  std::unique_ptr<cudf::column> expect = cudf::unary_operation(a, op);
+  std::set<std::string> float_ops = {"sin",
+                                     "cos",
+                                     "tan",
+                                     "asin",
+                                     "acos",
+                                     "atan",
+                                     "sinh",
+                                     "cosh",
+                                     "tanh",
+                                     "asinh",
+                                     "acosh",
+                                     "atanh",
+                                     "exp",
+                                     "ln",
+                                     "sqrt",
+                                     "ceil",
+                                     "floor",
+                                     "round"};
+  // Only invert op is supported for bools
+  if (type.code() == legate::Type::Code::BOOL && op != "invert") { return true; }
+  if (type.code() != legate::Type::Code::BOOL && op == "invert") { return true; }
 
-  LogicalColumn res = unary_operation(LogicalColumn{a}, op);
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  // negate op not supported for unsigned
+  if (type.to_string().find("uint") != std::string::npos && op == "negate") { return true; }
+
+  std::set<legate::Type::Code> float_types = {legate::Type::Code::FLOAT32,
+                                              legate::Type::Code::FLOAT64,
+                                              legate::Type::Code::FLOAT16,
+                                              legate::Type::Code::COMPLEX64,
+                                              legate::Type::Code::COMPLEX128};
+  if (float_ops.count(op) && !float_types.count(type.code())) { return true; }
+
+  // Bitwise op doesn't work for floats
+  if (float_types.count(type.code()) && op == "bit_wise_not") { return true; }
+
+  return false;
+}
+}  // namespace
+
+void CompareArrow(const LogicalColumn& col, const std::vector<std::string>& unary_ops)
+{
+  for (const auto& op : unary_ops) {
+    if (skip(op, col.type())) { continue; }
+
+    auto expected = (*arrow::compute::CallFunction(op, {col.get_arrow()})).make_array();
+    auto result   = unary_operation(col, op).get_arrow();
+
+    // For integers check exact equality, for floats check approximate equality
+    std::set<legate::Type::Code> float_types = {legate::Type::Code::FLOAT32,
+                                                legate::Type::Code::FLOAT64,
+                                                legate::Type::Code::FLOAT16,
+                                                legate::Type::Code::COMPLEX64,
+                                                legate::Type::Code::COMPLEX128};
+    if (float_types.count(col.type().code())) {
+      arrow::EqualOptions options;
+      EXPECT_TRUE(expected->ApproxEquals(*result, options.nans_equal(true)))
+        << "Failed for operation: " << op << " Input: " << col.repr()
+        << " Expected: " << expected->ToString() << " Result: " << result->ToString();
+    } else {
+      EXPECT_TRUE(expected->Equals(*result))
+        << "Failed for operation: " << op << " Input: " << col.repr()
+        << " Expected: " << expected->ToString() << " Result: " << result->ToString();
+    }
+  }
+}
+std::vector<std::string> unary_ops = {"sin",   "cos",          "tan",    "asin",  "acos",  "atan",
+                                      "sinh",  "cosh",         "tanh",   "asinh", "acosh", "atanh",
+                                      "exp",   "ln",           "sqrt",   "ceil",  "floor", "abs",
+                                      "round", "bit_wise_not", "invert", "negate"};
+
+TYPED_TEST(UnaryOpsTest, UnaryOps)
+{
+  LogicalColumn column(narrow<TypeParam>({-1, -2, -3, -4}));
+  CompareArrow(column, unary_ops);
 }
 
-TYPED_TEST(UnaryOpsTest, AbsWithNull)
+TYPED_TEST(UnaryOpsTest, UnaryOpsWithNull)
 {
-  constexpr auto op = cudf::unary_operator::ABS;
-  cudf::test::fixed_width_column_wrapper<TypeParam> a({-1, -2, -3, -4}, {1, 0, 0, 1});
-  std::unique_ptr<cudf::column> expect = cudf::unary_operation(a, op);
-
-  LogicalColumn res = unary_operation(LogicalColumn{a}, op);
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  LogicalColumn column(narrow<TypeParam>({-1, -2, -3, -4}), {1, 0, 1, 0});
+  CompareArrow(column, unary_ops);
 }
 
 TYPED_TEST(UnaryOpsTest, CastFromAnyToFloat32)
 {
-  cudf::test::fixed_width_column_wrapper<TypeParam> a({-1, -2, -3, -4});
-  std::unique_ptr<cudf::column> expect = cudf::cast(a, cudf::data_type{cudf::type_id::FLOAT32});
-
-  LogicalColumn res = cast(LogicalColumn{a}, cudf::data_type{cudf::type_id::FLOAT32});
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  LogicalColumn column(narrow<TypeParam>({-1, -2, -3, -4}));
+  auto result = cast(column, cudf::data_type{cudf::type_id::FLOAT32});
+  auto expected =
+    ARROW_RESULT(arrow::compute::Cast(
+                   column.get_arrow(), arrow::float32(), arrow::compute::CastOptions::Unsafe()))
+      .make_array();
+  EXPECT_TRUE(expected->Equals(*result.get_arrow()));
 }
 
 TYPED_TEST(UnaryOpsTest, CastFromInt16ToAny)
 {
-  cudf::test::fixed_width_column_wrapper<int16_t> a({-1, -2, -3, -4});
-  auto to_dtype                        = cudf::data_type{cudf::type_to_id<TypeParam>()};
-  std::unique_ptr<cudf::column> expect = cudf::cast(a, to_dtype);
-
-  LogicalColumn res = cast(LogicalColumn{a}, to_dtype);
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expect->view());
+  LogicalColumn column(narrow<int16_t>({-1, -2, -3, -4}));
+  auto to_dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
+  auto expected = ARROW_RESULT(arrow::compute::Cast(column.get_arrow(),
+                                                    to_arrow_type(to_dtype.id()),
+                                                    arrow::compute::CastOptions::Unsafe()))
+                    .make_array();
+  LogicalColumn result = cast(column, to_dtype);
+  EXPECT_TRUE(expected->Equals(*result.get_arrow()));
 }
