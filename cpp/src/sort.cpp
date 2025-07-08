@@ -316,6 +316,18 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
                                                 .with_concurrent(true)
                                                 .with_elide_device_ctx_sync(true);
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
+    const auto keys_idx        = argument::get_next_scalar_vector<cudf::size_type>(ctx);
+    const auto column_order    = argument::get_next_scalar_vector<cudf::order>(ctx);
+    const auto null_precedence = argument::get_next_scalar_vector<cudf::null_order>(ctx);
+    const auto stable          = argument::get_next_scalar<bool>(ctx);
+    auto output                = argument::get_next_output<PhysicalTable>(ctx);
+  }
+
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
