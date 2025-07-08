@@ -62,6 +62,17 @@ std::unique_ptr<cudf::column> vector_to_column(const std::vector<cudf::size_type
   return std::make_unique<cudf::column>(std::move(split_ind), std::move(rmm::device_buffer()), 0);
 }
 
+template <typename T>
+std::vector<T> column_to_vector(TaskContext& ctx, const cudf::column_view& col)
+{
+  std::vector<T> ret(col.size());
+  if (col.size() > 0) {
+    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
+      ret.data(), col.data<T>(), col.size() * sizeof(T), cudaMemcpyDeviceToHost, ctx.stream()));
+  }
+  return ret;
+}
+
 /**
  * @brief Return points at which to split a dataset.
  *
@@ -111,9 +122,13 @@ std::vector<cudf::size_type> get_split_ind(TaskContext& ctx,
   return split_values;
 }
 
-std::unique_ptr<cudf::table> get_local_splits(TaskContext& ctx,
-                                              const cudf::table_view& my_sorted_tbl,
-                                              const std::vector<cudf::size_type>& keys_idx)
+// Extract split points from a sorted table. Add two metadata columns:
+//  - the rank of the split point (which worker it came from)
+//  - the local index of the split point
+std::unique_ptr<cudf::table> extract_local_splits(TaskContext& ctx,
+                                                  const cudf::table_view& my_sorted_tbl,
+                                                  const std::vector<cudf::size_type>& keys_idx,
+                                                  bool include_start)
 {
   auto split_values     = get_split_ind(ctx, my_sorted_tbl.num_rows(), ctx.nranks, true);
   auto my_split_ind_col = vector_to_column(split_values, ctx);
@@ -132,6 +147,145 @@ std::unique_ptr<cudf::table> get_local_splits(TaskContext& ctx,
   table_columns.push_back(std::move(my_split_rank_col));
   table_columns.push_back(std::move(my_split_ind_col));
   return std::make_unique<cudf::table>(std::move(table_columns));
+}
+
+std::unique_ptr<cudf::table> merge_distributed_split_candidates(
+  TaskContext& ctx,
+  const cudf::table_view& local_splits_and_metadata,
+  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<cudf::order>& column_order,
+  const std::vector<cudf::null_order>& null_precedence)
+{
+  std::vector<cudf::table_view> exchange_tables;
+  for (int i = 0; i < ctx.nranks; i++) {
+    exchange_tables.push_back(local_splits_and_metadata);
+  }
+  auto [split_candidates_shared, owners_split] = shuffle(ctx, exchange_tables, nullptr);
+
+  if (local_splits_and_metadata.num_rows() == 0) {
+    // All nodes need to take part in the shuffle (no data here), but the below
+    // cannot search a length 0 table, so return immediately.
+    return nullptr;
+  }
+
+  std::vector<cudf::order> column_orderx(column_order);
+  std::vector<cudf::null_order> null_precedencex(null_precedence);
+  column_orderx.insert(column_orderx.end(), {cudf::order::ASCENDING, cudf::order::ASCENDING});
+  null_precedencex.insert(null_precedencex.end(),
+                          {cudf::null_order::AFTER, cudf::null_order::AFTER});
+
+  // Merge is stable as it includes the rank and index in the keys:
+  // keys(x) to pick columns from splits (which include rank and index):
+  std::vector<cudf::size_type> all_keysx(keys_idx.size() + 2);
+  std::iota(all_keysx.begin(), all_keysx.end(), 0);
+
+  auto split_candidates = cudf::merge(
+    split_candidates_shared, all_keysx, column_orderx, null_precedencex, ctx.stream(), ctx.mr());
+  owners_split.reset();  // No longer need this
+  return std::move(split_candidates);
+}
+
+std::unique_ptr<cudf::table> extract_global_splits(TaskContext& ctx,
+                                                   const cudf::table_view& global_split_candidates)
+{
+  auto split_indices =
+    get_split_ind(ctx, global_split_candidates.num_rows(), ctx.nranks, /* include_start */ false);
+  auto split_value_inds = vector_to_column(split_indices, ctx);
+  auto split_values     = cudf::gather(global_split_candidates,
+                                   split_value_inds->view(),
+                                   cudf::out_of_bounds_policy::DONT_CHECK,
+                                   ctx.stream(),
+                                   ctx.mr());
+  return std::move(split_values);
+}
+
+std::vector<cudf::size_type> find_destination_ranks(
+  TaskContext& ctx,
+  const cudf::table_view& my_sorted_tbl,
+  const cudf::table_view& global_split_values,
+  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<cudf::order>& column_order,
+  const std::vector<cudf::null_order>& null_precedence
+
+)
+{
+  /*
+   * We need to split based on the rank of the split point `split_rank`
+   * (i.e. where is the split point in the whole dataset):
+   *    - if split_rank < my_rank:  split at first equal row.
+   *    - if split_rank == my_rank:  use split-point index.
+   *    - if split_rank > my_rank: split after last equal row
+   *
+   * N.B.: If this turns out to matter speed-wise, this can be spelled as a single
+   * `lower_bound` with the (global) row-index.  A custom implementation could
+   * make that row-index a virtual table.
+   */
+
+  std::vector<cudf::size_type> value_keysx(keys_idx.size());
+  std::iota(value_keysx.begin(), value_keysx.end(), 0);
+  auto split_candidates_first_col = cudf::lower_bound(my_sorted_tbl.select(keys_idx),
+                                                      global_split_values.select(value_keysx),
+                                                      column_order,
+                                                      null_precedence,
+                                                      ctx.stream(),
+                                                      ctx.mr());
+  auto split_candidates_last_col  = cudf::upper_bound(my_sorted_tbl.select(keys_idx),
+                                                     global_split_values.select(value_keysx),
+                                                     column_order,
+                                                     null_precedence,
+                                                     ctx.stream(),
+                                                     ctx.mr());
+
+  // The local index and rank of the split value, we'll use the rank if it came from this rank
+  auto split_candidates_equal_view =
+    global_split_values.column(global_split_values.num_columns() - 1);
+  auto split_candidates_rank_view =
+    global_split_values.column(global_split_values.num_columns() - 2);
+
+  /*
+   * Copy all the above information to the host and finalize the local splits.
+   * (we may have fewer than nranks split-points here and need to pad later.)
+   */
+  auto split_candidates_first =
+    column_to_vector<cudf::size_type>(ctx, split_candidates_first_col->view());
+  auto split_candidates_last =
+    column_to_vector<cudf::size_type>(ctx, split_candidates_last_col->view());
+  auto split_candidates_equal = column_to_vector<cudf::size_type>(ctx, split_candidates_equal_view);
+  auto split_candidates_rank  = column_to_vector<int32_t>(ctx, split_candidates_rank_view);
+  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
+
+  std::vector<cudf::size_type> splits_host;
+  for (int i = 0; i < split_candidates_first.size(); i++) {
+    if (split_candidates_rank[i] < ctx.rank) {
+      splits_host.push_back(split_candidates_first[i]);
+    } else if (split_candidates_rank[i] > ctx.rank) {
+      splits_host.push_back(split_candidates_last[i]);
+    } else {
+      splits_host.push_back(split_candidates_equal[i]);
+    }
+  }
+  // In the obscure case where there is less data than ranks, pad split points.
+  for (int i = split_candidates_first.size(); i < ctx.nranks - 1; i++) {
+    splits_host.push_back(my_sorted_tbl.num_rows());
+  }
+
+#if DEBUG_SPLITS
+  std::ostringstream full_splits_oss;
+  full_splits_oss << "Final local split points @" << ctx.rank
+                  << " (nrows=" << my_sorted_tbl.num_rows() << "):\n";
+  for (int i = 0; i < ctx.nranks - 1; i++) {
+    full_splits_oss << "    " << splits_host.at(i);
+    if (i < nsplitpoints) {
+      full_splits_oss << ", split by r" << split_candidates_rank[i] << ": ";
+      full_splits_oss << split_candidates_first[i] << "<" << split_candidates_last[i];
+      full_splits_oss << ", r[ind]=" << split_candidates_equal[i] << "\n";
+    } else {
+      full_splits_oss << " (no further split candidates)\n";
+    }
+  }
+  std::cout << full_splits_oss.str() << std::endl;
+#endif
+  return splits_host;
 }
 
 /*
@@ -156,7 +310,7 @@ std::unique_ptr<cudf::table> get_local_splits(TaskContext& ctx,
  * the split point inde (if ours) or the first equal value or just after the last
  * depending on whether it came from an earlier or later rank.
  */
-std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
+std::vector<cudf::size_type> find_splits_for_distribution(
   TaskContext& ctx,
   const cudf::table_view& my_sorted_tbl,
   const std::vector<cudf::size_type>& keys_idx,
@@ -170,149 +324,30 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
    * (used as a possible split value), but store the corresponding end of the
    * the last step.
    */
-  auto my_splits = get_local_splits(ctx, my_sorted_tbl, keys_idx);
+  auto local_splits_and_metadata = extract_local_splits(ctx, my_sorted_tbl, keys_idx, true);
 
   /*
    * Step 2: Share split candidates among all ranks.
    */
-  std::vector<cudf::table_view> exchange_tables;
-  for (int i = 0; i < ctx.nranks; i++) {
-    exchange_tables.push_back(my_splits->view());
-  }
-  auto [split_candidates_shared, owners_split] = shuffle(ctx, exchange_tables, nullptr);
-  if (my_splits->num_rows() == 0) {
-    // All nodes need to take part in the shuffle (no data here), but the below
-    // cannot search a length 0 table, so return immediately.
-    return nullptr;
-  }
-  std::vector<cudf::order> column_orderx(column_order);
-  std::vector<cudf::null_order> null_precedencex(null_precedence);
-  column_orderx.insert(column_orderx.end(), {cudf::order::ASCENDING, cudf::order::ASCENDING});
-  null_precedencex.insert(null_precedencex.end(),
-                          {cudf::null_order::AFTER, cudf::null_order::AFTER});
+  auto global_split_candidates = merge_distributed_split_candidates(
+    ctx, local_splits_and_metadata->view(), keys_idx, column_order, null_precedence);
 
-  // Merge is stable as it includes the rank and index in the keys:
-  // keys(x) to pick columns from splits (which include rank and index):
-  std::vector<cudf::size_type> value_keysx(keys_idx.size());
-  std::iota(value_keysx.begin(), value_keysx.end(), 0);
-  std::vector<cudf::size_type> all_keysx(keys_idx.size() + 2);
-  std::iota(all_keysx.begin(), all_keysx.end(), 0);
-
-  auto split_candidates = cudf::merge(
-    split_candidates_shared, all_keysx, column_orderx, null_precedencex, ctx.stream(), ctx.mr());
-  owners_split.reset();  // copied into split_candidates
+  if (global_split_candidates == nullptr) {
+    // Nothing on this worker, we are done
+    return {};
+  }
 
   /*
    * Step 3: Find the best splitting points from all candidates
    */
-  auto split_values_2 =
-    get_split_ind(ctx, split_candidates->num_rows(), ctx.nranks, /* include_start */ false);
-  auto split_value_inds  = vector_to_column(split_values_2, ctx);
-  auto split_values_tbl  = cudf::gather(split_candidates->view(),
-                                       split_value_inds->view(),
-                                       cudf::out_of_bounds_policy::DONT_CHECK,
-                                       ctx.stream(),
-                                       ctx.mr());
-  auto split_values_view = split_values_tbl->view();
+  auto global_split_values = extract_global_splits(ctx, global_split_candidates->view());
 
   /*
    * Step 4: Find the actual split points for the local dataset.
    *
-   * We need to split based on the rank of the split point `split_rank`
-   * (i.e. where is the split point in the whole dataset):
-   *    - if split_rank < my_rank:  split at first equal row.
-   *    - if split_rank == my_rank:  use split-point index.
-   *    - if split_rank > my_rank: split after last equal row
-   *
-   * N.B.: If this turns out to matter speed-wise, this can be spelled as a single
-   * `lower_bound` with the (global) row-index.  A custom implementation could
-   * make that row-index a virtual table.
    */
-
-  auto split_candidates_first_col  = cudf::lower_bound(my_sorted_tbl.select(keys_idx),
-                                                      split_values_view.select(value_keysx),
-                                                      column_order,
-                                                      null_precedence,
-                                                      ctx.stream(),
-                                                      ctx.mr());
-  auto split_candidates_first_view = split_candidates_first_col->view();
-  auto split_candidates_last_col   = cudf::upper_bound(my_sorted_tbl.select(keys_idx),
-                                                     split_values_view.select(value_keysx),
-                                                     column_order,
-                                                     null_precedence,
-                                                     ctx.stream(),
-                                                     ctx.mr());
-  auto split_candidates_last_view  = split_candidates_last_col->view();
-
-  // The local index and rank of the split value, we'll use the rank if it came from this rank
-  auto split_candidates_equal_view = split_values_view.column(my_splits->num_columns() - 1);
-  auto split_candiates_rank_view   = split_values_view.column(my_splits->num_columns() - 2);
-
-  /*
-   * Copy all the above information to the host and finalize the local splits.
-   * (we may have fewer than nranks split-points here and need to pad later.)
-   */
-  auto nsplitpoints = split_value_inds->size();
-  std::vector<cudf::size_type> split_candidates_first(nsplitpoints);
-  std::vector<cudf::size_type> split_candidates_last(nsplitpoints);
-  std::vector<cudf::size_type> split_candidates_equal(nsplitpoints);
-  std::vector<int32_t> split_candidates_rank(nsplitpoints);
-
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_first.data(),
-                                    split_candidates_first_view.data<cudf::size_type>(),
-                                    nsplitpoints * sizeof(cudf::size_type),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_last.data(),
-                                    split_candidates_last_view.data<cudf::size_type>(),
-                                    nsplitpoints * sizeof(cudf::size_type),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_equal.data(),
-                                    split_candidates_equal_view.data<cudf::size_type>(),
-                                    nsplitpoints * sizeof(cudf::size_type),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_rank.data(),
-                                    split_candiates_rank_view.data<int32_t>(),
-                                    nsplitpoints * sizeof(int32_t),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-
-  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
-
-  auto splits_host = std::make_unique<std::vector<cudf::size_type>>();
-  for (int i = 0; i < nsplitpoints; i++) {
-    if (split_candidates_rank[i] < ctx.rank) {
-      splits_host->push_back(split_candidates_first[i]);
-    } else if (split_candidates_rank[i] > ctx.rank) {
-      splits_host->push_back(split_candidates_last[i]);
-    } else {
-      splits_host->push_back(split_candidates_equal[i]);
-    }
-  }
-  // In the obscure case where there is less data than ranks, pad split points.
-  for (int i = nsplitpoints; i < ctx.nranks - 1; i++) {
-    splits_host->push_back(my_sorted_tbl.num_rows());
-  }
-
-#if DEBUG_SPLITS
-  std::ostringstream full_splits_oss;
-  full_splits_oss << "Final local split points @" << ctx.rank
-                  << " (nrows=" << my_sorted_tbl.num_rows() << "):\n";
-  for (int i = 0; i < ctx.nranks - 1; i++) {
-    full_splits_oss << "    " << splits_host->at(i);
-    if (i < nsplitpoints) {
-      full_splits_oss << ", split by r" << split_candidates_rank[i] << ": ";
-      full_splits_oss << split_candidates_first[i] << "<" << split_candidates_last[i];
-      full_splits_oss << ", r[ind]=" << split_candidates_equal[i] << "\n";
-    } else {
-      full_splits_oss << " (no further split candidates)\n";
-    }
-  }
-  std::cout << full_splits_oss.str() << std::endl;
-#endif
-  return std::move(splits_host);
+  return find_destination_ranks(
+    ctx, my_sorted_tbl, global_split_values->view(), keys_idx, column_order, null_precedence);
 }
 
 }  // namespace
@@ -367,8 +402,8 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     // If the local table has zero rows we cannot split it for sharing and
     // split_indices will be null.  Exchange the (empty) table instead.
     std::vector<cudf::table_view> partitions;
-    if (split_indices) {
-      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
+    if (split_indices.size() > 0) {
+      partitions = cudf::split(my_sorted_tbl->view(), split_indices, ctx.stream());
     } else {
       assert(my_sorted_tbl->num_rows() == 0);
       for (int i = 0; i < ctx.nranks; i++) {
