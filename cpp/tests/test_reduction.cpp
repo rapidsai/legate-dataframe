@@ -43,7 +43,7 @@ TYPED_TEST(ReductionTest, Max)
   auto expected = ARROW_RESULT(arrow::compute::CallFunction("max", {col.get_arrow()})).scalar();
   auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
 
-  EXPECT_TRUE(res.get_arrow()->ApproxEquals(expected_array))
+  EXPECT_TRUE(res.get_arrow()->Equals(expected_array))
     << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
 }
 
@@ -68,7 +68,7 @@ TYPED_TEST(ReductionTest, EmptyMax)
   auto res       = reduce(col, "max", res_dtype);
   auto expected  = ARROW_RESULT(arrow::compute::CallFunction("max", {col.get_arrow()})).scalar();
   auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
-  EXPECT_TRUE(res.get_arrow()->ApproxEquals(expected_array))
+  EXPECT_TRUE(res.get_arrow()->Equals(expected_array))
     << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
 }
 
@@ -84,6 +84,6 @@ TYPED_TEST(ReductionTest, AllNullSum)
   expected_array =
     ARROW_RESULT(arrow::compute::Cast(expected_array, res.get_arrow()->type())).make_array();
 
-  EXPECT_TRUE(res.get_arrow()->ApproxEquals(expected_array))
+  EXPECT_TRUE(res.get_arrow()->Equals(expected_array))
     << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
 }

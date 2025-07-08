@@ -43,36 +43,6 @@ namespace task {
 
 namespace {
 
-/*
- * Helper just to get back from aggregation kind to actual aggregation object.
- */
-std::unique_ptr<cudf::reduce_aggregation> make_reduce_aggregation(cudf::aggregation::Kind kind)
-{
-  switch (kind) {
-    case cudf::aggregation::Kind::SUM: {
-      return cudf::make_sum_aggregation<cudf::reduce_aggregation>();
-    }
-    case cudf::aggregation::Kind::PRODUCT: {
-      return cudf::make_product_aggregation<cudf::reduce_aggregation>();
-    }
-    case cudf::aggregation::Kind::MIN: {
-      return cudf::make_min_aggregation<cudf::reduce_aggregation>();
-    }
-    case cudf::aggregation::Kind::MAX: {
-      return cudf::make_max_aggregation<cudf::reduce_aggregation>();
-    }
-    case cudf::aggregation::Kind::SUM_OF_SQUARES: {
-      return cudf::make_sum_of_squares_aggregation<cudf::reduce_aggregation>();
-    }
-    case cudf::aggregation::Kind::MEAN: {
-      return cudf::make_mean_aggregation<cudf::reduce_aggregation>();
-    }
-    default: {
-      throw std::invalid_argument("Missing reduce aggregation mapping.");
-    }
-  }
-}
-
 std::unique_ptr<cudf::reduce_aggregation> make_cudf_reduce_aggregation(const std::string& agg_kind)
 {
   if (agg_kind == "sum") {
