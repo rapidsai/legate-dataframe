@@ -1137,12 +1137,24 @@ class Sort(IR):
             raise NotImplementedError("Sort keys must be named expressions currently")
         by_names = [key.name for key in by]
 
+        if zlice is None:
+            limit = None
+        elif zlice[0] < 0:
+            # Assume the best slice is slicing from the end
+            limit = zlice[0]
+        else:
+            if zlice[1] is None:
+                limit = None
+            else:
+                limit = zlice[0] + zlice[1]
+
         table = sort.sort(
             df.table,
             by_names,
             sort_ascending=list(sort_ascending),
             nulls_at_end=nulls_at_end,
             stable=stable,
+            limit=limit,
         )
 
         # TODO: should implement simple zlices into sorting probably.

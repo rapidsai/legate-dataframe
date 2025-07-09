@@ -88,6 +88,19 @@ def test_basic_with_extra_column(values, stable, scope):
     assert_arrow_table_equal(lg_sorted.to_arrow(), df_sorted)
 
 
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_limit_basic(scope):
+    df = pa.table({"a": np.arange(0, 1000)})
+
+    lg_df = LogicalTable.from_arrow(df)
+    with scope:
+        lg_sorted_head = sort(lg_df, ["a"], limit=10)
+        lg_sorted_tail = sort(lg_df, ["a"], limit=-10)
+
+    assert_arrow_table_equal(lg_sorted_head.to_arrow(), df.slice(0, 10))
+    assert_arrow_table_equal(lg_sorted_tail.to_arrow(), df.slice(1000 - 10, 10))
+
+
 @pytest.mark.parametrize("threshold", [0, 2])
 @pytest.mark.parametrize("scope", get_test_scoping())
 def test_empty_chunks(threshold, scope):
@@ -253,7 +266,17 @@ def test_errors_incorrect_args(keys, sort_ascending, nulls_at_end):
 
 @pytest.mark.parametrize("descending", [True, False])
 @pytest.mark.parametrize("nulls_last", [True, False])
-def test_sort_polars(descending, nulls_last):
+@pytest.mark.parametrize(
+    "apply_slice",
+    [
+        lambda q: q,
+        lambda q: q.head(200),
+        lambda q: q.tail(200),
+        lambda q: q.slice(5, 200),
+        lambda q: q.slice(-205, 200),
+    ],
+)
+def test_sort_polars(descending, nulls_last, apply_slice):
     pl = pytest.importorskip("polars")
 
     # set a single value to null, so that unstable sorting is still unique
@@ -266,6 +289,7 @@ def test_sort_polars(descending, nulls_last):
         }
     )
     q = pl.DataFrame({"a": [1, 2, 3], "b": [1, 2, 3]}).lazy()
+    q = apply_slice(q)
 
     assert_matches_polars(q.sort("a", nulls_last=nulls_last, descending=descending))
     assert_matches_polars(

@@ -5,7 +5,9 @@
 # cython: language_level=3
 
 
+from libc.stdint cimport int64_t
 from libcpp cimport bool as cpp_bool
+from libcpp.optional cimport optional
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
@@ -21,6 +23,7 @@ cdef extern from "<legate_dataframe/sort.hpp>" nogil:
         const vector[cpp_bool]& sort_ascending,
         cpp_bool nulls_at_end,
         cpp_bool stable,
+        optional[int64_t] limit,
     ) except +
 
 
@@ -32,6 +35,7 @@ def sort(
     list sort_ascending = None,
     nulls_at_end = True,
     stable = False,
+    limit = None
 ):
     """Perform a sort of the table based on the given columns.
 
@@ -56,6 +60,9 @@ def sort(
     stable
         Whether to perform a stable sort (default ``False``).  Stable sort currently
         uses a less efficient merge and may not perform as well as it should.
+    limit
+        Maximum number of rows to return. If positive, returns the first, if negative
+        the last. (In a distributed setting, this reduces the amount of data exchanged.)
 
     Returns
     -------
@@ -65,14 +72,19 @@ def sort(
     cdef vector[string] keys_vector
     cdef vector[cpp_bool] c_sort_ascending
     cdef cpp_bool c_nulls_at_end = nulls_at_end
+    cdef optional[int64_t] cpp_limit
 
     if sort_ascending is None:
         c_sort_ascending = [True] * len(keys)
     else:
         c_sort_ascending = sort_ascending
 
+    if limit is not None:
+        cpp_limit = <int64_t>limit
+
     for k in keys:
         keys_vector.push_back(k.encode('UTF-8'))
 
-    return LogicalTable.from_handle(
-        cpp_sort(tbl._handle, keys_vector, c_sort_ascending, c_nulls_at_end, stable))
+    return LogicalTable.from_handle(cpp_sort(
+        tbl._handle, keys_vector, c_sort_ascending, c_nulls_at_end, stable, cpp_limit
+    ))

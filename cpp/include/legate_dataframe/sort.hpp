@@ -37,12 +37,15 @@ namespace legate::dataframe {
  * @param sort_ascending Whether to sort ascending or descending for each key.
  * @param nulls_at_end Whether nulls are placed at the begging or end (regardless of ascending or
  * descending sort).
+ * @param limit The maximum number of rows to return. If negative, the last rows
+ * are returns (i.e. a head/tail operation).
  * @return The sorted LogicalTable
  */
 LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
                   const std::vector<bool>& sort_ascending,
                   bool nulls_at_end,
-                  bool stable = false);
+                  bool stable                  = false,
+                  std::optional<int64_t> limit = std::nullopt);
 
 }  // namespace legate::dataframe
