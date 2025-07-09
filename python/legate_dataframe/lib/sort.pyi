@@ -11,7 +11,8 @@ def sort(
     tbl: LogicalTable,
     keys: list[str],
     *,
-    column_order: list[Order] | None,
-    null_precedence: list[NullOrder] | None,
-    stable: bool,
+    column_order: list[Order] | None = None,
+    null_precedence: list[NullOrder] | None = None,
+    stable: bool = False,
+    limit: int | None = None,
 ) -> LogicalTable: ...
