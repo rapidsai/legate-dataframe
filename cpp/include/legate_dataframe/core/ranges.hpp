@@ -55,6 +55,16 @@ namespace legate::dataframe {
 void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect<1>* ranges_acc);
 
 /**
+ * @brief Converts the offsets from an Arrow LargeStringArray into local ranges.
+ *
+ * @param array The Arrow LargeStringArray containing the string data and offsets.
+ * @param ranges_acc Pointer to an array of legate::Rect<1> where the computed ranges will be
+ * stored.
+ */
+void arrow_offsets_to_local_ranges(const arrow::LargeStringArray& array,
+                                   legate::Rect<1>* ranges_acc);
+
+/**
  * @brief Convert local offsets (cudf) to local ranges (legate)
  *
  * @param ranges_size The size of the local ranges accessed through `ranges_acc`.

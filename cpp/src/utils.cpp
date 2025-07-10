@@ -287,6 +287,9 @@ legate::Type to_legate_type(const arrow::DataType& arrow_type)
     case arrow::Type::STRING: {
       return legate::string_type();
     }
+    case arrow::Type::LARGE_STRING: {
+      return legate::string_type();
+    }
     case arrow::Type::DURATION: {
       return legate::int64();
     }
