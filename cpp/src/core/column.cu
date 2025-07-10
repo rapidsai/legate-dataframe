@@ -164,7 +164,11 @@ struct ArrowToPhysicalArrayVisitor {
     std::memcpy(out, array.raw_values(), array.length() * sizeof(T));
     return arrow::Status::OK();
   }
-  arrow::Status Visit(const arrow::StringArray& array)
+
+  template <typename ArrayType,
+            std::enable_if_t<std::is_same_v<ArrayType, arrow::StringArray> ||
+                             std::is_same_v<ArrayType, arrow::LargeStringArray>>* = nullptr>
+  arrow::Status Visit(const ArrayType& array)
   {
     auto legate_string_array = array_.as_string_array();
     auto ranges_size         = array.length();
@@ -238,6 +242,13 @@ legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array)
     auto array = runtime->create_string_array(
       runtime->create_array({std::uint64_t(arrow_array->length())}, legate::rect_type(1)),
       runtime->create_array({std::uint64_t(string_array->total_values_length())}, legate::int8()));
+    from_arrow(array.get_physical_array(), arrow_array);
+    return array;
+  } else if (auto large_string_array = dynamic_cast<arrow::LargeStringArray*>(arrow_array.get())) {
+    auto array = runtime->create_string_array(
+      runtime->create_array({std::uint64_t(arrow_array->length())}, legate::rect_type(1)),
+      runtime->create_array({std::uint64_t(large_string_array->total_values_length())},
+                            legate::int8()));
     from_arrow(array.get_physical_array(), arrow_array);
     return array;
   }
