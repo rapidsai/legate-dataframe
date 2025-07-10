@@ -11,6 +11,8 @@ from legate.core import StoreTarget
 from pylibcudf.column import Column as PylibcudfColumn
 from pylibcudf.scalar import Scalar as PylibcudfScalar
 
+from legate_dataframe.lib.core.data_type import DataType
+
 _CudfTypes = (
     cudf.core.column.column.ColumnBase
     | cudf.core.series.Series
@@ -27,6 +29,7 @@ class LogicalColumn:
     @staticmethod
     def empty_like_logical_column(col: LogicalColumn) -> LogicalColumn: ...
     def num_rows(self) -> int: ...
+    def type(self) -> DataType: ...
     def dtype(self) -> DtypeObj: ...
     def is_scalar(self) -> bool: ...
     def get_logical_array(

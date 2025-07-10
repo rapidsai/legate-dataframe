@@ -127,6 +127,15 @@ void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect
   }
 }
 
+void arrow_offsets_to_local_ranges(const arrow::LargeStringArray& array,
+                                   legate::Rect<1>* ranges_acc)
+{
+  for (size_t i = 0; i < array.length(); ++i) {
+    ranges_acc[i].lo[0] = array.value_offset(i);
+    ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1;
+  }
+}
+
 namespace {
 /**
  * @brief CUDA kernel to convert offsets (cudf) to ranges (legate)

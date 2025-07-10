@@ -116,6 +116,12 @@ cdef class LogicalTable:
             column_names=table.column_names,
         )
 
+    def lazy(self):
+        # Import here to avoid hard polars dependency
+        from legate_dataframe.ldf_polars import lazy_from_legate_df
+
+        return lazy_from_legate_df(self)
+
     def num_columns(self) -> int:
         """Returns the number of columns
 

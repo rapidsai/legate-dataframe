@@ -20,7 +20,7 @@ import pytest
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.unaryop import cast, unary_operation
-from legate_dataframe.testing import assert_frame_equal
+from legate_dataframe.testing import assert_frame_equal, gen_random_series
 
 ops = [
     "sin",
@@ -72,7 +72,7 @@ def test_unary_operation_scalar():
     res = unary_operation(scalar_col, "abs")
 
     assert res.is_scalar()
-    assert res.to_array() == 42.0
+    assert res.to_arrow()[0].as_py() == 42.0
 
 
 @pytest.mark.parametrize("from_dtype", ["int8", "uint64", "float32", "float64"])
@@ -114,4 +114,42 @@ def test_cast_scalar():
     res = cast(scalar_col, "int8")
 
     assert res.is_scalar()
-    assert res.to_array() == -3
+    assert res.to_arrow()[0].as_py() == -3
+
+
+polars_ops = [
+    "sin",
+    "cos",
+    "tan",
+    "arcsin",
+    "arccos",
+    "arctan",
+    "sinh",
+    "cosh",
+    "tanh",
+    "arcsinh",
+    "arccosh",
+    "arctanh",
+    "exp",
+    "sqrt",
+    # "cbrt",
+    "ceil",
+    "floor",
+    "abs",
+    # bit_invert, "not" not attributes, but also not on floats
+]
+
+
+@pytest.mark.parametrize("op", polars_ops)
+def test_unary_operation_polars(op):
+    pl = pytest.importorskip("polars")
+    import legate_dataframe.ldf_polars  # noqa: F401
+
+    a = gen_random_series(nelem=1000, num_nans=10)
+    q = pl.LazyFrame({"a": a}).with_columns(res=getattr(pl.col("a"), op)())
+
+    # Need to use approximate equality here
+    res_pl = np.asarray(q.collect().to_arrow())
+    res_ldf = np.asarray(q.legate.collect().to_arrow())
+
+    np.testing.assert_array_almost_equal(res_pl, res_ldf)
