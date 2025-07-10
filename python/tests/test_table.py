@@ -84,7 +84,7 @@ def test_select_and_getitem_table(cols):
     if isinstance(cols[0], str):
         expected_names = cols
     else:
-        expected_names = [["a", "b", "c"][i] for i in cols]
+        expected_names = tuple([["a", "b", "c"][i] for i in cols])
 
     res = tbl.select(cols)
     assert res.get_column_names() == expected_names
