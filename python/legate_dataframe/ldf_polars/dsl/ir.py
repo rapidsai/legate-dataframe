@@ -946,8 +946,8 @@ class Join(IR):
             raise NotImplementedError(f"{how=}")
 
         left_tbl, right_tbl = left.table, right.table
-        lhs_out_columns = list(left_tbl.get_column_names())
-        rhs_out_columns = list(right_tbl.get_column_names())
+        lhs_out_columns = left_tbl.get_column_names()
+        rhs_out_columns = right_tbl.get_column_names()
 
         # Rename right columns to avoid any clashes:
         right_on = [r + suffix if r in lhs_out_columns else r for r in right_on]

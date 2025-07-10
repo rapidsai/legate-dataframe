@@ -265,7 +265,7 @@ cdef class LogicalTable:
         ret = []
         for i in range(names.size()):
             ret.append(names.at(i).decode('UTF-8'))
-        return tuple(ret)
+        return ret
 
     def offload_to(self, cpp_StoreTarget target_mem):
         """Offload the underlying data to the specified memory.
