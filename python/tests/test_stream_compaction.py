@@ -81,7 +81,7 @@ def test_apply_boolean_mask_errors(bad_mask):
 @pytest.mark.parametrize(
     "arrow_column", get_pyarrow_column_set(["int32", "float32", "int64"])
 )
-def test_column_replace_null_polars(arrow_column):
+def test_column_filter_polars(arrow_column):
     pl = pytest.importorskip("polars")
 
     q = pl.DataFrame({"a": arrow_column}).lazy()

@@ -95,5 +95,4 @@ def test_binary_operation_polars(op):
     q = pl.LazyFrame({"a": a_s, "b": b_s}).with_columns(
         a_b=getattr(operator, op)(pl.col("a"), pl.col("b"))
     )
-    print(q.collect(), q.legate.collect())
     assert_matches_polars(q)
