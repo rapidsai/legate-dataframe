@@ -145,6 +145,9 @@ cudf::data_type to_cudf_type(const arrow::DataType& arrow_type)
     case arrow::Type::STRING: {
       return cudf::data_type{cudf::type_id::STRING};
     }
+    case arrow::Type::LARGE_STRING: {
+      return cudf::data_type{cudf::type_id::STRING};
+    }
     case arrow::Type::DATE64: {
       return cudf::data_type{cudf::type_id::TIMESTAMP_MILLISECONDS};
     }
@@ -159,11 +162,25 @@ cudf::data_type to_cudf_type(const arrow::DataType& arrow_type)
       } else if (duration_type.unit() == arrow::TimeUnit::NANO) {
         return cudf::data_type{cudf::type_id::DURATION_NANOSECONDS};
       }
+      break;
     }
-    default:
-      throw std::invalid_argument("Converting arrow type to cudf failed for type: " +
-                                  arrow_type.ToString());
+    case arrow::Type::TIMESTAMP: {
+      const auto& duration_type = static_cast<const arrow::DurationType&>(arrow_type);
+      if (duration_type.unit() == arrow::TimeUnit::SECOND) {
+        return cudf::data_type{cudf::type_id::TIMESTAMP_SECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::MILLI) {
+        return cudf::data_type{cudf::type_id::TIMESTAMP_MILLISECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::MICRO) {
+        return cudf::data_type{cudf::type_id::TIMESTAMP_MICROSECONDS};
+      } else if (duration_type.unit() == arrow::TimeUnit::NANO) {
+        return cudf::data_type{cudf::type_id::TIMESTAMP_NANOSECONDS};
+      }
+      break;
+    }
+    default: break;
   }
+  throw std::invalid_argument("Converting arrow type to cudf failed for type: " +
+                              arrow_type.ToString());
 }
 
 legate::Type to_legate_type(cudf::type_id dtype)

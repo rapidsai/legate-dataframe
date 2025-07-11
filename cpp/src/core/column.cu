@@ -234,7 +234,7 @@ void from_arrow(legate::PhysicalArray array, std::shared_ptr<arrow::Array> arrow
 }
 
 // Copy an arrow array into a logical array
-legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array)
+legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array, bool scalar = false)
 {
   // Create an unbound logical array
   auto runtime = legate::Runtime::get_runtime();
@@ -280,7 +280,7 @@ LogicalColumn::LogicalColumn(const cudf::scalar& cudf_scalar, rmm::cuda_stream_v
 LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
   : LogicalColumn{// This type conversion monstrosity can be improved
                   from_arrow(arrow_array),
-                  cudf::data_type(to_cudf_type_id(to_legate_type(*arrow_array->type()).code())),
+                  to_cudf_type(arrow_array->type()),
                   /* scalar */ false}
 {
 }
@@ -288,7 +288,7 @@ LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
 LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Scalar> arrow_scalar)
   : LogicalColumn{// This type conversion monstrosity can be improved
                   from_arrow(arrow_scalar),
-                  cudf::data_type(to_cudf_type_id(to_legate_type(*arrow_scalar->type).code())),
+                  to_cudf_type(arrow_scalar->type),
                   /* scalar */ true}
 {
 }
