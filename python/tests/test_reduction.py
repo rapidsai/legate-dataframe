@@ -7,6 +7,7 @@ import pytest
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.reduction import reduce
+from legate_dataframe.testing import assert_matches_polars, gen_random_series
 
 
 @pytest.mark.parametrize("op", ["mean", "max", "min", "sum", "product"])
@@ -42,3 +43,21 @@ def test_reduce_initial(op, initial):
     result = reduce(col, op, array.type, initial=pa.scalar(initial, array.type))
     assert result.is_scalar()
     assert np.isclose(result.to_arrow()[0].as_py(), expected.as_py())
+
+
+@pytest.mark.parametrize("op", ["mean", "sum", "min", "max", "first", "last", "count"])
+def test_reduce_polars(op):
+    pl = pytest.importorskip("polars")
+
+    # A float column with nulls, a float column with nans and an int one
+    a = gen_random_series(nelem=1000, num_nans=10)
+    arr = np.random.random(1000)
+    arr[[100, 200, 300]] = np.nan
+    b = pa.array(arr)
+    c = pa.array(np.arange(1000))
+
+    q = pl.LazyFrame(
+        {"a": pl.from_arrow(a), "b": pl.from_arrow(b), "c": pl.from_arrow(c)}
+    )
+    q = getattr(q, op)()
+    assert_matches_polars(q, approx=True)

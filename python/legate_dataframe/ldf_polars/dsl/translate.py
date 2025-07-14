@@ -582,8 +582,15 @@ def _(
 def _(
     node: pl_expr.Agg, translator: Translator, dtype: plc.DataType, schema: Schema
 ) -> expr.Expr:
-    # not sure that this is for aggregations or just groupby aggs.
-    raise NotImplementedError("Agg not supported")
+    value = expr.Agg(
+        dtype,
+        node.name,
+        node.options,
+        *(translator.translate_expr(n=n, schema=schema) for n in node.arguments),
+    )
+    if value.name in ("count", "n_unique") and value.dtype.id() != plc.TypeId.INT32:
+        return expr.Cast(value.dtype, value)
+    return value
 
 
 @_translate_expr.register

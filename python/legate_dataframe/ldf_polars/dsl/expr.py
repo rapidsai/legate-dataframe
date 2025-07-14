@@ -15,7 +15,7 @@ In particular, the interpretation of the expression language in a
 
 from __future__ import annotations
 
-# from cudf_polars.dsl.expressions.aggregation import Agg
+from legate_dataframe.ldf_polars.dsl.expressions.aggregation import Agg
 from legate_dataframe.ldf_polars.dsl.expressions.base import (
     AggInfo,
     Col,
@@ -40,7 +40,7 @@ from legate_dataframe.ldf_polars.dsl.expressions.slicing import Slice
 from legate_dataframe.ldf_polars.dsl.expressions.unary import Cast, Len, UnaryFunction
 
 __all__ = [
-    # "Agg",
+    "Agg",
     "AggInfo",
     "BinOp",
     # "BooleanFunction",
