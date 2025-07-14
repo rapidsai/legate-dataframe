@@ -132,13 +132,13 @@ class ExchangedSizes {
 std::vector<int> get_recvcounts(TaskContext& ctx, const std::vector<int>& sendcounts)
 {
   std::vector<int> recvcounts(ctx.nranks);
-
   legate::comm::coll::collAlltoall(
     sendcounts.data(),
     recvcounts.data(),
-    ctx.nranks,
+    1,
     legate::comm::coll::CollDataType::CollInt,
     ctx.get_legate_context().communicator(0).get<legate::comm::coll::CollComm>());
+
   return recvcounts;
 }
 
@@ -156,11 +156,11 @@ std::vector<int> get_recvcounts(TaskContext& ctx, const std::vector<int>& sendco
 std::vector<std::shared_ptr<arrow::Table>> shuffle(
   TaskContext& ctx, const std::vector<std::shared_ptr<arrow::Table>>& tbl_partitioned)
 {
+  if (ctx.get_legate_context().communicators().empty()) {
+    throw std::runtime_error("internal error: communicator not initialized.");
+  }
   auto comm      = ctx.get_legate_context().communicator(0);
   auto* comm_ptr = comm.get<legate::comm::coll::CollComm>();
-  if (comm_ptr == nullptr) {
-    throw std::runtime_error("internal error: CPU communicator doesn't exist.");
-  }
 
   // Serialize table as buffers
   std::vector<std::shared_ptr<arrow::Buffer>> send_buffers;
@@ -178,6 +178,8 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
     }
     send_buffers.push_back(ARROW_RESULT(output_stream->Finish()));
     sendcounts.push_back(send_buffers.back()->size());
+    std::cout << "Rank: " << ctx.rank << " sending table with size: " << send_buffers.back()->size()
+              << std::endl;
   }
 
   std::size_t total_send_size =
@@ -199,6 +201,8 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
   std::vector<int> displacements_recv;
   std::size_t total_recv_size = 0;
   for (size_t i = 0; i < recvcounts.size(); ++i) {
+    std::cout << "Rank: " << ctx.rank << " will receive table with size: " << recvcounts[i]
+              << " from rank: " << i << std::endl;
     displacements_recv.push_back(total_recv_size);
     total_recv_size += recvcounts[i];
   }
@@ -216,6 +220,8 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
   std::vector<std::shared_ptr<arrow::Table>> result;
   offset = 0;
   for (size_t i = 0; i < recvcounts.size(); ++i) {
+    std::cout << "Rank: " << ctx.rank << " received table with size: " << recvcounts[i]
+              << " from rank: " << i << std::endl;
     auto buffer = arrow::Buffer::Wrap(recvbuffer.ptr(offset), recvcounts[i]);
     offset += recvcounts[i];
     auto input_stream = arrow::io::BufferReader(buffer);

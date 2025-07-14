@@ -31,16 +31,15 @@ namespace legate::dataframe {
  *
  * @param tbl The table to sort
  * @param keys The column names to sort by.
- * @param column_order Either ASCENDING or DESCENDING for each sort key/column.
- * @param null_recedence Either BEFORE or AFTER for each sort key/column.
- * AFTER means that nulls are considered larger and come last after an ascending
- * and first after a descending sort.
+ * @param sort_ascending Whether to sort ascending or descending for each key.
+ * @param nulls_at_end Whether nulls are placed at the begging or end (regardless of ascending or
+ * descending sort).
  * @return The sorted LogicalTable
  */
 LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
-                  const std::vector<cudf::order>& column_order,
-                  const std::vector<cudf::null_order>& null_precedence,
+                  const std::vector<bool>& sort_ascending,
+                  bool nulls_at_end,
                   bool stable = false);
 
 }  // namespace legate::dataframe
