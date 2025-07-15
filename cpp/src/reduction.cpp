@@ -32,6 +32,7 @@
 #include <cudf/detail/aggregation/aggregation.hpp>  // cudf::detail::target_type
 #include <cudf/groupby.hpp>
 #include <cudf/reduction.hpp>
+#include <cudf/transform.hpp>
 #include <cudf/types.hpp>
 
 #include <legate_dataframe/binaryop.hpp>
@@ -140,7 +141,22 @@ class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
         scalar_res = cudf::reduce(col_view, *sum, output.cudf_type(), zero, ctx.stream(), ctx.mr());
       }
     } else {
+      std::unique_ptr<rmm::device_buffer> new_mask;
       auto agg = make_cudf_reduce_aggregation(op);
+      // As of 25.08.dev cudfs min/max don't guarantee consistent null handling.
+      // Most code uses `nans_to_nulls` early on to deal with this.  We do it very late (i.e. here)
+      // currently (also since pyarrow does deal with it).
+      if ((op == "min" || op == "max") && cudf::is_floating_point(output.cudf_type())) {
+        auto [new_mask_, new_null_count] = cudf::nans_to_nulls(col_view, ctx.stream(), ctx.mr());
+        new_mask                         = std::move(new_mask_);
+        assert(col_view.num_children() == 0);
+        col_view = cudf::column_view(col_view.type(),
+                                     col_view.size(),
+                                     col_view.head<void>(),
+                                     reinterpret_cast<cudf::bitmask_type*>(new_mask->data()),
+                                     new_null_count,
+                                     col_view.offset());
+      }
       if (initial) {
         auto initial_col    = argument::get_next_input<PhysicalColumn>(ctx);
         auto initial_scalar = initial_col.cudf_scalar();

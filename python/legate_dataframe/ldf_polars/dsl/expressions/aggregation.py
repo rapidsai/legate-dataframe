@@ -43,6 +43,7 @@ class Agg(Expr):
         elif name in {"mean", "sum"}:
             self.op = functools.partial(self._reduce, request=name)
         elif name in {"min", "max"}:
+            # Note: Unlike (py)libcudf we ignore NaNs inside the reduction code itself.
             if options:
                 raise NotImplementedError("Min/max always propagate nans currently.")
             self.op = functools.partial(self._reduce, request=name)
