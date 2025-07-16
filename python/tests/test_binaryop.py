@@ -28,11 +28,13 @@ from legate_dataframe.testing import (
 )
 
 ops = ["add", "subtract", "multiply"]
-ops_bool = [
+ops_logical = [
     "and",
     "or",
     "and_kleene",
     "or_kleene",
+]
+ops_comparison = [
     "equal",
     "not_equal",
     "less",
@@ -54,7 +56,7 @@ def test_arithmetic_operations(op: str):
     assert expect == res.to_arrow()
 
 
-@pytest.mark.parametrize("op", ops_bool)
+@pytest.mark.parametrize("op", ops_logical + ops_comparison)
 def test_bool_out_operations(op: str):
     a = gen_random_series(nelem=1000, num_nans=10)
     b = gen_random_series(nelem=1000, num_nans=10)
@@ -62,7 +64,10 @@ def test_bool_out_operations(op: str):
     lg_b = LogicalColumn.from_arrow(b)
 
     res = binary_operation(lg_a, lg_b, op, "bool")
-    expect = pa.compute.call_function(op, [a.cast("bool"), b.cast("bool")])
+    if op in ops_logical:
+        expect = pa.compute.call_function(op, [a.cast("bool"), b.cast("bool")])
+    else:
+        expect = pa.compute.call_function(op, [a, b])
     assert expect == res.to_arrow()
 
 
