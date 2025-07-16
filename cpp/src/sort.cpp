@@ -297,6 +297,12 @@ std::vector<std::size_t> find_destination_ranks(
     splits_indices_host.push_back(static_cast<std::size_t>(sorted_table->num_rows()));
   }
 
+  if (!std::is_sorted(splits_indices_host.begin(), splits_indices_host.end())) {
+    throw std::runtime_error(
+      "Splits indices should be sorted. This is a bug, and indicates a difference between arrow's "
+      "sort comparator and the custom comparator used in this file.");
+  }
+
   return splits_indices_host;
 }
 
@@ -733,6 +739,9 @@ LogicalTable sort(const LogicalTable& tbl,
   bool use_arrow          = runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0;
   const auto& name_to_idx = tbl.get_column_names();
   for (size_t i = 0; i < keys.size(); i++) {
+    if (name_to_idx.count(keys[i]) == 0) {
+      throw std::invalid_argument("sort key '" + keys[i] + "' not found in table");
+    }
     keys_idx[i] = name_to_idx.at(keys[i]);
   }
 

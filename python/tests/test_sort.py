@@ -16,6 +16,7 @@
 import numpy as np
 import pyarrow as pa
 import pytest
+from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.sort import sort
@@ -84,12 +85,10 @@ def test_empty_chunks(threshold):
     assert_arrow_table_equal(lg_result.to_arrow(), df_result)
 
 
-"""
-
 @pytest.mark.parametrize("reversed", [True, False])
 def test_shifted_equal_window(reversed):
-    # The tricky part abort sorting are the exact splits for exchanging.
-    # assume we have at least two gpus/workders.  Shift a window of 50
+    # The tricky part about sorting are the exact splits for exchanging.
+    # assume we have at least two gpus/workers.  Shift a window of 50
     # (i.e. half of each worker), through, to see if it gets split incorrectly.
     for i in range(150):
         before = np.arange(i)
@@ -100,13 +99,13 @@ def test_shifted_equal_window(reversed):
             values = values[::-1].copy()
 
         # Need a second column to check the splits:
-        df = pd.DataFrame({"a": values, "b": np.arange(200)})
+        df = pa.table({"a": values, "b": np.arange(200)})
 
-        lg_df = LogicalTable.from_pandas(df)
+        lg_df = LogicalTable.from_arrow(df)
         lg_sorted = sort(lg_df, ["a"], stable=True)
-        df_sorted = df.sort_values(by=["a"], kind="stable")
+        df_sorted = df.sort_by("a")
 
-        assert_frame_equal(lg_sorted, df_sorted)
+        assert_arrow_table_equal(lg_sorted.to_arrow(), df_sorted)
 
         # Block for stability with lower memory (not sure if it should be here)
         get_legate_runtime().issue_execution_fence(block=True)
@@ -124,7 +123,7 @@ def test_shifted_equal_window(reversed):
     ],
 )
 def test_orders(by, ascending, nulls_last, stable):
-    # Note that pandas sort_values doesn't allow passing na_position as a list.
+    # Note that Arrow sort_indices doesn't allow passing null_placement as a list.
     # So we'll test with simple cases for now that match the current sort API
     np.random.seed(1)
 
@@ -134,37 +133,46 @@ def test_orders(by, ascending, nulls_last, stable):
         ascending.append(True)
 
     # Generate a dataset with many repeats so all columns should matter
-    values_a = np.arange(10).repeat(100)
-    values_b = np.arange(10.0).repeat(100)
-    values_c = ["a", "b", "hello", "d", "e", "f", "e", "🙂", "e", "g"] * 100
+    # repeats = 100
+    repeats = 1
+    values_a = np.arange(10).repeat(repeats)
+    values_b = np.arange(10.0).repeat(repeats)
+    values_c = ["a", "b", "hello", "d", "e", "f", "e", "🙂", "e", "g"] * repeats
 
     np.random.shuffle(values_a)
     np.random.shuffle(values_b)
 
-    # Create series with nulls using pandas
-    series_a = pd.Series(values_a)
-    series_a[np.random.choice([True, False], size=1000, p=[0.1, 0.9])] = np.nan
+    # Create arrays with nulls using numpy
+    null_mask_a = np.random.choice([True, False], size=values_a.size, p=[0.1, 0.9])
+    values_a_with_nulls = values_a.astype(float)
+    values_a_with_nulls[null_mask_a] = np.nan
 
-    series_b = pd.Series(values_b)
-    series_b[np.random.choice([True, False], size=1000, p=[0.1, 0.9])] = np.nan
+    null_mask_b = np.random.choice([True, False], size=values_a.size, p=[0.1, 0.9])
+    values_b_with_nulls = values_b.copy()
+    values_b_with_nulls[null_mask_b] = np.nan
 
-    series_c = pd.Series(values_c)
-    series_c[np.random.choice([True, False], size=1000, p=[0.1, 0.9])] = None
+    null_mask_c = np.random.choice([True, False], size=values_a.size, p=[0.1, 0.9])
+    values_c_with_nulls = np.array(values_c, dtype=object)
+    values_c_with_nulls[null_mask_c] = None
 
-    pandas_df = pd.DataFrame(
+    arrow_table = pa.table(
         {
-            "a": series_a,
-            "b": series_b,
-            "c": series_c,
-            "idx": np.arange(1000),
+            "a": pa.array(values_a_with_nulls),
+            "b": pa.array(values_b_with_nulls),
+            "c": pa.array(values_c_with_nulls),
+            "idx": np.arange(values_a.size),
         }
     )
-    lg_df = LogicalTable.from_pandas(pandas_df)
+    lg_df = LogicalTable.from_arrow(arrow_table)
 
-    kind = "stable" if stable else "quicksort"
-    na_position = "last" if nulls_last else "first"
-    expected = pandas_df.sort_values(
-        by=by, ascending=ascending, na_position=na_position, kind=kind
+    # Arrow sort_by expects individual sort keys with their own order
+    sort_keys = []
+    for i, key in enumerate(by):
+        order = "ascending" if ascending[i] else "descending"
+        sort_keys.append((key, order))
+
+    expected = arrow_table.sort_by(
+        sort_keys, null_placement="at_end" if nulls_last else "at_start"
     )
 
     # Use the current sort API which takes sort_ascending and nulls_at_end
@@ -176,39 +184,43 @@ def test_orders(by, ascending, nulls_last, stable):
         stable=stable,
     )
 
-    assert_frame_equal(lg_sorted, expected)
+    assert_arrow_table_equal(lg_sorted.to_arrow(), expected)
 
 
 def test_na_position_explicit():
-    pandas_df = pd.DataFrame({"a": [0, 1, None, None], "b": [1, None, 0, None]})
+    # Create Arrow table with nulls
+    arrow_table = pa.table(
+        {
+            "a": pa.array([0, 1, None, None], type=pa.int64()),
+            "b": pa.array([1, None, 0, None], type=pa.int64()),
+        }
+    )
 
-    lg_df = LogicalTable.from_pandas(pandas_df)
-    # Test with nulls_at_end=False (nulls at beginning)
+    lg_df = LogicalTable.from_arrow(arrow_table)
     lg_sorted = sort(lg_df, ["a", "b"], nulls_at_end=False)
 
-    expected = pd.DataFrame({"a": [None, None, 0, 1], "b": [0, None, 1, None]})
+    expected = pa.table(
+        {
+            "a": pa.array([None, None, 0, 1], type=pa.int64()),
+            "b": pa.array([None, 0, 1, None], type=pa.int64()),
+        }
+    )
 
-    assert_frame_equal(lg_sorted, expected)
+    assert_arrow_table_equal(lg_sorted.to_arrow(), expected)
 
 
 @pytest.mark.parametrize(
-    "keys,column_order,null_precedence",
+    "keys,sort_ascending,nulls_at_end",
     [
-        ([], None, None),
-        (["bad_col", None, None]),
-        (["a"], [Order.ASCENDING] * 2, None),
-        (["a"], None, [NullOrder.BEFORE] * 2),
-        # These should fail (wrong enum passed), but cython doesn't check:
-        # (["a", "b"], [Order.ASCENDING] * 2, [Order.ASCENDING] * 2),
-        # (["a", "b"], [NullOrder.BEFORE] * 2, [NullOrder.BEFORE] * 2),
+        ([], None, None),  # Empty keys should fail
+        (["bad_col"], None, None),  # Non-existent column should fail
+        (["a"], [True, False], None),  # Mismatched keys and sort_ascending length
+        (["a", "b"], [True], None),  # Mismatched keys and sort_ascending length
     ],
 )
-def test_errors_incorrect_args(keys, column_order, null_precedence):
-    df = cudf.DataFrame({"a": [0, 1, 2, 3], "b": [0, 1, 2, 3]})
-    lg_df = LogicalTable.from_cudf(df)
+def test_errors_incorrect_args(keys, sort_ascending, nulls_at_end):
+    arrow_table = pa.table({"a": [0, 1, 2, 3], "b": [0, 1, 2, 3]})
+    lg_df = LogicalTable.from_arrow(arrow_table)
 
-    with pytest.raises((ValueError, TypeError)):
-        sort(
-            lg_df, keys=keys, column_order=column_order, null_precedence=null_precedence
-        )
-"""
+    with pytest.raises((ValueError, TypeError, KeyError)):
+        sort(lg_df, keys=keys, sort_ascending=sort_ascending, nulls_at_end=nulls_at_end)

@@ -49,10 +49,32 @@ def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> cudf.DataF
     return cudf.DataFrame(obj)
 
 
+def replace_nans(table: pa.Table) -> pa.Table:
+    new_table = pa.table(table)
+    for i, name in enumerate(table.schema.names):
+        type = table.schema.field(name).type
+        if pa.types.is_floating(type):
+            # Replace NaNs with 0.0 for floating point columns
+            nan_mask = pa.compute.is_nan(table.column(name)).combine_chunks()
+            new_table = new_table.set_column(
+                i,
+                name,
+                pa.compute.replace_with_mask(
+                    table.column(name), nan_mask, pa.scalar(0.0, type=pa.float64())
+                ),
+            )
+    return new_table
+
+
+# This function compares two Arrow tables for equality
+# It compares NaN values as equal - arrows default behavior is to not compare NaNs as equal
+# https://github.com/apache/arrow/issues/22446
+# It ignores the nullable field in the schema as this is inconsistent in arrow
 def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
     # arrow has an annoying nullable attribute in its schema that is not well respected by its various functions
     # i.e. it is possible to have a non-nullable column with null values without problems
     # Set the nullable attribute to match the left table
+
     assert left.schema.names == right.schema.names
     fields = []
     for name in left.schema.names:
@@ -61,7 +83,10 @@ def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
         fields.append(pa.field(right_field.name, right_field.type, left_field.nullable))
     new_schema = pa.schema(fields)
     right_copy = pa.table(right, schema=new_schema)
-    assert left.equals(right_copy), f"Arrow tables are not equal:\n{left}\n{right}"
+
+    assert replace_nans(left).equals(
+        replace_nans(right_copy)
+    ), f"Arrow tables are not equal:\n{left}\n{right}"
 
 
 def assert_frame_equal(

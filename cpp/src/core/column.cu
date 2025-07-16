@@ -206,13 +206,8 @@ void from_arrow(legate::PhysicalArray array, std::shared_ptr<arrow::Array> arrow
       null_mask = maybe_bind_buffer<bool>(array.null_mask(), arrow_array->length());
     }
 
-    if (arrow_array->null_count() > 0) {
-      for (size_t i = 0; i < arrow_array->length(); ++i) {
-        null_mask[i] = !arrow_array->IsNull(i);
-      }
-    } else {
-      std::memset(
-        null_mask, std::numeric_limits<bool>::max(), arrow_array->length() * sizeof(bool));
+    for (size_t i = 0; i < arrow_array->length(); ++i) {
+      null_mask[i] = arrow_array->IsValid(i);
     }
   }
 
@@ -228,17 +223,19 @@ void from_arrow(legate::PhysicalArray array, std::shared_ptr<arrow::Array> arrow
 legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array)
 {
   // Create an unbound logical array
-  auto runtime = legate::Runtime::get_runtime();
+  auto arrow_has_nulls = arrow_array->null_count() > 0;
+  auto runtime         = legate::Runtime::get_runtime();
   if (auto string_array = dynamic_cast<arrow::StringArray*>(arrow_array.get())) {
     auto array = runtime->create_string_array(
-      runtime->create_array({std::uint64_t(arrow_array->length())}, legate::rect_type(1)),
+      runtime->create_array(
+        {std::uint64_t(arrow_array->length())}, legate::rect_type(1), arrow_has_nulls),
       runtime->create_array({std::uint64_t(string_array->total_values_length())}, legate::int8()));
     from_arrow(array.get_physical_array(), arrow_array);
     return array;
   }
   auto array = runtime->create_array({std::uint64_t(arrow_array->length())},
                                      to_legate_type(arrow_array->type_id()),
-                                     arrow_array->null_count() > 0,
+                                     arrow_has_nulls,
                                      false /* scalar */);
   from_arrow(array.get_physical_array(), arrow_array);
   return array;
