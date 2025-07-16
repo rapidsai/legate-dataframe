@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "gtest/gtest.h"
 #include <arrow/compute/api.h>
 #include <legate_dataframe/sort.hpp>
 

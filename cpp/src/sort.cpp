@@ -116,6 +116,7 @@ std::shared_ptr<arrow::Array> create_array(int64_t num_elements, T fill_value)
   using BuilderType =
     typename arrow::TypeTraits<typename arrow::CTypeTraits<T>::ArrowType>::BuilderType;
   BuilderType builder;
+  builder.Reserve(num_elements);
   for (int64_t i = 0; i < num_elements; i++) {
     builder.UnsafeAppend(fill_value);
   }
@@ -157,7 +158,6 @@ std::shared_ptr<arrow::Table> merge_distributed_split_candidates(
   for (int i = 0; i < ctx.nranks; i++) {
     exchange_tables.push_back(local_splits_and_metadata);
   }
-  std::cout << "Shuffling split candidates among ranks..." << std::endl;
   auto shuffled = shuffle(ctx, exchange_tables);
 
   if (local_splits_and_metadata->num_rows() == 0) {
@@ -166,9 +166,10 @@ std::shared_ptr<arrow::Table> merge_distributed_split_candidates(
     return nullptr;
   }
 
-  std::cout << "Concatenating split candidates..." << std::endl;
   auto all_split_candidates = ARROW_RESULT(arrow::ConcatenateTables(shuffled));
 
+  // TODO: Add the rank column as a sort key?
+  // Potentially we don't need this as a stable sort would maintain rank order for equal rows
   arrow::compute::SortOptions sort_options(column_order, null_precedence);
   auto sorted_indices =
     ARROW_RESULT(arrow::compute::SortIndices(all_split_candidates, sort_options));
@@ -190,7 +191,9 @@ std::shared_ptr<arrow::Table> extract_global_splits(
 }
 
 // This function is poorly optimised but arrow doesn't give us other options
-bool compare(const arrow::Table& table_a,
+// This comparison must behave exactly the same as arrow's SortIndices
+bool compare(TaskContext& ctx,
+             const arrow::Table& table_a,
              const arrow::Table& table_b,
              std::size_t row_index_a,
              std::size_t row_index_b,
@@ -205,28 +208,29 @@ bool compare(const arrow::Table& table_a,
     auto value_a = ARROW_RESULT(col_a->GetScalar(row_index_a));
     auto value_b = ARROW_RESULT(col_b->GetScalar(row_index_b));
 
-    if (value_a->Equals(*value_b)) continue;  // Move to next column if equal
-
     auto a_null = !(*value_a).is_valid;
     auto b_null = !(*value_b).is_valid;
 
     if (a_null && b_null) continue;
 
-    if (a_null) return null_precedence == arrow::compute::NullPlacement::AtEnd;
-    if (b_null) return null_precedence == arrow::compute::NullPlacement::AtStart;
+    if (a_null) return null_precedence == arrow::compute::NullPlacement::AtStart;
+    if (b_null) return null_precedence == arrow::compute::NullPlacement::AtEnd;
 
-    auto result = ARROW_RESULT(arrow::compute::CallFunction("less", {value_a, value_b}))
+    if (value_a->Equals(*value_b)) continue;  // Move to next column if equal
+
+    auto compare_function =
+      column_order.at(i).order == arrow::compute::SortOrder::Ascending ? "less" : "greater";
+    auto result = ARROW_RESULT(arrow::compute::CallFunction(compare_function, {value_a, value_b}))
                     .scalar_as<arrow::BooleanScalar>()
                     .value;
-    if (column_order[i].order == arrow::compute::SortOrder::Descending) {
-      result = !result;  // Reverse the order for descending
-    }
+
     return result;  // Return true if value_a < value_b
   }
   return false;  // Equal values
 }
 
-std::size_t lower_bound_row(const arrow::Table& sorted_table_with_rank,
+std::size_t lower_bound_row(TaskContext& ctx,
+                            const arrow::Table& sorted_table_with_rank,
                             const arrow::Table& global_split_values,
                             std::size_t split_index,
                             const std::vector<cudf::size_type>& keys_idx,
@@ -235,10 +239,11 @@ std::size_t lower_bound_row(const arrow::Table& sorted_table_with_rank,
 {
   // Linear search version
   for (std::size_t i = 0; i < sorted_table_with_rank.num_rows(); i++) {
-    if (compare(sorted_table_with_rank,
+    if (compare(ctx,
                 global_split_values,
-                i,
+                sorted_table_with_rank,
                 split_index,
+                i,
                 keys_idx,
                 column_order,
                 null_precedence)) {
@@ -268,12 +273,21 @@ std::vector<std::size_t> find_destination_ranks(
 
   std::vector<std::size_t> splits_indices_host;
 
-  auto keys_idxx = keys_idx;
-  keys_idxx.push_back(sorted_table->num_columns());
+  auto keys_idx_with_rank = keys_idx;
+  keys_idx_with_rank.push_back(sorted_table->num_columns());
+  auto column_order_with_rank = column_order;
+  column_order_with_rank.push_back(
+    arrow::compute::SortKey{"split_rank", arrow::compute::SortOrder::Ascending});
+
   // For each global split value, find where it should be inserted in the local sorted table
   for (std::size_t i = 0; i < static_cast<std::size_t>(global_split_values->num_rows()); i++) {
-    std::size_t position = lower_bound_row(
-      *sorted_table_with_rank, *global_split_values, i, keys_idxx, column_order, null_precedence);
+    std::size_t position = lower_bound_row(ctx,
+                                           *sorted_table_with_rank,
+                                           *global_split_values,
+                                           i,
+                                           keys_idx_with_rank,
+                                           column_order_with_rank,
+                                           null_precedence);
     splits_indices_host.push_back(position);
   }
 
@@ -295,9 +309,6 @@ std::vector<std::size_t> find_splits_for_distribution(
 {
   auto local_splits_and_metadata = extract_local_splits(ctx, sorted_table, keys_idx);
 
-  std::cout << "Rank: " << ctx.rank << " merging distributed split candidates..." << std::endl;
-  std::cout << local_splits_and_metadata->ToString() << std::endl;
-
   auto global_split_candidates = merge_distributed_split_candidates(
     ctx, local_splits_and_metadata, keys_idx, column_order, null_precedence);
 
@@ -306,10 +317,8 @@ std::vector<std::size_t> find_splits_for_distribution(
     return {};
   }
 
-  std::cout << "Extracting global splits..." << std::endl;
   auto global_split_values = extract_global_splits(ctx, global_split_candidates);
 
-  std::cout << "Finding destination ranks..." << std::endl;
   return find_destination_ranks(
     ctx, sorted_table, global_split_values, keys_idx, column_order, null_precedence);
 }
@@ -595,9 +604,11 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     // split_indices will be null.  Exchange the (empty) table instead.
     std::vector<std::shared_ptr<arrow::Table>> partitions;
     if (split_indices.size() > 0) {
-      for (int i = 0; i < split_indices.size(); i++) {
-        auto start  = (i == 0) ? 0 : split_indices[i - 1];
-        auto length = split_indices[i] - start;
+      partitions.push_back(sorted_table->Slice(0, split_indices[0]));
+      for (int i = 1; i < split_indices.size() + 1; i++) {
+        auto start = split_indices[i - 1];
+        auto length =
+          (i == split_indices.size()) ? sorted_table->num_rows() - start : split_indices[i] - start;
         partitions.push_back(sorted_table->Slice(start, length));
       }
     } else {
