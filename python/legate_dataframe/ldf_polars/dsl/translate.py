@@ -463,7 +463,30 @@ def _(
     if isinstance(name, pl_expr.StringFunction):
         raise NotImplementedError("StringFunction not supported")
     elif isinstance(name, pl_expr.BooleanFunction):
-        raise NotImplementedError("BooleanFunction not supported")
+        if name == pl_expr.BooleanFunction.IsBetween:
+            column, lo, hi = (
+                translator.translate_expr(n=n, schema=schema) for n in node.input
+            )
+            (closed,) = options
+            if closed == "none":
+                lop, rop = "greater", "less"
+            elif closed == "left":
+                lop, rop = "greater_equal", "less"
+            elif closed == "right":
+                lop, rop = "greater", "less_equal"
+            elif closed == "both":
+                lop, rop = "greater_equal", "less_equal"
+            else:
+                raise NotImplementedError(f"IsBetween with {closed=} not supported")
+            return expr.BinOp(
+                dtype,
+                "and_kleene",
+                expr.BinOp(dtype, lop, column, lo),
+                expr.BinOp(dtype, rop, column, hi),
+            )
+        raise NotImplementedError(
+            f"BooleanFunction {name} not supported (only IsBetween is)"
+        )
     elif isinstance(name, pl_expr.TemporalFunction):
         raise NotImplementedError("TemporalFunction not supported")
 
@@ -504,7 +527,6 @@ def _(
     if dtype.id() == plc.TypeId.LIST:  # pragma: no cover
         # TODO: Remove once pylibcudf.Scalar supports lists
         return expr.LiteralColumn(dtype, pl.Series(node.value))
-    print(node, node.value, dtype)
     return expr.Literal(dtype, node.value)
 
 

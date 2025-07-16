@@ -28,6 +28,18 @@ from legate_dataframe.testing import (
 )
 
 ops = ["add", "subtract", "multiply"]
+ops_bool = [
+    "and",
+    "or",
+    "and_kleene",
+    "or_kleene",
+    "equal",
+    "not_equal",
+    "less",
+    "less_equal",
+    "greater",
+    "greater_equal",
+]
 
 
 @pytest.mark.parametrize("op", ops)
@@ -39,6 +51,18 @@ def test_arithmetic_operations(op: str):
 
     res = binary_operation(lg_a, lg_b, op, np.float64)
     expect = pa.compute.call_function(op, [a, b])
+    assert expect == res.to_arrow()
+
+
+@pytest.mark.parametrize("op", ops_bool)
+def test_bool_out_operations(op: str):
+    a = gen_random_series(nelem=1000, num_nans=10)
+    b = gen_random_series(nelem=1000, num_nans=10)
+    lg_a = LogicalColumn.from_arrow(a)
+    lg_b = LogicalColumn.from_arrow(b)
+
+    res = binary_operation(lg_a, lg_b, op, "bool")
+    expect = pa.compute.call_function(op, [a.cast("bool"), b.cast("bool")])
     assert expect == res.to_arrow()
 
 
@@ -78,21 +102,43 @@ def test_scalar_input(array, op, scalar):
     assert result.is_scalar()  # if both inputs are scalar, the result is also
 
 
-operators = ["add", "sub", "mul"]
+operators = ["add", "sub", "mul", "and_", "or_", "eq", "ne", "lt", "le", "gt", "ge"]
 
 
 @pytest.mark.parametrize("op", operators)
 def test_binary_operation_polars(op):
     pl = pytest.importorskip("polars")
-    import legate_dataframe.ldf_polars  # noqa: F401
 
     a = gen_random_series(nelem=1000, num_nans=10)
     b = gen_random_series(nelem=1000, num_nans=10)
+    if op in {"and_", "or_"}:
+        # and_ and or_ are bitwise, and require bool inputs.
+        a = a.cast("bool")
+        b = b.cast("bool")
+
     a_s = pl.from_arrow(a)
     b_s = pl.from_arrow(b)
 
     # Need to work with a lazyframe, as there is no lazy series.
     q = pl.LazyFrame({"a": a_s, "b": b_s}).with_columns(
         a_b=getattr(operator, op)(pl.col("a"), pl.col("b"))
+    )
+    assert_matches_polars(q)
+
+
+@pytest.mark.parametrize("mode", ["none", "left", "right", "both"])
+def test_between_polars(mode):
+    pl = pytest.importorskip("polars")
+
+    a = gen_random_series(nelem=1000, num_nans=10)
+    b = gen_random_series(nelem=1000, num_nans=10)
+    c = gen_random_series(nelem=1000, num_nans=10)
+
+    a_s = pl.from_arrow(a)
+    b_s = pl.from_arrow(b)
+    c_s = pl.from_arrow(c)
+
+    q = pl.LazyFrame({"a": a_s, "b": b_s, "c": c_s}).with_columns(
+        pl.col("a").is_between(pl.col("b"), pl.col("c"), closed=mode)
     )
     assert_matches_polars(q)
