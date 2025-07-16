@@ -14,7 +14,7 @@ def csv_write(
     tbl: LogicalTable, path: pathlib.Path | str, delimiter: str = ","
 ) -> None: ...
 def csv_read(
-    glob_string: pathlib.Path | str,
+    files: pathlib.Path | str | Iterable[pathlib.Path | str],
     *,
     dtypes: Iterable[DTypeLike | plc.DataType | pa.DataType],
     na_filter: bool = False,

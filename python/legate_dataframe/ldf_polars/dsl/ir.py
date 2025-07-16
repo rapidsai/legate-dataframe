@@ -538,10 +538,7 @@ class Scan(IR):
             # polars skips blank lines at the beginning of the file
             if n_rows != -1:
                 raise NotImplementedError(f"{n_rows=}")
-            if len(paths) != 1:
-                raise NotImplementedError(f"multiple files: {paths=}")
 
-            path = paths[0]
             skiprows = reader_options.pop("skip_rows")
             if not POLARS_VERSION_LT_128:
                 skiprows += skip_rows  # pragma: no cover
@@ -579,7 +576,7 @@ class Scan(IR):
                 )
 
             table = csv.csv_read(
-                path,
+                paths,
                 delimiter=sep,
                 # header=header,  TODO: Should be fine to ignore?
                 usecols=column_names,
@@ -590,9 +587,6 @@ class Scan(IR):
             df = DataFrame.from_table(table)
         elif typ == "parquet":
             # TODO: We should support pushing some predicates into the parquet reader
-            path = paths[0]
-            if len(paths) != 1:
-                raise NotImplementedError(f"multiple files: {paths=}")
 
             if n_rows != -1:
                 raise NotImplementedError(
@@ -603,7 +597,7 @@ class Scan(IR):
                     f"{skip_rows=} only full read supported right now"
                 )
 
-            table = parquet.parquet_read(path, columns=with_columns)
+            table = parquet.parquet_read(paths, columns=with_columns)
             df = DataFrame.from_table(table)
         else:
             raise NotImplementedError(

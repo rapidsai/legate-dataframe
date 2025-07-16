@@ -23,6 +23,7 @@
 #include <legate_dataframe/filling.hpp>
 #include <legate_dataframe/parquet.hpp>
 #include <legate_dataframe/unaryop.hpp>
+#include <legate_dataframe/utils.hpp>
 
 int main(void)
 {
@@ -55,7 +56,8 @@ int main(void)
   // Then we can read the parquet files back into a logical table. We
   // provide a Glob string that reference all the parquet files that
   // should go into the logical table.
-  auto tbl_b = legate::dataframe::parquet_read("./my_parquet_file/*.parquet");
+  auto files = legate::dataframe::parse_glob("./my_parquet_file/*.parquet");
+  auto tbl_b = legate::dataframe::parquet_read(files);
 
   // Clean up
   std::filesystem::remove_all("./my_parquet_file");

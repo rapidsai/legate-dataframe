@@ -109,7 +109,7 @@ def test_read_many_files_per_rank(tmp_path):
     write_partitioned_csv(df, tmp_path, npartitions=npartitions)
     # Test that we really have many files hoped for:
     assert len(glob.glob(filenames)) == npartitions
-    tbl = csv_read(filenames, dtypes=df.schema.types)
+    tbl = csv_read(glob.glob(filenames), dtypes=df.schema.types)
 
     assert_arrow_table_equal(tbl.to_arrow().sort_by("a"), df)
 
@@ -254,4 +254,18 @@ def test_read_polars(tmp_path):
     assert_matches_polars(q)
     # Check that selection push-through works
     q = q.select([pl.col("a"), pl.col("c")])
+    assert_matches_polars(q)
+
+
+def test_read_polars_multiple_files(tmp_path):
+    # Simple additional test that loads multiple files.
+    pl = pytest.importorskip("polars")
+
+    filenames = str(tmp_path) + "/*.csv"
+    df = pa.table({"a": np.arange(983, dtype="int64")})
+    npartitions = 100
+    write_partitioned_csv(df, tmp_path, npartitions=npartitions)
+    # Test that we really have many files hoped for:
+    assert len(glob.glob(filenames)) == npartitions
+    q = pl.scan_csv(filenames)
     assert_matches_polars(q)

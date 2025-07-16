@@ -87,7 +87,7 @@ def main(tmpdir):
     # Then we can read the parquet files back into a logical table. We
     # provide a Glob string that reference all the parquet files that
     # should go into the logical table.
-    tbl2 = parquet_read(glob_string=f"{tmpdir}/*.parquet")
+    tbl2 = parquet_read(f"{tmpdir}/*.parquet")
 
     # LogicalColumn implements the `__legate_data_interface__` interface,
     # which makes it possible for other Legate libraries, such as cuPyNumeric,
@@ -120,6 +120,7 @@ if __name__ == "__main__":
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/parquet.hpp>
 #include <legate_dataframe/unaryop.hpp>
+#include <legate_dataframe/utils.hpp>
 
 int main(int argc, char** argv)
 {
@@ -151,7 +152,8 @@ int main(int argc, char** argv)
   // Then we can read the parquet files back into a logical table. We
   // provide a Glob string that reference all the parquet files that
   // should go into the logical table.
-  auto tbl_b = legate::dataframe::parquet_read("./my_parquet_file/*.parquet");
+  auto files = legate::dataframe::parse_glob("./my_parquet_file/*.parquet");
+  auto tbl_b = legate::dataframe::parquet_read(files);
 
   // Clean up
   std::filesystem::remove_all("./my_parquet_file");

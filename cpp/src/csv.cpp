@@ -284,15 +284,14 @@ void csv_write(LogicalTable& tbl, const std::string& dirpath, char delimiter)
   runtime->submit(std::move(task));
 }
 
-LogicalTable csv_read(const std::string& glob_string,
+LogicalTable csv_read(const std::vector<std::string>& files,
                       const std::vector<cudf::data_type>& dtypes,
                       bool na_filter,
                       char delimiter,
                       const std::optional<std::vector<std::string>>& names,
                       const std::optional<std::vector<int>>& usecols)
 {
-  std::vector<std::string> file_paths = parse_glob(glob_string);
-  if (file_paths.empty()) { throw std::invalid_argument("no csv files specified"); }
+  if (files.empty()) { throw std::invalid_argument("no csv files specified"); }
 
   if (usecols.has_value()) {
     if (!names.has_value()) {
@@ -315,7 +314,7 @@ LogicalTable csv_read(const std::string& glob_string,
   if (!usecols.has_value()) {
     // We need to read the first row to get the column names.
     arrow::io::IOContext io_context = arrow::io::default_io_context();
-    auto input                      = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths.at(0)));
+    auto input                      = ARROW_RESULT(arrow::io::ReadableFile::Open(files.at(0)));
     auto read_options               = arrow::csv::ReadOptions::Defaults();
     read_options.block_size         = 10000;  // Should be large enough for 1 row
     read_options.use_threads        = false;
@@ -397,8 +396,8 @@ LogicalTable csv_read(const std::string& glob_string,
   // Get the number of bytes in each file:
   std::vector<size_t> nbytes;
   size_t nbytes_total = 0;
-  nbytes.reserve(file_paths.size());
-  for (const auto& path : file_paths) {
+  nbytes.reserve(files.size());
+  for (const auto& path : files) {
     auto file_size = std::filesystem::file_size(path);
     nbytes.push_back(file_size);
     nbytes_total += file_size;
@@ -406,7 +405,7 @@ LogicalTable csv_read(const std::string& glob_string,
 
   auto runtime          = legate::Runtime::get_runtime();
   legate::AutoTask task = runtime->create_task(get_library(), task::CSVRead::TASK_CONFIG.task_id());
-  argument::add_next_scalar_vector(task, file_paths);
+  argument::add_next_scalar_vector(task, files);
   argument::add_next_scalar_vector(task, column_names);
   argument::add_next_scalar_vector(task, use_cols_indexes);
   argument::add_next_scalar(task, na_filter);

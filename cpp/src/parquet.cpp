@@ -409,7 +409,6 @@ const auto reg_id_ = []() -> char {
 }();
 
 struct ParquetReadInfo {
-  std::vector<std::string> file_paths;
   std::vector<std::string> column_names;
   std::vector<int> column_indices;
   std::vector<cudf::data_type> column_types;
@@ -421,10 +420,9 @@ struct ParquetReadInfo {
   size_t nrows_total;
 };
 
-ParquetReadInfo get_parquet_info(const std::string& glob_string,
+ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
                                  const std::optional<std::vector<std::string>>& columns)
 {
-  std::vector<std::string> file_paths = parse_glob(glob_string);
   if (file_paths.empty()) { throw std::invalid_argument("no parquet files specified"); }
 
   // Open the first file to get schema information
@@ -517,8 +515,7 @@ ParquetReadInfo get_parquet_info(const std::string& glob_string,
                .ptr(0);
   std::copy(row_group_ranges.begin(), row_group_ranges.end(), ptr);
 
-  return {std::move(file_paths),
-          std::move(column_names),
+  return {std::move(column_names),
           std::move(column_indices),
           std::move(column_types),
           std::move(column_nullable),
@@ -546,10 +543,10 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath)
   runtime->submit(std::move(task));
 }
 
-LogicalTable parquet_read(const std::string& glob_string,
+LogicalTable parquet_read(const std::vector<std::string>& files,
                           const std::optional<std::vector<std::string>>& columns)
 {
-  auto info = get_parquet_info(glob_string, columns);
+  auto info = get_parquet_info(files, columns);
 
   std::vector<LogicalColumn> logical_columns;
   logical_columns.reserve(info.column_types.size());
@@ -562,7 +559,7 @@ LogicalTable parquet_read(const std::string& glob_string,
   auto runtime = legate::Runtime::get_runtime();
   legate::AutoTask task =
     runtime->create_task(get_library(), task::ParquetRead::TASK_CONFIG.task_id());
-  argument::add_next_scalar_vector(task, info.file_paths);
+  argument::add_next_scalar_vector(task, files);
   argument::add_next_scalar_vector(task, info.column_names);
   argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
@@ -573,13 +570,13 @@ LogicalTable parquet_read(const std::string& glob_string,
   return ret;
 }
 
-legate::LogicalArray parquet_read_array(const std::string& glob_string,
+legate::LogicalArray parquet_read_array(const std::vector<std::string>& files,
                                         const std::optional<std::vector<std::string>>& columns,
                                         const legate::Scalar& null_value,
                                         const std::optional<legate::Type>& type)
 {
   auto runtime = legate::Runtime::get_runtime();
-  auto info    = get_parquet_info(glob_string, columns);
+  auto info    = get_parquet_info(files, columns);
 
   legate::Type legate_type = legate::null_type();
 
@@ -625,7 +622,7 @@ legate::LogicalArray parquet_read_array(const std::string& glob_string,
 
   legate::AutoTask task =
     runtime->create_task(get_library(), task::ParquetReadArray::TASK_CONFIG.task_id());
-  argument::add_next_scalar_vector(task, info.file_paths);
+  argument::add_next_scalar_vector(task, files);
   argument::add_next_scalar_vector(task, info.column_names);
   argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);

@@ -13,6 +13,9 @@ from libcpp.vector cimport vector
 from legate_dataframe.lib.core.data_type cimport as_data_type, cpp_cudf_type
 from legate_dataframe.lib.core.table cimport LogicalTable, cpp_LogicalTable
 
+import glob
+import pathlib
+
 from legate_dataframe.utils import _track_provenance
 
 
@@ -21,7 +24,7 @@ cdef extern from "<legate_dataframe/csv.hpp>" nogil:
         cpp_LogicalTable& tbl, const string& dirpath, char delimiter
     ) except +
     cpp_LogicalTable cpp_csv_read "legate::dataframe::csv_read"(
-        const string& glob_string,
+        const vector[string]& files,
         const vector[cpp_cudf_type]& out,
         cpp_bool na_filter,
         char delimiter,
@@ -67,16 +70,15 @@ def csv_write(LogicalTable tbl, path, delimiter=","):
 
 @_track_provenance
 def csv_read(
-    glob_string, *, dtypes, na_filter=True, delimiter=",", usecols=None, names=None
+    files, *, dtypes, na_filter=True, delimiter=",", usecols=None, names=None
 ):
     """Read csv files into a logical table
 
     Parameters
     ----------
-    glob_string : str
-        The glob string to specify the csv files. All glob matches
-        must be valid csv files and have the same LogicalTable data
-        types. See <https://linux.die.net/man/7/glob>.
+    files : str, Path, or iterable of paths
+        If a string, ``glob.glob`` is used to conveniently load multiple files,
+        otherwise must be a path or an iterable of paths (or strings).
     dtypes : iterable of cudf dtype-likes
         The cudf dtypes to extract for each column (or a single one for all).
     na_filter: bool, optional
@@ -100,11 +102,20 @@ def csv_read(
     csv_write: Write csv data
     lib.parquet.parquet_write: Write parquet data
     """
+    cdef vector[string] cpp_files
     cdef vector[cpp_cudf_type] cpp_dtypes
     cdef vector[string] cpp_names
     cdef vector[int] cpp_usecols
     cdef optional[vector[string]] cpp_names_opt
     cdef optional[vector[int]] cpp_usecols_opt
+
+    if isinstance(files, str):
+        files = sorted(glob.glob(files))
+    elif isinstance(files, pathlib.Path):
+        files = [files]
+
+    for file in files:
+        cpp_files.push_back(str(file).encode("UTF-8"))
 
     for dtype in dtypes:
         cpp_dtypes.push_back(as_data_type(dtype))
@@ -128,7 +139,7 @@ def csv_read(
 
     return LogicalTable.from_handle(
         cpp_csv_read(
-            str(glob_string).encode('UTF-8'),
+            cpp_files,
             cpp_dtypes, <cpp_bool>na_filter,
             ord(str(delimiter).encode('UTF-8')),
             cpp_names_opt,
