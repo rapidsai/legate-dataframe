@@ -28,5 +28,5 @@ legate \
     . \
     -sv \
     --durations=0 \
-    -k 'csv or binary or parquet or replace or unary or sort' \
+    -k 'csv or binary or parquet or replace or unary or sort or compaction' \
     "${@}"
