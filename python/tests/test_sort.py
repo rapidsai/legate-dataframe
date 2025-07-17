@@ -16,12 +16,28 @@
 import numpy as np
 import pyarrow as pa
 import pytest
-from legate.core import get_legate_runtime
+from legate.core import TaskTarget, get_legate_runtime
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.sort import sort
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import assert_arrow_table_equal, assert_matches_polars
+
+
+def get_test_scoping():
+    # avoid TaskTarget.OMP - sort does not implement this
+    runtime = get_legate_runtime()
+    n_cpus = runtime.get_machine().count(TaskTarget.CPU)
+    n_gpus = runtime.get_machine().count(TaskTarget.GPU)
+    target = TaskTarget.GPU if n_gpus > 0 else TaskTarget.CPU
+    n_processors = n_gpus if target == TaskTarget.GPU else n_cpus
+    i = 1
+    scopes_to_test = []
+    while i < n_processors:
+        scopes_to_test.append(runtime.get_machine().only(target)[:i])
+        i *= 2
+    scopes_to_test.append(runtime.get_machine().only(target)[:n_processors])
+    return scopes_to_test
 
 
 @pytest.mark.parametrize(
@@ -34,11 +50,14 @@ from legate_dataframe.testing import assert_arrow_table_equal, assert_matches_po
         np.random.randint(0, 1000, size=1000),
     ],
 )
-def test_basic(values):
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_basic(values, scope):
     df = pa.table({"a": values})
 
     lg_df = LogicalTable.from_arrow(df)
-    lg_sorted = sort(lg_df, ["a"])
+
+    with scope:
+        lg_sorted = sort(lg_df, ["a"])
 
     df_sorted = df.sort_by("a")
 
@@ -55,11 +74,14 @@ def test_basic(values):
         np.random.randint(0, 1000, size=1000),
     ],
 )
-def test_basic_with_extra_column(values):
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_basic_with_extra_column(values, scope):
     df = pa.table({"a": values, "b": np.arange(len(values))})
 
     lg_df = LogicalTable.from_arrow(df)
-    lg_sorted = sort(lg_df, ["a"])
+
+    with scope:
+        lg_sorted = sort(lg_df, ["a"])
 
     df_sorted = df.sort_by("a")
 
@@ -67,7 +89,8 @@ def test_basic_with_extra_column(values):
 
 
 @pytest.mark.parametrize("threshold", [0, 2])
-def test_empty_chunks(threshold):
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_empty_chunks(threshold, scope):
     # The sorting code needs to be careful when some ranks have zero rows.
     # In that case we the rank has no split points to share and the total number
     # of split points may be fewer than the number of ranks.
@@ -76,7 +99,8 @@ def test_empty_chunks(threshold):
     df = pa.table({"a": values, "mask": abs(values) <= threshold})
     lg_df = LogicalTable.from_arrow(df)
 
-    lg_result = sort(apply_boolean_mask(lg_df, lg_df["mask"]), ["a"])
+    with scope:
+        lg_result = sort(apply_boolean_mask(lg_df, lg_df["mask"]), ["a"])
 
     # Filter and sort the arrow table
     df_filtered = df.filter(df.column("mask"))
@@ -86,7 +110,8 @@ def test_empty_chunks(threshold):
 
 
 @pytest.mark.parametrize("reversed", [True, False])
-def test_shifted_equal_window(reversed):
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_shifted_equal_window(reversed, scope):
     # The tricky part about sorting are the exact splits for exchanging.
     # assume we have at least two gpus/workers.  Shift a window of 50
     # (i.e. half of each worker), through, to see if it gets split incorrectly.
@@ -102,7 +127,10 @@ def test_shifted_equal_window(reversed):
         df = pa.table({"a": values, "b": np.arange(200)})
 
         lg_df = LogicalTable.from_arrow(df)
-        lg_sorted = sort(lg_df, ["a"], stable=True)
+
+        with scope:
+            lg_sorted = sort(lg_df, ["a"], stable=True)
+
         df_sorted = df.sort_by("a")
 
         assert_arrow_table_equal(lg_sorted.to_arrow(), df_sorted)
@@ -122,7 +150,8 @@ def test_shifted_equal_window(reversed):
         (["c", "b", "a"], [True, False, True], True),
     ],
 )
-def test_orders(by, ascending, nulls_last, stable):
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_orders(by, ascending, nulls_last, stable, scope):
     # Note that Arrow sort_indices doesn't allow passing null_placement as a list.
     # So we'll test with simple cases for now that match the current sort API
     np.random.seed(1)
@@ -133,8 +162,7 @@ def test_orders(by, ascending, nulls_last, stable):
         ascending.append(True)
 
     # Generate a dataset with many repeats so all columns should matter
-    # repeats = 100
-    repeats = 1
+    repeats = 100
     values_a = np.arange(10).repeat(repeats)
     values_b = np.arange(10.0).repeat(repeats)
     values_c = ["a", "b", "hello", "d", "e", "f", "e", "🙂", "e", "g"] * repeats
@@ -176,18 +204,20 @@ def test_orders(by, ascending, nulls_last, stable):
     )
 
     # Use the current sort API which takes sort_ascending and nulls_at_end
-    lg_sorted = sort(
-        lg_df,
-        keys=by,
-        sort_ascending=ascending,
-        nulls_at_end=nulls_last,
-        stable=stable,
-    )
+    with scope:
+        lg_sorted = sort(
+            lg_df,
+            keys=by,
+            sort_ascending=ascending,
+            nulls_at_end=nulls_last,
+            stable=stable,
+        )
 
     assert_arrow_table_equal(lg_sorted.to_arrow(), expected)
 
 
-def test_na_position_explicit():
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_na_position_explicit(scope):
     # Create Arrow table with nulls
     arrow_table = pa.table(
         {
@@ -197,7 +227,9 @@ def test_na_position_explicit():
     )
 
     lg_df = LogicalTable.from_arrow(arrow_table)
-    lg_sorted = sort(lg_df, ["a", "b"], nulls_at_end=False)
+
+    with scope:
+        lg_sorted = sort(lg_df, ["a", "b"], nulls_at_end=False)
 
     expected = pa.table(
         {

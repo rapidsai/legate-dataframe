@@ -116,7 +116,7 @@ std::shared_ptr<arrow::Array> create_array(int64_t num_elements, T fill_value)
   using BuilderType =
     typename arrow::TypeTraits<typename arrow::CTypeTraits<T>::ArrowType>::BuilderType;
   BuilderType builder;
-  builder.Reserve(num_elements);
+  auto status = builder.Reserve(num_elements);
   for (int64_t i = 0; i < num_elements; i++) {
     builder.UnsafeAppend(fill_value);
   }
@@ -191,67 +191,51 @@ std::shared_ptr<arrow::Table> extract_global_splits(
 }
 
 // This function is poorly optimised but arrow doesn't give us other options
-// This comparison must behave exactly the same as arrow's SortIndices
+// Compare two tables each containing a single row
 bool compare(TaskContext& ctx,
-             const arrow::Table& table_a,
-             const arrow::Table& table_b,
-             std::size_t row_index_a,
-             std::size_t row_index_b,
+             std::shared_ptr<arrow::Table> row_a,
+             std::shared_ptr<arrow::Table> row_b,
              const std::vector<cudf::size_type>& keys_idx,
              const std::vector<arrow::compute::SortKey>& column_order,
              arrow::compute::NullPlacement null_precedence)
 {
-  for (std::size_t i = 0; i < keys_idx.size(); i++) {
-    auto col_a = table_a.column(keys_idx[i]);
-    auto col_b = table_b.column(keys_idx[i]);
+  // Create a table with each row, sort that table
+  // Use the resulting order as the comparison
+  // We are testing row_a < row_b
+  // So if row_a gets sorted into position 0, then row_a < row_b
 
-    auto value_a = ARROW_RESULT(col_a->GetScalar(row_index_a));
-    auto value_b = ARROW_RESULT(col_b->GetScalar(row_index_b));
+  auto combined = ARROW_RESULT(arrow::ConcatenateTables({row_b, row_a}));
 
-    auto a_null = !(*value_a).is_valid;
-    auto b_null = !(*value_b).is_valid;
+  auto sort_indices = ARROW_RESULT(arrow::compute::SortIndices(
+    combined, arrow::compute::SortOptions(column_order, null_precedence)));
 
-    if (a_null && b_null) continue;
-
-    if (a_null) return null_precedence == arrow::compute::NullPlacement::AtStart;
-    if (b_null) return null_precedence == arrow::compute::NullPlacement::AtEnd;
-
-    if (value_a->Equals(*value_b)) continue;  // Move to next column if equal
-
-    auto compare_function =
-      column_order.at(i).order == arrow::compute::SortOrder::Ascending ? "less" : "greater";
-    auto result = ARROW_RESULT(arrow::compute::CallFunction(compare_function, {value_a, value_b}))
-                    .scalar_as<arrow::BooleanScalar>()
-                    .value;
-
-    return result;  // Return true if value_a < value_b
-  }
-  return false;  // Equal values
+  std::shared_ptr<arrow::UInt64Scalar> first_sort_index =
+    std::dynamic_pointer_cast<arrow::UInt64Scalar>(ARROW_RESULT(sort_indices->GetScalar(0)));
+  return first_sort_index->value == 1;
 }
 
 std::size_t lower_bound_row(TaskContext& ctx,
-                            const arrow::Table& sorted_table_with_rank,
-                            const arrow::Table& global_split_values,
-                            std::size_t split_index,
+                            std::shared_ptr<arrow::Table> haystack,
+                            std::shared_ptr<arrow::Table> needle,  // This is a single row
                             const std::vector<cudf::size_type>& keys_idx,
                             const std::vector<arrow::compute::SortKey>& column_order,
                             arrow::compute::NullPlacement null_precedence)
 {
-  // Linear search version
-  for (std::size_t i = 0; i < sorted_table_with_rank.num_rows(); i++) {
+  std::size_t first  = 0;
+  std::size_t length = haystack->num_rows();
+  while (length > 0) {
+    auto rem = length % 2;
+    length /= 2;
     if (compare(ctx,
-                global_split_values,
-                sorted_table_with_rank,
-                split_index,
-                i,
+                haystack->Slice(first + length, 1),
+                needle,
                 keys_idx,
                 column_order,
                 null_precedence)) {
-      return i;
+      first += length + rem;
     }
   }
-
-  return sorted_table_with_rank.num_rows();  // Not found, return end
+  return first;
 }
 
 std::vector<std::size_t> find_destination_ranks(
@@ -260,15 +244,13 @@ std::vector<std::size_t> find_destination_ranks(
   std::shared_ptr<arrow::Table> global_split_values,
   const std::vector<cudf::size_type>& keys_idx,
   const std::vector<arrow::compute::SortKey>& column_order,
-  arrow::compute::NullPlacement null_precedence
-
-)
+  arrow::compute::NullPlacement null_precedence)
 {
   // Create a new table with the rank column appended
-  auto rank_array = create_array<int32_t>(sorted_table->num_rows(), ctx.rank);
+  auto rank_array = create_array<int64_t>(sorted_table->num_rows(), ctx.rank);
   auto sorted_table_with_rank =
     ARROW_RESULT(sorted_table->AddColumn(sorted_table->num_columns(),
-                                         arrow::field("rank", rank_array->type()),
+                                         arrow::field("split_rank", rank_array->type()),
                                          std::make_shared<arrow::ChunkedArray>(rank_array)));
 
   std::vector<std::size_t> splits_indices_host;
@@ -281,10 +263,12 @@ std::vector<std::size_t> find_destination_ranks(
 
   // For each global split value, find where it should be inserted in the local sorted table
   for (std::size_t i = 0; i < static_cast<std::size_t>(global_split_values->num_rows()); i++) {
+    auto split_value = global_split_values->Slice(i, 1);
+    // Remove the index column so the columns in the comparison are the same
+    split_value          = ARROW_RESULT(split_value->RemoveColumn(split_value->num_columns() - 1));
     std::size_t position = lower_bound_row(ctx,
-                                           *sorted_table_with_rank,
-                                           *global_split_values,
-                                           i,
+                                           sorted_table_with_rank,
+                                           split_value,
                                            keys_idx_with_rank,
                                            column_order_with_rank,
                                            null_precedence);
