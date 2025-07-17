@@ -28,14 +28,14 @@ namespace legate::dataframe {
  * @brief Reduce a column given a libcudf reduction.
  *
  * @param col Logical column to reduce
- * @param agg The reduction to perform
+ * @param op The reduction type
  * @param output_dtype The output cudf dtype.
  * @param initial Optional initial scalar (column) only supported for numeric types.
  * @returns A LogicalColumn marked as scalar.
  */
 LogicalColumn reduce(
   const LogicalColumn& col,
-  const cudf::reduce_aggregation& agg,
+  std::string op,
   cudf::data_type output_dtype,
   std::optional<std::reference_wrapper<const LogicalColumn>> initial = std::nullopt);
 

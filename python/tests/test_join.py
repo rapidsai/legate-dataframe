@@ -15,12 +15,14 @@
 
 import cudf
 import cupy
+import numpy
+import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.join import BroadcastInput, JoinType, join
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
-from legate_dataframe.testing import assert_frame_equal
+from legate_dataframe.testing import assert_frame_equal, assert_matches_polars
 
 
 def make_param():
@@ -28,27 +30,25 @@ def make_param():
 
     for a_num_rows in range(60, 100, 20):
         for b_num_rows in range(60, 100, 20):
-            a = cupy.arange(a_num_rows, dtype="int64")
-            b = cupy.arange(b_num_rows, dtype="int64")
-            cupy.random.shuffle(a)
-            cupy.random.shuffle(b)
+            a = numpy.arange(a_num_rows, dtype="int64")
+            b = numpy.arange(b_num_rows, dtype="int64")
+            numpy.random.shuffle(a)
+            numpy.random.shuffle(b)
             yield (
-                cudf.DataFrame({"a": a, "payload_a": cupy.arange(a.size)}),
-                cudf.DataFrame({"b": b, "payload_b": cupy.arange(b.size) * -1}),
+                pa.table({"a": a, "payload_a": numpy.arange(a.size)}),
+                pa.table({"b": b, "payload_b": numpy.arange(b.size) * -1}),
                 ["a"],
                 ["b"],
             )
             yield (
-                cudf.DataFrame({"a": a, "payload_a": [str(i) for i in range(a.size)]}),
-                cudf.DataFrame(
-                    {"b": b, "payload_b": [str(i * -1) for i in range(b.size)]}
-                ),
+                pa.table({"a": a, "payload_a": [str(i) for i in range(a.size)]}),
+                pa.table({"b": b, "payload_b": [str(i * -1) for i in range(b.size)]}),
                 ["a"],
                 ["b"],
             )
     yield (
-        cudf.DataFrame({"a": [1, 2, 3, 4, 5], "payload_a": cupy.arange(5)}),
-        cudf.DataFrame({"b": [1, 1, 2, 2, 5, 6], "payload_b": cupy.arange(6) * -1}),
+        pa.table({"a": [1, 2, 3, 4, 5], "payload_a": numpy.arange(5)}),
+        pa.table({"b": [1, 1, 2, 2, 5, 6], "payload_b": numpy.arange(6) * -1}),
         ["a"],
         ["b"],
     )
@@ -72,8 +72,10 @@ def to_cudf_how(how: JoinType) -> str:
     "broadcast",
     (BroadcastInput.AUTO, BroadcastInput.LEFT, BroadcastInput.RIGHT),
 )
-@pytest.mark.parametrize("cudf_lhs,cudf_rhs,left_on,right_on", make_param())
-def test_basic(how: JoinType, cudf_lhs, cudf_rhs, left_on, right_on, broadcast):
+@pytest.mark.parametrize("arrow_lhs,arrow_rhs,left_on,right_on", make_param())
+def test_basic(how: JoinType, arrow_lhs, arrow_rhs, left_on, right_on, broadcast):
+    cudf_lhs = cudf.DataFrame.from_arrow(arrow_lhs)
+    cudf_rhs = cudf.DataFrame.from_arrow(arrow_rhs)
     lg_lhs = LogicalTable.from_cudf(cudf_lhs)
     lg_rhs = LogicalTable.from_cudf(cudf_rhs)
 
@@ -157,3 +159,29 @@ def test_empty_chunks(threshold):
     df_result = lhs_df.merge(rhs_df, left_on=["a"], right_on=["b"])
 
     assert_frame_equal(lg_result, df_result)
+
+
+@pytest.mark.parametrize(
+    "how",
+    (
+        "inner",
+        "left",
+        "full",
+    ),
+)
+@pytest.mark.parametrize("arrow_lhs,arrow_rhs,left_on,right_on", make_param())
+def test_join_basic_polars(how, arrow_lhs, arrow_rhs, left_on, right_on):
+    pl = pytest.importorskip("polars")
+
+    lhs = pl.DataFrame(arrow_lhs).lazy()
+    rhs = pl.DataFrame(arrow_rhs).lazy()
+
+    q = lhs.join(rhs, left_on=left_on, right_on=right_on, how=how)
+
+    try:
+        assert_matches_polars(q.sort(q.columns))
+    except ValueError as e:
+        # are failing on string columns which are also tested
+        if str(e) == "unsupported Arrow datatype":
+            pytest.xfail("unsupported Arrow datatype")
+        raise

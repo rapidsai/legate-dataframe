@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
+#include "test_utils.hpp"
+#include <arrow/compute/api.h>
 #include <legate.h>
 
 #include <cudf/detail/aggregation/aggregation.hpp>  // cudf::detail::target_type
 #include <cudf/reduction.hpp>
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_utilities.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/type_lists.hpp>
 
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/table.hpp>
@@ -30,74 +28,62 @@
 using namespace legate::dataframe;
 
 template <typename T>
-struct ReductionTest : public cudf::test::BaseFixture {};
+struct ReductionTest : public testing::Test {};
 
-TYPED_TEST_SUITE(ReductionTest, cudf::test::NumericTypes);
+TYPED_TEST_SUITE(ReductionTest, NumericTypes);
 
 TYPED_TEST(ReductionTest, Max)
 {
-  cudf::test::fixed_width_column_wrapper<TypeParam> col({5, 6, 7, 8, 9}, {1, 0, 1, 0, 1});
-  auto const type = static_cast<cudf::column_view>(col).type();
-  auto lg_col     = LogicalColumn{col};
+  auto agg = cudf::make_max_aggregation<cudf::reduce_aggregation>();
+  LogicalColumn col(narrow<TypeParam>({5, 6, 7, 8, 9}), {1, 0, 1, 0, 1});
 
-  auto agg       = cudf::make_max_aggregation<cudf::reduce_aggregation>();
-  auto res_dtype = cudf::detail::target_type(type, agg->kind);
+  auto res_dtype = cudf::detail::target_type(col.cudf_type(), agg->kind);
+  auto res       = reduce(col, "max", res_dtype);
 
-  auto expected   = cudf::reduce(col, *agg, res_dtype);
-  auto res        = reduce(lg_col, *agg, res_dtype);
-  auto res_scalar = res.get_cudf_scalar();
+  auto expected = ARROW_RESULT(arrow::compute::CallFunction("max", {col.get_arrow()})).scalar();
+  auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
 
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(cudf::make_column_from_scalar(*res_scalar, 1)->view(),
-                                 cudf::make_column_from_scalar(*expected, 1)->view());
+  EXPECT_TRUE(res.get_arrow()->Equals(expected_array))
+    << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
 }
 
 TYPED_TEST(ReductionTest, Mean)
 {
-  cudf::test::fixed_width_column_wrapper<TypeParam> col({5, 6, 7, 8, 9}, {1, 0, 1, 0, 1});
-  auto const type = static_cast<cudf::column_view>(col).type();
-  auto lg_col     = LogicalColumn{col};
+  LogicalColumn col(narrow<TypeParam>({5, 6, 7, 8, 9}), {1, 0, 1, 0, 1});
+  auto agg            = cudf::make_mean_aggregation<cudf::reduce_aggregation>();
+  auto res_dtype      = cudf::detail::target_type(col.cudf_type(), agg->kind);
+  auto res            = reduce(col, "mean", res_dtype);
+  auto expected       = ARROW_RESULT(arrow::compute::Mean(col.get_arrow())).scalar();
+  auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
 
-  auto agg       = cudf::make_mean_aggregation<cudf::reduce_aggregation>();
-  auto res_dtype = cudf::detail::target_type(type, agg->kind);
-
-  auto expected   = cudf::reduce(col, *agg, res_dtype);
-  auto res        = reduce(lg_col, *agg, res_dtype);
-  auto res_scalar = res.get_cudf_scalar();
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(cudf::make_column_from_scalar(*res_scalar, 1)->view(),
-                                 cudf::make_column_from_scalar(*expected, 1)->view());
+  EXPECT_TRUE(res.get_arrow()->ApproxEquals(expected_array))
+    << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
 }
 
 TYPED_TEST(ReductionTest, EmptyMax)
 {
-  cudf::test::fixed_width_column_wrapper<TypeParam> col({});
-  auto const type = static_cast<cudf::column_view>(col).type();
-  auto lg_col     = LogicalColumn{col};
-
+  LogicalColumn col(std::vector<TypeParam>{}, std::vector<bool>{});
   auto agg       = cudf::make_max_aggregation<cudf::reduce_aggregation>();
-  auto res_dtype = cudf::detail::target_type(type, agg->kind);
-
-  auto expected   = cudf::reduce(col, *agg, res_dtype);
-  auto res        = reduce(lg_col, *agg, res_dtype);
-  auto res_scalar = res.get_cudf_scalar();
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(cudf::make_column_from_scalar(*res_scalar, 1)->view(),
-                                 cudf::make_column_from_scalar(*expected, 1)->view());
+  auto res_dtype = cudf::detail::target_type(col.cudf_type(), agg->kind);
+  auto res       = reduce(col, "max", res_dtype);
+  auto expected  = ARROW_RESULT(arrow::compute::CallFunction("max", {col.get_arrow()})).scalar();
+  auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
+  EXPECT_TRUE(res.get_arrow()->Equals(expected_array))
+    << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
 }
 
 TYPED_TEST(ReductionTest, AllNullSum)
 {
-  cudf::test::fixed_width_column_wrapper<TypeParam> col({1, 2, 3, 4}, {1, 1, 1, 1});
-  auto const type = static_cast<cudf::column_view>(col).type();
-  auto lg_col     = LogicalColumn{col};
+  LogicalColumn col(narrow<TypeParam>({1, 2, 3, 4}), {1, 1, 1, 1});
+  auto agg       = cudf::make_sum_aggregation<cudf::reduce_aggregation>();
+  auto res_dtype = cudf::detail::target_type(col.cudf_type(), agg->kind);
+  auto res       = reduce(col, "sum", res_dtype);
+  auto expected  = ARROW_RESULT(arrow::compute::CallFunction("sum", {col.get_arrow()})).scalar();
+  auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
+  // Cast expected type
+  expected_array =
+    ARROW_RESULT(arrow::compute::Cast(expected_array, res.get_arrow()->type())).make_array();
 
-  auto agg       = cudf::make_max_aggregation<cudf::reduce_aggregation>();
-  auto res_dtype = cudf::detail::target_type(type, agg->kind);
-
-  auto expected   = cudf::reduce(col, *agg, res_dtype);
-  auto res        = reduce(lg_col, *agg, res_dtype);
-  auto res_scalar = res.get_cudf_scalar();
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(cudf::make_column_from_scalar(*res_scalar, 1)->view(),
-                                 cudf::make_column_from_scalar(*expected, 1)->view());
+  EXPECT_TRUE(res.get_arrow()->Equals(expected_array))
+    << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
 }

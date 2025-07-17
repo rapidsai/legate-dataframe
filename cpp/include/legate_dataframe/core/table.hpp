@@ -261,6 +261,22 @@ class LogicalTable {
   };
 
   /**
+   * @brief Slice the table by rows.
+   *
+   * @param slice A Legate slice into the table rows. Supports negative values,
+   * `Slice::OPEN`, and does not include stop index.
+   * @return The sliced table
+   */
+  [[nodiscard]] LogicalTable slice(const legate::Slice& slice) const
+  {
+    std::vector<LogicalColumn> new_cols;
+    for (auto&& col : columns_) {
+      new_cols.push_back(col.slice(slice));
+    }
+    return LogicalTable(std::move(new_cols), column_names_);
+  };
+
+  /**
    * @brief Offload all columns to the specified target memory.
    *
    * This method offloads the underlying data to the specified target memory.

@@ -70,7 +70,7 @@ def replace_nans(table: pa.Table) -> pa.Table:
 # It compares NaN values as equal - arrows default behavior is to not compare NaNs as equal
 # https://github.com/apache/arrow/issues/22446
 # It ignores the nullable field in the schema as this is inconsistent in arrow
-def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
+def assert_arrow_table_equal(left: pa.Table, right: pa.Table, approx=False) -> None:
     # arrow has an annoying nullable attribute in its schema that is not well respected by its various functions
     # i.e. it is possible to have a non-nullable column with null values without problems
     # Set the nullable attribute to match the left table
@@ -80,13 +80,27 @@ def assert_arrow_table_equal(left: pa.Table, right: pa.Table) -> None:
     for name in left.schema.names:
         left_field = left.schema.field(name)
         right_field = right.schema.field(name)
-        fields.append(pa.field(right_field.name, right_field.type, left_field.nullable))
+        type_ = right_field.type
+        # Accept if there is a mismatch with large vs. non-large strings
+        if type_ == pa.large_string() and left_field.type == pa.string():
+            type_ = pa.string()
+        fields.append(pa.field(right_field.name, type_, left_field.nullable))
     new_schema = pa.schema(fields)
-    right_copy = pa.table(right, schema=new_schema)
+    left_copy = replace_nans(pa.table(left, schema=new_schema))
+    right_copy = replace_nans(pa.table(right, schema=new_schema))
 
-    assert replace_nans(left).equals(
-        replace_nans(right_copy)
-    ), f"Arrow tables are not equal:\n{left}\n{right}"
+    if not approx:
+        assert left_copy.equals(
+            right_copy
+        ), f"Arrow tables are not equal:\n{left}\n{right}"
+    else:
+        assert left_copy.schema == right_copy.schema
+        for left_col, right_col in zip(left_copy.columns, right_copy.columns):
+            assert left_col.is_valid() == right_col.is_valid()
+            assert left_col.type == right_col.type  # probably already checked in schema
+            np.testing.assert_array_almost_equal(
+                left_col.drop_null().to_numpy(), right_col.drop_null().to_numpy()
+            )
 
 
 def assert_frame_equal(
@@ -138,6 +152,41 @@ def assert_frame_equal(
         right=rhs,
         **kwargs,
     )
+
+
+def assert_matches_polars(query: Any, allow_exceptions=(), approx=False) -> None:
+    """Check that a polars query is equivalent when collected via
+    legate or polars.
+
+    Parameters
+    ----------
+    query
+        A polars query.
+    allow_exceptions
+        A tuple of exceptions or an exception that are allowed to be
+        raised if their type (not text) matches, we accept that.
+    approx
+        Whether to use approximate equality for floating point columns
+        (and consider NaNs equal as well).
+    """
+    # Import currently ensures `.legate.collect()` is available
+    import legate_dataframe.ldf_polars  # noqa: F401
+
+    exception = None
+    try:
+        res_polars = query.collect().to_arrow()
+    except allow_exceptions as e:
+        exception = e
+    try:
+        res_legate = query.legate.collect().to_arrow()
+    except allow_exceptions as e:
+        if type(exception) is type(e):
+            return  # OK, types match so we accept this.
+        if exception is not None:
+            raise exception
+        raise
+
+    assert_arrow_table_equal(res_legate, res_polars, approx=approx)
 
 
 def get_empty_series(dtype, nullable: bool) -> cudf.Series:
@@ -213,6 +262,14 @@ def std_dataframe_set_cpu() -> List[pa.Table]:
             }
         ),
     ]
+
+
+def gen_random_series(nelem: int, num_nans: int) -> pa.Array:
+    rng = np.random.default_rng(42)
+    a = rng.random(nelem)
+    nans = np.zeros(nelem, dtype=bool)
+    nans[rng.choice(a.size, num_nans, replace=False)] = True
+    return pa.array(a, mask=nans)
 
 
 def get_column_set(dtypes, nulls=True):

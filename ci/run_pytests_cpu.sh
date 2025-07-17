@@ -28,5 +28,13 @@ legate \
     . \
     -sv \
     --durations=0 \
-    -k 'csv or binary or parquet or replace or unary or sort or compaction' \
+    --ignore=test_benchmarks.py \
+    --ignore=test_column.py \
+    --ignore=test_cudf.py \
+    --ignore=test_cupynumeric.py \
+    --ignore=test_examples.py \
+    --ignore=test_groupby_aggregation.py \
+    --ignore=test_join.py \
+    --ignore=test_replace.py \
+    --ignore=test_timestamps.py \
     "${@}"

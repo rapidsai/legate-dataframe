@@ -10,7 +10,7 @@ from libcpp.utility cimport move
 from libcpp.vector cimport vector
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
-from legate_dataframe.lib.core.legate cimport cpp_StoreTarget
+from legate_dataframe.lib.core.legate cimport cpp_StoreTarget, from_python_slice
 from legate_dataframe.lib.core.table cimport cpp_LogicalTable
 
 from typing import Iterable
@@ -115,6 +115,12 @@ cdef class LogicalTable:
             columns=columns,
             column_names=table.column_names,
         )
+
+    def lazy(self):
+        # Import here to avoid hard polars dependency
+        from legate_dataframe.ldf_polars import lazy_from_legate_df
+
+        return lazy_from_legate_df(self)
 
     def num_columns(self) -> int:
         """Returns the number of columns
@@ -276,6 +282,23 @@ cdef class LogicalTable:
             ``legate.core.StoreTarget.SYSMEM``.
         """
         self._handle.offload_to(target_mem)
+
+    def slice(self, slice_):
+        """Slice the table by rows, this is the same as slicing all columns
+        individually.
+
+        Parameters
+        ----------
+        slice_ :
+            Python slice. The return will be a view in the original data.
+
+        Returns
+        -------
+            The sliced logical table as a view.
+        """
+        return LogicalTable.from_handle(
+            self._handle.slice(from_python_slice(slice_))
+        )
 
     def to_array(self, *, out=None):
         """Convert the table or a set of columns to a cupynumeric array.

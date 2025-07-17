@@ -417,6 +417,15 @@ class LogicalColumn {
    */
   std::string repr(size_t max_num_items = 30) const;
 
+  /**
+   * @brief Slice the column
+   *
+   * @param slice The Legate slice into the column.  Supports negative values,
+   * `Slice::OPEN`, and does not include stop index.
+   * @return The sliced column
+   */
+  [[nodiscard]] LogicalColumn slice(const legate::Slice& slice) const;
+
  private:
   // In order to support a default ctor and assignment (used by Cython),
   // we make the legate array optional and the rest non-const.
