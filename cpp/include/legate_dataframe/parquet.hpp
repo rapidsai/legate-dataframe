@@ -46,19 +46,18 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath);
  * @brief Read Parquet files into a LogicalTable
  *
  * Files are currently read into N partitions where N is the number of GPU workers used.
- * The partitions are split by row, meaning that each reads approximately the
- * same number of rows (possibly over multiple files).
- * If the number of rows does not split evenly, the first partitions will
- * contain one additional row.
+ * The partitions are split by row-group, meaning that each reads approximately the
+ * same number of row-groups (possibly over multiple files).
+ * If the number of row-groups does not split evenly, the first partitions will
+ * contain one additional row-group.
  *
  * Note that file order is currently glob/string sorted.
  *
- * @param glob_string The glob string to specify the Parquet files. All glob matches must be valid
- * Parquet files and have the same LogicalTable data types. See <https://linux.die.net/man/7/glob>.
+ * @param files The parquet files to read.
  * @param columns The columns names to read.
  * @return The read LogicalTable
  */
-LogicalTable parquet_read(const std::string& glob_string,
+LogicalTable parquet_read(const std::vector<std::string>& files,
                           const std::optional<std::vector<std::string>>& columns = std::nullopt);
 
 /**
@@ -67,13 +66,12 @@ LogicalTable parquet_read(const std::string& glob_string,
  * Note that file order is currently glob/string sorted.  All columns that are being read must have
  * the same type and be compatible with a legate type, currently only numeric types are supported.
  *
- * @param glob_string The glob string to specify the Parquet files. All glob matches must be valid
- * Parquet files and have the same LogicalTable data types. See <https://linux.die.net/man/7/glob>.
+ * @param files The parquet files to read.
  * @param columns The columns names to read.
  * @param nullable If set to ``False``, assume that the file does contain any nulls.
  * @return The read LogicalTable
  */
-legate::LogicalArray parquet_read_array(const std::string& glob_string,
+legate::LogicalArray parquet_read_array(const std::vector<std::string>& files,
                                         const std::optional<std::vector<std::string>>& columns,
                                         const legate::Scalar& null_value,
                                         const std::optional<legate::Type>& type);

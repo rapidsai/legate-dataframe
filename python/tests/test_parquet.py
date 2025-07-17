@@ -239,3 +239,16 @@ def test_read_polars(tmp_path, df, columns):
         q = q.select(columns)
 
     assert_matches_polars(q, allow_exceptions=pl.exceptions.ColumnNotFoundError)
+
+
+def test_multiple_files_polars(tmp_path, glob_string="/*"):
+    # Simple additional test that loads multiple files
+    pl = pytest.importorskip("polars")
+
+    df = pa.table({"a": np.arange(983, dtype="int64")})
+    npartitions = 100
+    write_partitioned_parquet(df, tmp_path, npartitions=npartitions)
+    assert len(glob.glob(str(tmp_path) + glob_string)) == npartitions
+
+    q = pl.scan_parquet(str(tmp_path) + glob_string)
+    assert_matches_polars(q)

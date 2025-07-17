@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import tempfile
@@ -38,7 +38,7 @@ def main(tmpdir):
     # Then we can read the parquet files back into a logical table. We
     # provide a Glob string that reference all the parquet files that
     # should go into the logical table.
-    tbl2 = parquet_read(glob_string=f"{tmpdir}/*.parquet")
+    tbl2 = parquet_read(f"{tmpdir}/*.parquet")
 
     # LogicalColumn implements the `__legate_data_interface__` interface,
     # which makes it possible for other Legate libraries, such as cuPyNumeric,

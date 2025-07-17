@@ -52,12 +52,10 @@ class BinOp(Expr):
         #     )
 
     _BOOL_KLEENE_MAPPING: ClassVar[dict[plc.binaryop.BinaryOperator, str]] = {
-        # Commented out ones are currently unsupported on the C-side or not clearly mapped
-        # due to nullable handling (also below)
-        # plc.binaryop.BinaryOperator.BITWISE_AND: plc.binaryop.BinaryOperator.NULL_LOGICAL_AND,
-        # plc.binaryop.BinaryOperator.BITWISE_OR: plc.binaryop.BinaryOperator.NULL_LOGICAL_OR,
-        # plc.binaryop.BinaryOperator.LOGICAL_AND: plc.binaryop.BinaryOperator.NULL_LOGICAL_AND,
-        # plc.binaryop.BinaryOperator.LOGICAL_OR: plc.binaryop.BinaryOperator.NULL_LOGICAL_OR,
+        "bit_wise_and": "and_kleene",
+        "bit_wise_or": "or_kleene",
+        "and": "and_kleene",
+        "or": "or_kleene",
     }
 
     _MAPPING: ClassVar[dict[pl_expr.Operator, str]] = {
@@ -79,8 +77,8 @@ class BinOp(Expr):
         pl_expr.Operator.And: "bit_wise_and",
         pl_expr.Operator.Or: "bit_wise_or",
         pl_expr.Operator.Xor: "bit_wise_xor",
-        # pl_expr.Operator.LogicalAnd: plc.binaryop.BinaryOperator.LOGICAL_AND,
-        # pl_expr.Operator.LogicalOr: plc.binaryop.BinaryOperator.LOGICAL_OR,
+        pl_expr.Operator.LogicalAnd: "and",
+        pl_expr.Operator.LogicalOr: "or",
     }
 
     def do_evaluate(

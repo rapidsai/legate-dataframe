@@ -54,7 +54,13 @@ cudf::binary_operator arrow_to_cudf_binary_op(std::string op, legate::Type outpu
     {"greater_equal", cudf::binary_operator::GREATER_EQUAL},
     {"less", cudf::binary_operator::LESS},
     {"less_equal", cudf::binary_operator::LESS_EQUAL},
-    {"not_equal", cudf::binary_operator::NOT_EQUAL}};
+    {"not_equal", cudf::binary_operator::NOT_EQUAL},
+    // logical operators:
+    {"and", cudf::binary_operator::LOGICAL_AND},
+    {"or", cudf::binary_operator::LOGICAL_OR},
+    {"and_kleene", cudf::binary_operator::NULL_LOGICAL_AND},
+    {"or_kleene", cudf::binary_operator::NULL_LOGICAL_OR},
+  };
 
   // Cudf has a special case for powers with integers
   // https://github.com/rapidsai/cudf/issues/10178#issuecomment-3004143727
@@ -92,6 +98,13 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
       args[1]     = scalar;
     } else {
       args[1] = rhs.arrow_array_view();
+    }
+
+    if (output.cudf_type().id() == cudf::type_id::BOOL8 &&
+        (op == "and" || op == "or" || op == "and_kleene" || op == "or_kleene")) {
+      // arrow doesn't seem to cast for the user for logical ops.
+      args[0] = ARROW_RESULT(arrow::compute::Cast(args[0], arrow::boolean()));
+      args[1] = ARROW_RESULT(arrow::compute::Cast(args[1], arrow::boolean()));
     }
 
     // Result may be scalar or array

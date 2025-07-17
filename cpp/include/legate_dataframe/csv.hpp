@@ -59,8 +59,7 @@ void csv_write(LogicalTable& tbl, const std::string& dirpath, char delimiter = '
  * TODO: We should replace some/all params with cudf::io::csv_reader_options eventually.
  *       As if writing, this would be better with pylibcudf 25.02 which cannot be quite used.
  *
- * @param glob_string The glob string to specify the csv files. All glob matches must be valid
- * csv files and have the same layout. See <https://linux.die.net/man/7/glob>.
+ * @param files The csv files to read.
  * @param dtypes The cudf type for each column (must match usecols).
  * @param na_filter Whether to detect missing values, set to false to improve performance.
  * @param delimiter The field delimiter.
@@ -69,7 +68,7 @@ void csv_write(LogicalTable& tbl, const std::string& dirpath, char delimiter = '
  * passing `usecols_idx` without names is not supported.
  * @return The read LogicalTable.
  */
-LogicalTable csv_read(const std::string& glob_string,
+LogicalTable csv_read(const std::vector<std::string>& files,
                       const std::vector<cudf::data_type>& dtypes,
                       bool na_filter                                       = true,
                       char delimiter                                       = ',',

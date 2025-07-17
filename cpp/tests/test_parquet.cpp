@@ -42,7 +42,8 @@ TYPED_TEST(NumericParquetTest, ReadWrite)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet");
+  auto files         = parse_glob(tmp_dir.path() / "*.parquet");
+  LogicalTable tbl_b = parquet_read(files);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
@@ -64,7 +65,8 @@ TYPED_TEST(NumericParquetTest, ReadColumnSubset)
 
   std::vector<std::string> columns({"b"});
   tbl_a              = tbl_a.select(columns);
-  LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet", columns);
+  auto files         = parse_glob(tmp_dir.path() / "*.parquet");
+  LogicalTable tbl_b = parquet_read(files, columns);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
@@ -83,7 +85,8 @@ TYPED_TEST(NumericParquetTest, ReadWriteSingleItem)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet");
+  auto files         = parse_glob(tmp_dir.path() / "*.parquet");
+  LogicalTable tbl_b = parquet_read(files);
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
@@ -102,7 +105,8 @@ TEST(StringsParquetTest, ReadWrite)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  LogicalTable tbl_b = parquet_read(tmp_dir.path() / "*.parquet");
+  auto files         = parse_glob(tmp_dir.path() / "*.parquet");
+  LogicalTable tbl_b = parquet_read(files);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }

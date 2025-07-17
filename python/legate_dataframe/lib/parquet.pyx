@@ -15,6 +15,7 @@ from legate_dataframe.lib.core.legate cimport cpp_Scalar, cpp_Type
 from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
 from legate_dataframe.lib.core.table cimport LogicalTable, cpp_LogicalTable
 
+import glob
 import pathlib
 
 from legate.core import LogicalArray, Scalar, Type
@@ -27,11 +28,11 @@ cdef extern from "<legate_dataframe/parquet.hpp>" nogil:
         cpp_LogicalTable& tbl, const string& dirpath
     ) except +
     cpp_LogicalTable cpp_parquet_read "legate::dataframe::parquet_read"(
-        const string& glob_string,
+        const vector[string]& files,
         optional[vector[string]]& columns,
     ) except +
     cpp_LogicalArray cpp_parquet_read_array "legate::dataframe::parquet_read_array"(
-        const string& glob_string,
+        const vector[string]& files,
         optional[vector[string]]& columns,
         cpp_Scalar &null_value,
         optional[cpp_Type] &type,
@@ -69,15 +70,14 @@ def parquet_write(LogicalTable tbl, path: pathlib.Path | str) -> None:
 
 
 @_track_provenance
-def parquet_read(glob_string: pathlib.Path | str, *, columns=None) -> LogicalTable:
+def parquet_read(files, *, columns=None) -> LogicalTable:
     """Read Parquet files into a logical table
 
     Parameters
     ----------
-    glob_string : str or pathlib.Path
-        The glob string to specify the Parquet files. All glob matches
-        must be valid Parquet files and have the same LogicalTable data
-        types. See <https://linux.die.net/man/7/glob>.
+    files : str, Path, or iterable of paths
+        If a string, ``glob.glob`` is used to conveniently load multiple files,
+        otherwise must be a path or an iterable of paths (or strings).
     columns
         List of strings selecting a subset of columns to read.
 
@@ -89,8 +89,17 @@ def parquet_read(glob_string: pathlib.Path | str, *, columns=None) -> LogicalTab
     --------
     parquet_write: Write parquet data
     """
+    cdef vector[string] cpp_files
     cdef vector[string] cpp_columns
     cdef optional[vector[string]] cpp_columns_opt
+
+    if isinstance(files, str):
+        files = sorted(glob.glob(files))
+    elif isinstance(files, pathlib.Path):
+        files = [files]
+
+    for file in files:
+        cpp_files.push_back(str(file).encode("UTF-8"))
 
     if columns is not None:
         for name in columns:
@@ -99,13 +108,13 @@ def parquet_read(glob_string: pathlib.Path | str, *, columns=None) -> LogicalTab
         cpp_columns_opt = cpp_columns
 
     return LogicalTable.from_handle(
-        cpp_parquet_read(str(glob_string).encode('UTF-8'), cpp_columns_opt)
+        cpp_parquet_read(cpp_files, cpp_columns_opt)
     )
 
 
 @_track_provenance
 def parquet_read_array(
-    glob_string: pathlib.Path | str, *, columns=None, null_value=None, type=None
+    files, *, columns=None, null_value=None, type=None
 ) -> LogicalArray:
     """Read Parquet files into a logical array
 
@@ -114,10 +123,9 @@ def parquet_read_array(
 
     Parameters
     ----------
-    glob_string : str or pathlib.Path
-        The glob string to specify the Parquet files. All glob matches
-        must be valid Parquet files and have the same LogicalTable data
-        types. See <https://linux.die.net/man/7/glob>.
+    files : str, Path, or iterable of paths
+        If a string, ``glob.glob`` is used to conveniently load multiple files,
+        otherwise must be a path or an iterable of paths (or strings).
     columns
         List of strings selecting a subset of columns to read.
     null_value : legate.core.Scalar or None
@@ -137,10 +145,19 @@ def parquet_read_array(
     parquet_read: Write parquet data into a table
     """
     cdef cpp_LogicalArray res_arr
+    cdef vector[string] cpp_files
     cdef vector[string] cpp_columns
     cdef optional[vector[string]] cpp_columns_opt
     cdef cpp_Scalar cpp_null_value
     cdef optional[cpp_Type] cpp_type
+
+    if isinstance(files, str):
+        files = sorted(glob.glob(files))
+    elif isinstance(files, pathlib.Path):
+        files = [files]
+
+    for file in files:
+        cpp_files.push_back(str(file).encode("UTF-8"))
 
     if null_value is not None:
         if not isinstance(null_value, Scalar):
@@ -158,7 +175,6 @@ def parquet_read_array(
         cpp_columns_opt = cpp_columns
 
     res_arr = cpp_parquet_read_array(
-        str(glob_string).encode('UTF-8'), cpp_columns_opt,
-        cpp_null_value, cpp_type
+        cpp_files, cpp_columns_opt, cpp_null_value, cpp_type
     )
     return LogicalArray.from_raw_handle(<uintptr_t>&res_arr)

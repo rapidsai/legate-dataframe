@@ -47,7 +47,8 @@ TYPED_TEST(NumericCSVTest, ReadWrite)
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
-  auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, false);
+  auto files = parse_glob(tmp_dir.path() / "*.csv");
+  auto tbl_b = csv_read(files, {dtype, dtype}, false);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
@@ -68,7 +69,8 @@ TYPED_TEST(NumericCSVTest, ReadWriteSingleItem)
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
-  auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype}, false);
+  auto files = parse_glob(tmp_dir.path() / "*.csv");
+  auto tbl_b = csv_read(files, {dtype}, false);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
@@ -89,7 +91,8 @@ TEST(StringsCSVTest, ReadWrite)
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
   auto dtype = tbl_a.get_column(0).cudf_type();
-  auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype}, false);
+  auto files = parse_glob(tmp_dir.path() / "*.csv");
+  auto tbl_b = csv_read(files, {dtype}, false);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
@@ -109,7 +112,8 @@ TYPED_TEST(NumericCSVTest, ReadNulls)
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
-  auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, true);
+  auto files = parse_glob(tmp_dir.path() / "*.csv");
+  auto tbl_b = csv_read(files, {dtype, dtype}, true);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
@@ -130,12 +134,13 @@ TYPED_TEST(NumericCSVTest, ReadUseCols)
 
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
   std::vector<std::string> usecols1({"a", "b"});
-  auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, true, ',', usecols1);
+  auto files = parse_glob(tmp_dir.path() / "*.csv");
+  auto tbl_b = csv_read(files, {dtype, dtype}, true, ',', usecols1);
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 
   std::vector<std::string> usecols2({"b"});
-  auto tbl_c = csv_read(tmp_dir.path() / "*.csv", {dtype}, true, ',', usecols2);
+  auto tbl_c = csv_read(files, {dtype}, true, ',', usecols2);
 
   LogicalTable tbl_d({b}, {"b"});
   EXPECT_TRUE(tbl_d.get_arrow()->Equals(*tbl_c.get_arrow()));
@@ -157,7 +162,8 @@ TYPED_TEST(NumericCSVTest, ReadWriteWithDelimiter)
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
   auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
-  auto tbl_b = csv_read(tmp_dir.path() / "*.csv", {dtype, dtype}, false, '|');
+  auto files = parse_glob(tmp_dir.path() / "*.csv");
+  auto tbl_b = csv_read(files, {dtype, dtype}, false, '|');
 
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
