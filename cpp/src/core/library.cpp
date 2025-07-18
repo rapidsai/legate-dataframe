@@ -57,6 +57,8 @@ class Mapper : public legate::mapping::Mapper {
       for (const legate::mapping::Store& store : ary.stores()) {
         mappings.push_back(
           StoreMapping::default_mapping(store, options.front(), /*exact = */ true));
+        mappings.back().policy().ordering.set_c_order();
+        mappings.back().policy().exact = true;
       }
     }
     for (const legate::mapping::Array& ary : task.outputs()) {
@@ -64,6 +66,8 @@ class Mapper : public legate::mapping::Mapper {
       for (const legate::mapping::Store& store : ary.stores()) {
         mappings.push_back(
           StoreMapping::default_mapping(store, options.front(), /*exact = */ true));
+        mappings.back().policy().ordering.set_c_order();
+        mappings.back().policy().exact = true;
       }
     }
     return mappings;
@@ -151,6 +155,15 @@ legate::Library& get_library()
 {
   static legate::Library library = create_and_registrate_library();
   return library;
+}
+
+bool get_prefer_eager_allocations()
+{
+  static const bool prefer_eager_allocations = []() {
+    const char* env = std::getenv("LDF_PREFER_EAGER_ALLOCATIONS");
+    return env != nullptr && std::string(env) == "1";
+  }();
+  return prefer_eager_allocations;
 }
 
 }  // namespace legate::dataframe
