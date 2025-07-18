@@ -454,10 +454,14 @@ std::vector<cudf::size_type> find_destination_ranks(
   table_columns.push_back(rank_column->view());
   auto sorted_table_with_rank = cudf::table_view(table_columns);
 
+  auto column_order_with_rank = column_order;
+  column_order_with_rank.push_back(cudf::order::ASCENDING);
+  auto null_precendence_with_rank = null_precedence;
+  null_precendence_with_rank.push_back(cudf::null_order::AFTER);
   auto split_indices = cudf::lower_bound(sorted_table_with_rank.select(keys_idxx),
                                          global_split_values.select(value_keysx),
-                                         column_order,
-                                         null_precedence,
+                                         column_order_with_rank,
+                                         null_precendence_with_rank,
                                          ctx.stream(),
                                          ctx.mr());
 

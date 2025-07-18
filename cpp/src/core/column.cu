@@ -243,7 +243,8 @@ legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array, bool 
     return array;
   } else if (auto large_string_array = dynamic_cast<arrow::LargeStringArray*>(arrow_array.get())) {
     auto array = runtime->create_string_array(
-      runtime->create_array({std::uint64_t(arrow_array->length())}, legate::rect_type(1)),
+      runtime->create_array(
+        {std::uint64_t(arrow_array->length())}, legate::rect_type(1), arrow_has_nulls),
       runtime->create_array({std::uint64_t(large_string_array->total_values_length())},
                             legate::int8()));
     from_arrow(array.get_physical_array(), arrow_array);

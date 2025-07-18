@@ -34,6 +34,11 @@ def sort(
     stable = False,
 ):
     """Perform a sort of the table based on the given columns.
+    The GPU and CPU backends may not sort NaN values exactly the same way
+    (e.g. according to null_precendence or by treating them as large
+    floating point numbers) - it is recommended to instead use nulls
+    instead of NaNs to get a consistent behaviour between CPU/GPU launches.
+
 
     Parameters
     ----------

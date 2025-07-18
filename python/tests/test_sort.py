@@ -152,6 +152,7 @@ def test_shifted_equal_window(reversed, scope):
 )
 @pytest.mark.parametrize("scope", get_test_scoping())
 def test_orders(by, ascending, nulls_last, stable, scope):
+
     # Note that Arrow sort_indices doesn't allow passing null_placement as a list.
     # So we'll test with simple cases for now that match the current sort API
     np.random.seed(1)
@@ -170,24 +171,15 @@ def test_orders(by, ascending, nulls_last, stable, scope):
     np.random.shuffle(values_a)
     np.random.shuffle(values_b)
 
-    # Create arrays with nulls using numpy
     null_mask_a = np.random.choice([True, False], size=values_a.size, p=[0.1, 0.9])
-    values_a_with_nulls = values_a.astype(float)
-    values_a_with_nulls[null_mask_a] = np.nan
-
     null_mask_b = np.random.choice([True, False], size=values_a.size, p=[0.1, 0.9])
-    values_b_with_nulls = values_b.copy()
-    values_b_with_nulls[null_mask_b] = np.nan
-
     null_mask_c = np.random.choice([True, False], size=values_a.size, p=[0.1, 0.9])
-    values_c_with_nulls = np.array(values_c, dtype=object)
-    values_c_with_nulls[null_mask_c] = None
 
     arrow_table = pa.table(
         {
-            "a": pa.array(values_a_with_nulls),
-            "b": pa.array(values_b_with_nulls),
-            "c": pa.array(values_c_with_nulls),
+            "a": pa.array(values_a, mask=~null_mask_a),
+            "b": pa.array(values_b, mask=~null_mask_b),
+            "c": pa.array(values_c, mask=~null_mask_c),
             "idx": np.arange(values_a.size),
         }
     )

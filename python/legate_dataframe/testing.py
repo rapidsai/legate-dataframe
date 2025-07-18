@@ -60,7 +60,7 @@ def replace_nans(table: pa.Table) -> pa.Table:
                 i,
                 name,
                 pa.compute.replace_with_mask(
-                    table.column(name), nan_mask, pa.scalar(0.0, type=pa.float64())
+                    table.column(name), nan_mask, pa.scalar(0.0, type=type)
                 ),
             )
     return new_table

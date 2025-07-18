@@ -27,7 +27,10 @@ namespace legate::dataframe {
  * @brief Sort a logical table.
  *
  * Reorder the logical table so that the keys columns are sorted lexicographic
- * based on their column_order and null_precedence.
+ * based on their column_order and null_precedence. The GPU and CPU backends may not sort NaN values
+ * exactly the same way (e.g. according to null_precendence or by treating them as large floating
+ * point numbers) - it is recommended to instead use nulls instead of NaNs to get a consistent
+ * behaviour between CPU/GPU launches.
  *
  * @param tbl The table to sort
  * @param keys The column names to sort by.
