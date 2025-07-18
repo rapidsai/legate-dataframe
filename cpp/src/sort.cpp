@@ -18,8 +18,8 @@
 #include <stdexcept>
 #include <vector>
 
-#include <legate.h>
-#include <legate/cuda/cuda.h>
+#include <arrow/api.h>
+#include <arrow/compute/api.h>
 
 #include <cudf/binaryop.hpp>
 #include <cudf/column/column_factories.hpp>
@@ -32,6 +32,8 @@
 #include <cudf/search.hpp>
 #include <cudf/sorting.hpp>
 #include <cudf/table/table.hpp>
+#include <legate.h>
+#include <legate/cuda/cuda.h>
 
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/repartition_by_hash.hpp>
@@ -55,10 +57,10 @@ namespace {
  * @param include_start Whether to include the starting 0.
  * @returns cudf column selecting containing nsplits indices.
  */
-std::unique_ptr<cudf::column> get_split_ind(TaskContext& ctx,
-                                            cudf::size_type nvalues,
-                                            int nsplits,
-                                            bool include_start)
+std::vector<cudf::size_type> get_split_ind(TaskContext& ctx,
+                                           cudf::size_type nvalues,
+                                           int nsplits,
+                                           bool include_start)
 {
   cudf::size_type nvalues_per_split, nvalues_left;
   if (nvalues < nsplits) {
@@ -93,16 +95,388 @@ std::unique_ptr<cudf::column> get_split_ind(TaskContext& ctx,
   std::cout << splits_points_oss.str() << std::endl;
 #endif
 
-  auto ncopy = split_values.size();
+  return split_values;
+}
+
+}  // namespace
+
+namespace cpu {
+
+template <typename IntT>
+std::shared_ptr<arrow::Array> vector_to_array(std::vector<IntT>&& vec)
+{
+  arrow::Int64Builder builder;
+  auto status = builder.AppendValues(vec.begin(), vec.end());
+  return ARROW_RESULT(builder.Finish());
+}
+
+template <typename T>
+std::shared_ptr<arrow::Array> create_array(int64_t num_elements, T fill_value)
+{
+  using BuilderType =
+    typename arrow::TypeTraits<typename arrow::CTypeTraits<T>::ArrowType>::BuilderType;
+  BuilderType builder;
+  auto status = builder.Reserve(num_elements);
+  for (int64_t i = 0; i < num_elements; i++) {
+    builder.UnsafeAppend(fill_value);
+  }
+  return ARROW_RESULT(builder.Finish());
+}
+
+std::shared_ptr<arrow::Table> extract_local_splits(TaskContext& ctx,
+                                                   std::shared_ptr<arrow::Table> sorted_table,
+                                                   const std::vector<cudf::size_type>& keys_idx)
+{
+  auto split_indices =
+    vector_to_array(get_split_ind(ctx, sorted_table->num_rows(), ctx.nranks, true));
+
+  auto take_splits = ARROW_RESULT(arrow::compute::Take(sorted_table, split_indices)).table();
+
+  auto split_ranks = vector_to_array(std::vector<int64_t>(split_indices->length(), ctx.rank));
+
+  auto local_splits_and_metadata =
+    ARROW_RESULT(take_splits->AddColumn(take_splits->num_columns(),
+                                        arrow::field("split_rank", split_ranks->type()),
+                                        std::make_shared<arrow::ChunkedArray>(split_ranks)));
+
+  local_splits_and_metadata = ARROW_RESULT(
+    local_splits_and_metadata->AddColumn(local_splits_and_metadata->num_columns(),
+                                         arrow::field("split_index", split_indices->type()),
+                                         std::make_shared<arrow::ChunkedArray>(split_indices)));
+
+  return local_splits_and_metadata;
+}
+
+std::shared_ptr<arrow::Table> merge_distributed_split_candidates(
+  TaskContext& ctx,
+  std::shared_ptr<arrow::Table> local_splits_and_metadata,
+  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<arrow::compute::SortKey>& column_order,
+  arrow::compute::NullPlacement null_precedence)
+{
+  std::vector<std::shared_ptr<arrow::Table>> exchange_tables;
+  for (int i = 0; i < ctx.nranks; i++) {
+    exchange_tables.push_back(local_splits_and_metadata);
+  }
+  auto shuffled = shuffle(ctx, exchange_tables);
+
+  if (local_splits_and_metadata->num_rows() == 0) {
+    // All nodes need to take part in the shuffle (no data here), but the below
+    // cannot search a length 0 table, so return immediately.
+    return nullptr;
+  }
+
+  auto all_split_candidates = ARROW_RESULT(arrow::ConcatenateTables(shuffled));
+
+  // TODO: Add the rank column as a sort key?
+  // Potentially we don't need this as a stable sort would maintain rank order for equal rows
+  arrow::compute::SortOptions sort_options(column_order, null_precedence);
+  auto sorted_indices =
+    ARROW_RESULT(arrow::compute::SortIndices(all_split_candidates, sort_options));
+  auto sorted_table =
+    ARROW_RESULT(
+      arrow::compute::Take(all_split_candidates, *sorted_indices, arrow::compute::TakeOptions{}))
+      .table();
+  return sorted_table;
+}
+
+std::shared_ptr<arrow::Table> extract_global_splits(
+  TaskContext& ctx, std::shared_ptr<arrow::Table> global_split_candidates)
+{
+  auto split_indices = vector_to_array(
+    get_split_ind(ctx, global_split_candidates->num_rows(), ctx.nranks, /* include_start */ false));
+  auto split_values =
+    ARROW_RESULT(arrow::compute::Take(global_split_candidates, split_indices)).table();
+  return std::move(split_values);
+}
+
+// This function is poorly optimised but arrow doesn't give us other options
+// Compare two tables each containing a single row
+bool compare(TaskContext& ctx,
+             std::shared_ptr<arrow::Table> row_a,
+             std::shared_ptr<arrow::Table> row_b,
+             const std::vector<cudf::size_type>& keys_idx,
+             const std::vector<arrow::compute::SortKey>& column_order,
+             arrow::compute::NullPlacement null_precedence)
+{
+  // Create a table with each row, sort that table
+  // Use the resulting order as the comparison
+  // We are testing row_a < row_b
+  // So if row_a gets sorted into position 0, then row_a < row_b
+
+  auto combined = ARROW_RESULT(arrow::ConcatenateTables({row_b, row_a}));
+
+  auto sort_indices = ARROW_RESULT(arrow::compute::SortIndices(
+    combined, arrow::compute::SortOptions(column_order, null_precedence)));
+
+  std::shared_ptr<arrow::UInt64Scalar> first_sort_index =
+    std::dynamic_pointer_cast<arrow::UInt64Scalar>(ARROW_RESULT(sort_indices->GetScalar(0)));
+  return first_sort_index->value == 1;
+}
+
+std::size_t lower_bound_row(TaskContext& ctx,
+                            std::shared_ptr<arrow::Table> haystack,
+                            std::shared_ptr<arrow::Table> needle,  // This is a single row
+                            const std::vector<cudf::size_type>& keys_idx,
+                            const std::vector<arrow::compute::SortKey>& column_order,
+                            arrow::compute::NullPlacement null_precedence)
+{
+  std::size_t first  = 0;
+  std::size_t length = haystack->num_rows();
+  while (length > 0) {
+    auto rem = length % 2;
+    length /= 2;
+    if (compare(ctx,
+                haystack->Slice(first + length, 1),
+                needle,
+                keys_idx,
+                column_order,
+                null_precedence)) {
+      first += length + rem;
+    }
+  }
+  return first;
+}
+
+std::vector<std::size_t> find_destination_ranks(
+  TaskContext& ctx,
+  std::shared_ptr<arrow::Table> sorted_table,
+  std::shared_ptr<arrow::Table> global_split_values,
+  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<arrow::compute::SortKey>& column_order,
+  arrow::compute::NullPlacement null_precedence)
+{
+  // Create a new table with the rank column appended
+  auto rank_array = create_array<int64_t>(sorted_table->num_rows(), ctx.rank);
+  auto sorted_table_with_rank =
+    ARROW_RESULT(sorted_table->AddColumn(sorted_table->num_columns(),
+                                         arrow::field("split_rank", rank_array->type()),
+                                         std::make_shared<arrow::ChunkedArray>(rank_array)));
+
+  std::vector<std::size_t> splits_indices_host;
+
+  auto keys_idx_with_rank = keys_idx;
+  keys_idx_with_rank.push_back(sorted_table->num_columns());
+  auto column_order_with_rank = column_order;
+  column_order_with_rank.push_back(
+    arrow::compute::SortKey{"split_rank", arrow::compute::SortOrder::Ascending});
+
+  // For each global split value, find where it should be inserted in the local sorted table
+  for (std::size_t i = 0; i < static_cast<std::size_t>(global_split_values->num_rows()); i++) {
+    auto split_value = global_split_values->Slice(i, 1);
+    // Remove the index column so the columns in the comparison are the same
+    split_value          = ARROW_RESULT(split_value->RemoveColumn(split_value->num_columns() - 1));
+    std::size_t position = lower_bound_row(ctx,
+                                           sorted_table_with_rank,
+                                           split_value,
+                                           keys_idx_with_rank,
+                                           column_order_with_rank,
+                                           null_precedence);
+    splits_indices_host.push_back(position);
+  }
+
+  // In the obscure case where there is less data than ranks, pad split points.
+  for (std::size_t i = splits_indices_host.size(); i < static_cast<std::size_t>(ctx.nranks - 1);
+       i++) {
+    splits_indices_host.push_back(static_cast<std::size_t>(sorted_table->num_rows()));
+  }
+
+  if (!std::is_sorted(splits_indices_host.begin(), splits_indices_host.end())) {
+    throw std::runtime_error(
+      "Splits indices should be sorted. This is a bug, and indicates a difference between arrow's "
+      "sort comparator and the custom comparator used in this file.");
+  }
+
+  return splits_indices_host;
+}
+
+std::vector<std::size_t> find_splits_for_distribution(
+  TaskContext& ctx,
+  std::shared_ptr<arrow::Table> sorted_table,
+  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<arrow::compute::SortKey>& column_order,
+  arrow::compute::NullPlacement null_precedence)
+{
+  auto local_splits_and_metadata = extract_local_splits(ctx, sorted_table, keys_idx);
+
+  auto global_split_candidates = merge_distributed_split_candidates(
+    ctx, local_splits_and_metadata, keys_idx, column_order, null_precedence);
+
+  if (global_split_candidates == nullptr) {
+    // Nothing on this worker, we are done
+    return {};
+  }
+
+  auto global_split_values = extract_global_splits(ctx, global_split_candidates);
+
+  return find_destination_ranks(
+    ctx, sorted_table, global_split_values, keys_idx, column_order, null_precedence);
+}
+
+}  // namespace cpu
+
+namespace gpu {
+std::unique_ptr<cudf::column> vector_to_column(const std::vector<cudf::size_type>& vec,
+                                               TaskContext& ctx)
+{
+  auto ncopy = vec.size();
   rmm::device_uvector<cudf::size_type> split_ind(ncopy, ctx.stream(), ctx.mr());
   LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_ind.data(),
-                                    split_values.data(),
+                                    vec.data(),
                                     ncopy * sizeof(cudf::size_type),
                                     cudaMemcpyHostToDevice,
                                     ctx.stream()));
   LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
 
   return std::make_unique<cudf::column>(std::move(split_ind), std::move(rmm::device_buffer()), 0);
+}
+
+// Create a cudf column with the specified number of rows
+template <typename T>
+std::unique_ptr<cudf::column> create_column(cudf::size_type num_rows,
+                                            T fill_value,
+                                            TaskContext& ctx)
+{
+  if (num_rows == 0) { return cudf::make_empty_column(cudf::data_type{cudf::type_to_id<T>()}); }
+  return cudf::sequence(num_rows,
+                        *cudf::make_fixed_width_scalar(fill_value),
+                        *cudf::make_fixed_width_scalar(int32_t{0}));
+}
+
+template <typename T>
+std::vector<T> column_to_vector(TaskContext& ctx, const cudf::column_view& col)
+{
+  std::vector<T> ret(col.size());
+  if (col.size() > 0) {
+    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
+      ret.data(), col.data<T>(), col.size() * sizeof(T), cudaMemcpyDeviceToHost, ctx.stream()));
+  }
+  return ret;
+}
+
+// Extract split points from a sorted table. Add two metadata columns:
+//  - the rank of the split point (which worker it came from)
+//  - the local index of the split point
+std::unique_ptr<cudf::table> extract_local_splits(TaskContext& ctx,
+                                                  const cudf::table_view& sorted_table,
+                                                  const std::vector<cudf::size_type>& keys_idx)
+{
+  auto split_values     = get_split_ind(ctx, sorted_table.num_rows(), ctx.nranks, true);
+  auto my_split_ind_col = vector_to_column(split_values, ctx);
+  auto nsplits          = my_split_ind_col->size();
+
+  auto my_split_rank_col = create_column<int32_t>(nsplits, ctx.rank, ctx);
+
+  auto my_split_cols_tbl = cudf::gather(sorted_table.select(keys_idx),
+                                        my_split_ind_col->view(),
+                                        cudf::out_of_bounds_policy::DONT_CHECK,
+                                        ctx.stream(),
+                                        ctx.mr());
+  auto table_columns     = my_split_cols_tbl->release();
+  table_columns.push_back(std::move(my_split_rank_col));
+  table_columns.push_back(std::move(my_split_ind_col));
+  return std::make_unique<cudf::table>(std::move(table_columns));
+}
+
+std::unique_ptr<cudf::table> merge_distributed_split_candidates(
+  TaskContext& ctx,
+  const cudf::table_view& local_splits_and_metadata,
+  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<cudf::order>& column_order,
+  const std::vector<cudf::null_order>& null_precedence)
+{
+  std::vector<cudf::table_view> exchange_tables;
+  for (int i = 0; i < ctx.nranks; i++) {
+    exchange_tables.push_back(local_splits_and_metadata);
+  }
+  auto [split_candidates_shared, owners_split] = shuffle(ctx, exchange_tables, nullptr);
+
+  if (local_splits_and_metadata.num_rows() == 0) {
+    // All nodes need to take part in the shuffle (no data here), but the below
+    // cannot search a length 0 table, so return immediately.
+    return nullptr;
+  }
+
+  std::vector<cudf::order> column_orderx(column_order);
+  std::vector<cudf::null_order> null_precedencex(null_precedence);
+  column_orderx.insert(column_orderx.end(), {cudf::order::ASCENDING, cudf::order::ASCENDING});
+  null_precedencex.insert(null_precedencex.end(),
+                          {cudf::null_order::AFTER, cudf::null_order::AFTER});
+
+  // Merge is stable as it includes the rank and index in the keys:
+  // keys(x) to pick columns from splits (which include rank and index):
+  std::vector<cudf::size_type> all_keysx(keys_idx.size() + 2);
+  std::iota(all_keysx.begin(), all_keysx.end(), 0);
+
+  auto split_candidates = cudf::merge(
+    split_candidates_shared, all_keysx, column_orderx, null_precedencex, ctx.stream(), ctx.mr());
+  owners_split.reset();  // No longer need this
+  return std::move(split_candidates);
+}
+
+std::unique_ptr<cudf::table> extract_global_splits(TaskContext& ctx,
+                                                   const cudf::table_view& global_split_candidates)
+{
+  auto split_indices =
+    get_split_ind(ctx, global_split_candidates.num_rows(), ctx.nranks, /* include_start */ false);
+  auto split_value_inds = vector_to_column(split_indices, ctx);
+  auto split_values     = cudf::gather(global_split_candidates,
+                                   split_value_inds->view(),
+                                   cudf::out_of_bounds_policy::DONT_CHECK,
+                                   ctx.stream(),
+                                   ctx.mr());
+  return std::move(split_values);
+}
+
+std::vector<cudf::size_type> find_destination_ranks(
+  TaskContext& ctx,
+  const cudf::table_view& sorted_table,
+  const cudf::table_view& global_split_values,
+  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<cudf::order>& column_order,
+  const std::vector<cudf::null_order>& null_precedence
+
+)
+{
+  std::vector<cudf::size_type> value_keysx(keys_idx.size() + 1);
+  std::iota(value_keysx.begin(), value_keysx.end(), 0);
+  auto keys_idxx = keys_idx;
+  keys_idxx.push_back(sorted_table.num_columns());
+
+  // Create a column with the same length as sorted table, filled with current rank
+  auto rank_column = create_column<int32_t>(sorted_table.num_rows(), ctx.rank, ctx);
+
+  // Create a new table view by appending the rank column to the sorted table
+  std::vector<cudf::column_view> table_columns;
+  for (int i = 0; i < sorted_table.num_columns(); i++) {
+    table_columns.push_back(sorted_table.column(i));
+  }
+  table_columns.push_back(rank_column->view());
+  auto sorted_table_with_rank = cudf::table_view(table_columns);
+
+  auto column_order_with_rank = column_order;
+  column_order_with_rank.push_back(cudf::order::ASCENDING);
+  auto null_precendence_with_rank = null_precedence;
+  null_precendence_with_rank.push_back(cudf::null_order::AFTER);
+  auto split_indices = cudf::lower_bound(sorted_table_with_rank.select(keys_idxx),
+                                         global_split_values.select(value_keysx),
+                                         column_order_with_rank,
+                                         null_precendence_with_rank,
+                                         ctx.stream(),
+                                         ctx.mr());
+
+  /*
+   * Copy the split candidates to the host and finalize the local splits.
+   * (we may have fewer than nranks split-points here and need to pad later.)
+   */
+  auto splits_indices_host = column_to_vector<cudf::size_type>(ctx, split_indices->view());
+  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
+  // In the obscure case where there is less data than ranks, pad split points.
+  for (int i = splits_indices_host.size(); i < ctx.nranks - 1; i++) {
+    splits_indices_host.push_back(sorted_table.num_rows());
+  }
+
+  return splits_indices_host;
 }
 
 /*
@@ -127,9 +501,9 @@ std::unique_ptr<cudf::column> get_split_ind(TaskContext& ctx,
  * the split point inde (if ours) or the first equal value or just after the last
  * depending on whether it came from an earlier or later rank.
  */
-std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
+std::vector<cudf::size_type> find_splits_for_distribution(
   TaskContext& ctx,
-  const cudf::table_view& my_sorted_tbl,
+  const cudf::table_view& sorted_table,
   const std::vector<cudf::size_type>& keys_idx,
   const std::vector<cudf::order>& column_order,
   const std::vector<cudf::null_order>& null_precedence)
@@ -141,171 +515,33 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
    * (used as a possible split value), but store the corresponding end of the
    * the last step.
    */
-  auto my_split_ind_col =
-    get_split_ind(ctx, my_sorted_tbl.num_rows(), ctx.nranks, /* include_start */ true);
-  auto nsplits = my_split_ind_col->size();
-
-  auto my_split_rank_col = cudf::sequence(nsplits,
-                                          *cudf::make_fixed_width_scalar(int32_t{ctx.rank}),
-                                          *cudf::make_fixed_width_scalar(int32_t{0}));
-
-  auto my_split_cols_tbl = cudf::gather(my_sorted_tbl.select(keys_idx),
-                                        my_split_ind_col->view(),
-                                        cudf::out_of_bounds_policy::DONT_CHECK,
-                                        ctx.stream(),
-                                        ctx.mr());
-
-  auto my_split_cols_view = my_split_cols_tbl->view();
-  auto my_split_cols_vector =
-    std::vector<cudf::column_view>(my_split_cols_view.begin(), my_split_cols_view.end());
-
-  // Add in rank and local index (together provide a global order).
-  my_split_cols_vector.push_back(my_split_rank_col->view());
-  my_split_cols_vector.push_back(my_split_ind_col->view());
-  auto my_splits = cudf::table_view(my_split_cols_vector);
-
-  // keys(x) to pick columns from splits (which include rank and index):
-  std::vector<cudf::size_type> value_keysx(keys_idx.size());
-  std::iota(value_keysx.begin(), value_keysx.end(), 0);
-  std::vector<cudf::size_type> all_keysx(keys_idx.size() + 2);
-  std::iota(all_keysx.begin(), all_keysx.end(), 0);
+  auto local_splits_and_metadata = extract_local_splits(ctx, sorted_table, keys_idx);
 
   /*
    * Step 2: Share split candidates among all ranks.
    */
-  std::vector<cudf::table_view> exchange_tables;
-  for (int i = 0; i < ctx.nranks; i++) {
-    exchange_tables.push_back(my_splits);
-  }
-  auto [split_candidates_shared, owners_split] = shuffle(ctx, exchange_tables, nullptr);
-  if (my_split_cols_tbl->num_rows() == 0) {
-    // All nodes need to take part in the shuffle (no data here), but the below
-    // cannot search a length 0 table, so return immediately.
-    return nullptr;
-  }
-  std::vector<cudf::order> column_orderx(column_order);
-  std::vector<cudf::null_order> null_precedencex(null_precedence);
-  column_orderx.insert(column_orderx.end(), {cudf::order::ASCENDING, cudf::order::ASCENDING});
-  null_precedencex.insert(null_precedencex.end(),
-                          {cudf::null_order::AFTER, cudf::null_order::AFTER});
+  auto global_split_candidates = merge_distributed_split_candidates(
+    ctx, local_splits_and_metadata->view(), keys_idx, column_order, null_precedence);
 
-  // Merge is stable as it includes the rank and index in the keys:
-  auto split_candidates = cudf::merge(
-    split_candidates_shared, all_keysx, column_orderx, null_precedencex, ctx.stream(), ctx.mr());
-  owners_split.reset();  // copied into split_candidates
+  if (global_split_candidates == nullptr) {
+    // Nothing on this worker, we are done
+    return {};
+  }
 
   /*
    * Step 3: Find the best splitting points from all candidates
    */
-  auto split_value_inds =
-    get_split_ind(ctx, split_candidates->num_rows(), ctx.nranks, /* include_start */ false);
-  auto split_values_tbl  = cudf::gather(split_candidates->view(),
-                                       split_value_inds->view(),
-                                       cudf::out_of_bounds_policy::DONT_CHECK,
-                                       ctx.stream(),
-                                       ctx.mr());
-  auto split_values_view = split_values_tbl->view();
+  auto global_split_values = extract_global_splits(ctx, global_split_candidates->view());
 
   /*
    * Step 4: Find the actual split points for the local dataset.
    *
-   * We need to split based on the rank of the split point `split_rank`
-   * (i.e. where is the split point in the whole dataset):
-   *    - if split_rank < my_rank:  split at first equal row.
-   *    - if split_rank == my_rank:  use split-point index.
-   *    - if split_rank > my_rank: split after last equal row
-   *
-   * N.B.: If this turns out to matter speed-wise, this can be spelled as a single
-   * `lower_bound` with the (global) row-index.  A custom implementation could
-   * make that row-index a virtual table.
    */
-  auto split_candidates_first_col  = cudf::lower_bound(my_sorted_tbl.select(keys_idx),
-                                                      split_values_view.select(value_keysx),
-                                                      column_order,
-                                                      null_precedence,
-                                                      ctx.stream(),
-                                                      ctx.mr());
-  auto split_candidates_first_view = split_candidates_first_col->view();
-  auto split_candidates_last_col   = cudf::upper_bound(my_sorted_tbl.select(keys_idx),
-                                                     split_values_view.select(value_keysx),
-                                                     column_order,
-                                                     null_precedence,
-                                                     ctx.stream(),
-                                                     ctx.mr());
-  auto split_candidates_last_view  = split_candidates_last_col->view();
-
-  // The local index and rank of the split value, we'll use the rank if it came from this rank
-  auto split_candidates_equal_view = split_values_view.column(my_splits.num_columns() - 1);
-  auto split_candiates_rank_view   = split_values_view.column(my_splits.num_columns() - 2);
-
-  /*
-   * Copy all the above information to the host and finalize the local splits.
-   * (we may have fewer than nranks split-points here and need to pad later.)
-   */
-  auto nsplitpoints = split_value_inds->size();
-  std::vector<cudf::size_type> split_candidates_first(nsplitpoints);
-  std::vector<cudf::size_type> split_candidates_last(nsplitpoints);
-  std::vector<cudf::size_type> split_candidates_equal(nsplitpoints);
-  std::vector<int32_t> split_candidates_rank(nsplitpoints);
-
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_first.data(),
-                                    split_candidates_first_view.data<cudf::size_type>(),
-                                    nsplitpoints * sizeof(cudf::size_type),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_last.data(),
-                                    split_candidates_last_view.data<cudf::size_type>(),
-                                    nsplitpoints * sizeof(cudf::size_type),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_equal.data(),
-                                    split_candidates_equal_view.data<cudf::size_type>(),
-                                    nsplitpoints * sizeof(cudf::size_type),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_candidates_rank.data(),
-                                    split_candiates_rank_view.data<int32_t>(),
-                                    nsplitpoints * sizeof(int32_t),
-                                    cudaMemcpyDeviceToHost,
-                                    ctx.stream()));
-
-  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
-
-  auto splits_host = std::make_unique<std::vector<cudf::size_type>>();
-  for (int i = 0; i < nsplitpoints; i++) {
-    if (split_candidates_rank[i] < ctx.rank) {
-      splits_host->push_back(split_candidates_first[i]);
-    } else if (split_candidates_rank[i] > ctx.rank) {
-      splits_host->push_back(split_candidates_last[i]);
-    } else {
-      splits_host->push_back(split_candidates_equal[i]);
-    }
-  }
-  // In the obscure case where there is less data than ranks, pad split points.
-  for (int i = nsplitpoints; i < ctx.nranks - 1; i++) {
-    splits_host->push_back(my_sorted_tbl.num_rows());
-  }
-
-#if DEBUG_SPLITS
-  std::ostringstream full_splits_oss;
-  full_splits_oss << "Final local split points @" << ctx.rank
-                  << " (nrows=" << my_sorted_tbl.num_rows() << "):\n";
-  for (int i = 0; i < ctx.nranks - 1; i++) {
-    full_splits_oss << "    " << splits_host->at(i);
-    if (i < nsplitpoints) {
-      full_splits_oss << ", split by r" << split_candidates_rank[i] << ": ";
-      full_splits_oss << split_candidates_first[i] << "<" << split_candidates_last[i];
-      full_splits_oss << ", r[ind]=" << split_candidates_equal[i] << "\n";
-    } else {
-      full_splits_oss << " (no further split candidates)\n";
-    }
-  }
-  std::cout << full_splits_oss.str() << std::endl;
-#endif
-  return std::move(splits_host);
+  return find_destination_ranks(
+    ctx, sorted_table, global_split_values->view(), keys_idx, column_order, null_precedence);
 }
 
-}  // namespace
+}  // namespace gpu
 
 class SortTask : public Task<SortTask, OpCode::Sort> {
  public:
@@ -316,44 +552,130 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
                                                 .with_concurrent(true)
                                                 .with_elide_device_ctx_sync(true);
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const auto tbl            = argument::get_next_input<PhysicalTable>(ctx);
+    const auto keys_idx       = argument::get_next_scalar_vector<cudf::size_type>(ctx);
+    const auto sort_ascending = argument::get_next_scalar_vector<bool>(ctx);
+    const auto nulls_at_end   = argument::get_next_scalar<bool>(ctx);
+    const auto stable         = argument::get_next_scalar<bool>(ctx);
+    auto output               = argument::get_next_output<PhysicalTable>(ctx);
+
+    // Sort the table
+    // Use integer indices as arrow column names
+    std::vector<std::string> tmp_column_names;
+    for (auto idx = 0; idx < tbl.num_columns(); idx++) {
+      tmp_column_names.push_back(std::to_string(idx));
+    }
+    std::vector<arrow::compute::SortKey> sort_keys;
+    for (size_t i = 0; i < keys_idx.size(); i++) {
+      // Translate cudf parameters to arrow parameters
+      auto order = sort_ascending[i] ? arrow::compute::SortOrder::Ascending
+                                     : arrow::compute::SortOrder::Descending;
+      sort_keys.push_back(arrow::compute::SortKey{std::to_string(keys_idx[i]), order});
+    }
+    auto arrow_table = tbl.arrow_table_view(tmp_column_names);
+    // Arrow does not support null_order per column, so we use the first one
+    auto null_order =
+      nulls_at_end ? arrow::compute::NullPlacement::AtEnd : arrow::compute::NullPlacement::AtStart;
+    arrow::compute::SortOptions sort_options(sort_keys, null_order);
+    auto sorted_indices = ARROW_RESULT(arrow::compute::SortIndices(arrow_table, sort_options));
+    auto sorted_table   = ARROW_RESULT(arrow::compute::Take(
+                                       arrow_table, *sorted_indices, arrow::compute::TakeOptions{}))
+                          .table();
+
+    if (ctx.nranks == 1) {
+      output.move_into(sorted_table);
+      return;
+    }
+
+    auto split_indices =
+      cpu::find_splits_for_distribution(ctx, sorted_table, keys_idx, sort_keys, null_order);
+
+    // If the local table has zero rows we cannot split it for sharing and
+    // split_indices will be null.  Exchange the (empty) table instead.
+    std::vector<std::shared_ptr<arrow::Table>> partitions;
+    if (split_indices.size() > 0) {
+      partitions.push_back(sorted_table->Slice(0, split_indices[0]));
+      for (int i = 1; i < split_indices.size() + 1; i++) {
+        auto start = split_indices[i - 1];
+        auto length =
+          (i == split_indices.size()) ? sorted_table->num_rows() - start : split_indices[i] - start;
+        partitions.push_back(sorted_table->Slice(start, length));
+      }
+    } else {
+      assert(sorted_table->num_rows() == 0);
+      for (int i = 0; i < ctx.nranks; i++) {
+        partitions.push_back(sorted_table);
+      }
+    }
+    auto parts = shuffle(ctx, partitions);
+
+    // Concateate results and sort
+    auto concatenated = ARROW_RESULT(arrow::ConcatenateTables(parts));
+    auto sort_indices = ARROW_RESULT(arrow::compute::SortIndices(concatenated, sort_options));
+    auto result       = ARROW_RESULT(arrow::compute::Take(concatenated, *sort_indices)).table();
+    output.move_into(result);
+  }
+
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
 
-    const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
-    const auto keys_idx        = argument::get_next_scalar_vector<cudf::size_type>(ctx);
-    const auto column_order    = argument::get_next_scalar_vector<cudf::order>(ctx);
-    const auto null_precedence = argument::get_next_scalar_vector<cudf::null_order>(ctx);
-    const auto stable          = argument::get_next_scalar<bool>(ctx);
-    auto output                = argument::get_next_output<PhysicalTable>(ctx);
+    const auto tbl            = argument::get_next_input<PhysicalTable>(ctx);
+    const auto keys_idx       = argument::get_next_scalar_vector<cudf::size_type>(ctx);
+    const auto sort_ascending = argument::get_next_scalar_vector<bool>(ctx);
+    const auto nulls_at_end   = argument::get_next_scalar<bool>(ctx);
+    const auto stable         = argument::get_next_scalar<bool>(ctx);
+    auto output               = argument::get_next_output<PhysicalTable>(ctx);
+
+    // Convert ordering parameters to cudf types
+    std::vector<cudf::order> column_order;
+    std::vector<cudf::null_order> null_precedence;
+    for (size_t i = 0; i < keys_idx.size(); i++) {
+      column_order.push_back(sort_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING);
+      // Flip the null order if the column is descending
+      // This makes the result consistent with arrow
+      // Otherwise cudf will put nulls at the start of descending columns with
+      // cudf::null_order::AFTER
+      if (sort_ascending[i] == false) {
+        null_precedence.push_back(nulls_at_end ? cudf::null_order::BEFORE
+                                               : cudf::null_order::AFTER);
+      } else {
+        null_precedence.push_back(nulls_at_end ? cudf::null_order::AFTER
+                                               : cudf::null_order::BEFORE);
+      }
+    }
 
     // Create a new locally sorted table (we always need this)
     auto cudf_tbl  = tbl.table_view();
     auto key       = cudf_tbl.select(keys_idx);
     auto sort_func = stable ? cudf::stable_sort_by_key : cudf::sort_by_key;
-    auto my_sorted_tbl =
+    auto sorted_table =
       sort_func(cudf_tbl, key, column_order, null_precedence, ctx.stream(), ctx.mr());
 
     if (ctx.nranks == 1) {
-      output.move_into(my_sorted_tbl->release());
+      output.move_into(sorted_table->release());
       return;
     }
 
-    auto split_indices = find_splits_for_distribution(
-      ctx, my_sorted_tbl->view(), keys_idx, column_order, null_precedence);
+    auto split_indices = gpu::find_splits_for_distribution(
+      ctx, sorted_table->view(), keys_idx, column_order, null_precedence);
 
     // If the local table has zero rows we cannot split it for sharing and
     // split_indices will be null.  Exchange the (empty) table instead.
     std::vector<cudf::table_view> partitions;
-    if (split_indices) {
-      partitions = cudf::split(my_sorted_tbl->view(), *split_indices, ctx.stream());
+    if (split_indices.size() > 0) {
+      partitions = cudf::split(sorted_table->view(), split_indices, ctx.stream());
     } else {
-      assert(my_sorted_tbl->num_rows() == 0);
+      assert(sorted_table->num_rows() == 0);
       for (int i = 0; i < ctx.nranks; i++) {
-        partitions.push_back(my_sorted_tbl->view());
+        partitions.push_back(sorted_table->view());
       }
     }
-    auto [parts, owners] = shuffle(ctx, partitions, std::move(my_sorted_tbl));
+    auto [parts, owners] = shuffle(ctx, partitions, std::move(sorted_table));
 
     std::unique_ptr<cudf::table> result;
     if (!stable) {
@@ -387,12 +709,12 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
 
 LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
-                  const std::vector<cudf::order>& column_order,
-                  const std::vector<cudf::null_order>& null_precedence,
+                  const std::vector<bool>& sort_ascending,
+                  bool nulls_at_end,
                   bool stable)
 {
   if (keys.size() == 0) { throw std::invalid_argument("must sort along at least one column"); }
-  if (column_order.size() != keys.size() || null_precedence.size() != keys.size()) {
+  if (sort_ascending.size() != keys.size()) {
     throw std::invalid_argument("sort column order and null precedence must match number of keys");
   }
 
@@ -401,27 +723,30 @@ LogicalTable sort(const LogicalTable& tbl,
   auto ret = LogicalTable::empty_like(tbl);
 
   std::vector<cudf::size_type> keys_idx(keys.size());
-  std::vector<std::underlying_type_t<cudf::order>> column_order_lg(keys.size());
-  std::vector<std::underlying_type_t<cudf::null_order>> null_precedence_lg(keys.size());
 
+  bool use_arrow          = runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0;
   const auto& name_to_idx = tbl.get_column_names();
   for (size_t i = 0; i < keys.size(); i++) {
-    keys_idx[i]        = name_to_idx.at(keys[i]);
-    column_order_lg[i] = static_cast<std::underlying_type_t<cudf::order>>(column_order[i]);
-    null_precedence_lg[i] =
-      static_cast<std::underlying_type_t<cudf::null_order>>(null_precedence[i]);
+    if (name_to_idx.count(keys[i]) == 0) {
+      throw std::invalid_argument("sort key '" + keys[i] + "' not found in table");
+    }
+    keys_idx[i] = name_to_idx.at(keys[i]);
   }
 
   legate::AutoTask task =
     runtime->create_task(get_library(), task::SortTask::TASK_CONFIG.task_id());
   argument::add_next_input(task, tbl);
   argument::add_next_scalar_vector(task, keys_idx);
-  argument::add_next_scalar_vector(task, column_order_lg);
-  argument::add_next_scalar_vector(task, null_precedence_lg);
+  argument::add_next_scalar_vector(task, sort_ascending);
+  argument::add_next_scalar(task, nulls_at_end);
   argument::add_next_scalar(task, stable);
   argument::add_next_output(task, ret);
 
-  task.add_communicator("nccl");
+  if (use_arrow) {
+    task.add_communicator("cpu");
+  } else {
+    task.add_communicator("nccl");
+  }
 
   runtime->submit(std::move(task));
   return ret;
