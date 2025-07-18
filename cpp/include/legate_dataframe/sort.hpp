@@ -35,12 +35,15 @@ namespace legate::dataframe {
  * @param null_recedence Either BEFORE or AFTER for each sort key/column.
  * AFTER means that nulls are considered larger and come last after an ascending
  * and first after a descending sort.
+ * @param limit The maximum number of rows to return. If negative, the last rows
+ * are returns (i.e. a head/tail operation).
  * @return The sorted LogicalTable
  */
 LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
                   const std::vector<cudf::order>& column_order,
                   const std::vector<cudf::null_order>& null_precedence,
-                  bool stable = false);
+                  bool stable                  = false,
+                  std::optional<int64_t> limit = std::nullopt);
 
 }  // namespace legate::dataframe
