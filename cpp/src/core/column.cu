@@ -199,11 +199,19 @@ struct ArrowToPhysicalArrayVisitor {
 
 // Copy an arrow array into a physical array
 // Binds the legate array if it is unbound
-void from_arrow(legate::PhysicalArray array, std::shared_ptr<arrow::Array> arrow_array)
+void from_arrow(legate::PhysicalArray array,
+                std::shared_ptr<arrow::Array> arrow_array,
+                bool scalar = false)
 {
   if (array.type() != to_legate_type(*arrow_array->type())) {
     throw std::invalid_argument("from_arrow(): type mismatch: " + array.type().to_string() +
                                 " != " + arrow_array->type()->ToString());
+  }
+  if (!array.nullable() && arrow_array->null_count() > 0) {
+    throw std::invalid_argument("from_arrow(): arrow array has nulls but column is not nullable.");
+  }
+  if (scalar && arrow_array->length() != 1) {
+    throw std::invalid_argument("from_arrow(): scalar column must have length 1.");
   }
 
   if (array.nullable()) {
@@ -664,60 +672,76 @@ struct move_into_fn {
   }
 };
 
-}  // namespace
-
-void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column, bool allow_copy)
+void from_cudf(legate::PhysicalArray array,
+               std::unique_ptr<cudf::column> column,
+               bool scalar = false)
 {
-  if (!unbound() && !allow_copy) {
-    throw std::invalid_argument("Cannot call `.move_into()` on a bound column without allow_copy.");
-  }
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
   //     seem to get a nullable column.  So also check `has_nulls()`.
   if (column->nullable() && !array_.nullable() && column->has_nulls()) {
     throw std::invalid_argument(
       "move_into(): the cudf column is nullable while the PhysicalArray isn't");
   }
-  if (scalar_out_ && column->size() != 1) {
-    throw std::logic_error("move_into(): for scalar, column must have size one.");
+
+  if (scalar && column->size() != 1) {
+    throw std::invalid_argument("from_cudf(): scalar column must have size one.");
   }
   cudf::type_dispatcher(
     column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
 }
 
-void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar, bool allow_copy)
+}  // namespace
+
+void PhysicalColumn::copy_into(std::unique_ptr<cudf::column> column)
+{
+  if (unbound()) {
+    throw std::invalid_argument("Cannot call `.copy_into()` on an unbound column.");
+  }
+  from_cudf(array_, std::move(column), scalar_out_);
+}
+
+void PhysicalColumn::copy_into(std::unique_ptr<cudf::scalar> scalar)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be
   // preferable (although libcudf could also grow a way to get a column view).
   auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream());
-  move_into(std::move(col), allow_copy);
+  copy_into(std::move(col));
 }
 
-void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column, bool allow_copy)
+void PhysicalColumn::copy_into(std::shared_ptr<arrow::Array> column)
 {
-  if (!unbound() && !allow_copy) {
-    throw std::invalid_argument("Cannot call `.move_into()` on a bound column without allow_copy.");
+  if (unbound()) {
+    throw std::invalid_argument("Cannot call `.copy_into()` on an unbound column.");
   }
-  auto null_count = column->null_count();
-  if (null_count > 0 && !array_.nullable()) {
-    throw std::invalid_argument(
-      "move_into(): the arrow column is nullable while the PhysicalArray isn't");
-  }
-  if (scalar_out_ && column->length() != 1) {
-    throw std::logic_error("move_into(): for scalar, column must have size one.");
-  }
-
   // TODO: this copies the data, we ideally want to move the arrow buffer.
-  from_arrow(array_, column);
+  from_arrow(array_, column, scalar_out_);
 }
 
-void PhysicalColumn::bind_empty_data(bool allow_copy) const
+void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
+{
+  if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column."); }
+  from_cudf(array_, std::move(column), scalar_out_);
+}
+
+void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
+{
+  // NOTE: this goes via a column-view.  Moving data more directly may be
+  // preferable (although libcudf could also grow a way to get a column view).
+  auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream());
+  move_into(std::move(col));
+}
+
+void PhysicalColumn::move_into(std::shared_ptr<arrow::Array> column)
+{
+  if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column."); }
+  // TODO: this copies the data, we ideally want to move the arrow buffer.
+  from_arrow(array_, column, scalar_out_);
+}
+
+void PhysicalColumn::bind_empty_data() const
 {
   if (!unbound()) {
-    if (!allow_copy) {
-      throw std::invalid_argument("Cannot call `.bind_empty_data()` on a bound column");
-    }
-    // Column should already be bound (with empty data), so this is a no-op.
-    return;
+    throw std::invalid_argument("Cannot call `.bind_empty_data()` on a bound column");
   }
 
   if (scalar_out_) {

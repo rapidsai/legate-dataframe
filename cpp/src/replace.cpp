@@ -65,7 +65,11 @@ class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::Replace
 
     auto ret = cudf::replace_nulls(input.column_view(), *cudf_scalar, ctx.stream(), ctx.mr());
 
-    output.move_into(std::move(ret), /* allow_copy */ true);
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(ret));
+    } else {
+      output.move_into(std::move(ret));
+    }
   }
 };
 

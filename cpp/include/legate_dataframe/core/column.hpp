@@ -628,36 +628,51 @@ class PhysicalColumn {
                    size_t max_num_items = 30) const;
 
   /**
+   * @brief Copy local cudf column into this unbound physical column
+   *
+   * @param column The cudf column to copy
+   */
+  void copy_into(std::unique_ptr<cudf::column> column);
+
+  /**
+   * @brief Copy local cudf scalar into this bound physical column
+   *
+   * @param scalar The cudf scalar to copy
+   */
+  void copy_into(std::unique_ptr<cudf::scalar> scalar);
+
+  /**
+   * @brief Copy local arrow array into this unbound physical column
+   *
+   * @param column The arrow array to copy
+   */
+  void copy_into(std::shared_ptr<arrow::Array> column);
+
+  /**
    * @brief Move local cudf column into this unbound physical column
    *
    * @param column The cudf column to move
-   * @param allow_copy If true, copies the data if the column is bound.
    */
-  void move_into(std::unique_ptr<cudf::column> column, bool allow_copy = false);
+  void move_into(std::unique_ptr<cudf::column> column);
 
   /**
    * @brief Move local cudf scalar into this unbound physical column
    *
    * @param scalar The cudf scalar to move
-   * @param allow_copy If true, copies the data if the column is bound.
    */
-  void move_into(std::unique_ptr<cudf::scalar> scalar, bool allow_copy = false);
+  void move_into(std::unique_ptr<cudf::scalar> scalar);
 
   /**
    * @brief Move arrow array into this unbound physical column
    *
    * @param column The arrow array to move
-   * @param allow_copy If true, copies the data if the column is bound.
    */
-  void move_into(std::shared_ptr<arrow::Array> column, bool allow_copy = false);
+  void move_into(std::shared_ptr<arrow::Array> column);
 
   /**
    * @brief Makes the unbound column empty. Valid only when the column is unbound.
-   *
-   * @param allow_copy If true, no error is given if the column is bound, this becomes
-   * a no-op instead.  (`allow_copy` just to match `move_into()`.)
    */
-  void bind_empty_data(bool allow_copy = false) const;
+  void bind_empty_data() const;
 
  private:
   TaskContext* ctx_;

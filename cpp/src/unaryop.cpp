@@ -42,7 +42,11 @@ class CastTask : public Task<CastTask, OpCode::Cast> {
 
     auto cast = ARROW_RESULT(arrow::compute::Cast(
       input.arrow_array_view(), output.arrow_type(), arrow::compute::CastOptions::Unsafe()));
-    output.move_into(std::move(cast.make_array()));
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(cast.make_array()));
+    } else {
+      output.move_into(std::move(cast.make_array()));
+    }
   }
 
   static void gpu_variant(legate::TaskContext context)
@@ -53,7 +57,11 @@ class CastTask : public Task<CastTask, OpCode::Cast> {
     auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
     cudf::column_view col             = input.column_view();
     std::unique_ptr<cudf::column> ret = cudf::cast(col, output.cudf_type(), ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret), /* allow_copy */ true);
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(ret));
+    } else {
+      output.move_into(std::move(ret));
+    }
   }
 };
 

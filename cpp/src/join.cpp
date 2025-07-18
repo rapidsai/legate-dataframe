@@ -136,7 +136,11 @@ void cudf_join_and_gather(TaskContext& ctx,
     cudf::gather(rhs.select(rhs_out_cols), right_indices_col, right_policy, ctx.stream(), ctx.mr());
 
   // Finally, create a vector of both the left and right results and move it into the output table
-  output.move_into(concat(left_result->release(), right_result->release()), /* allow_copy */ true);
+  if (get_prefer_eager_allocations()) {
+    output.copy_into(std::move(concat(left_result->release(), right_result->release())));
+  } else {
+    output.move_into(std::move(concat(left_result->release(), right_result->release())));
+  }
 }
 
 /**

@@ -43,7 +43,11 @@ class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
 
     std::unique_ptr<cudf::column> ret = cudf::strings::to_timestamps(
       input.column_view(), output.cudf_type(), format, ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret), /* allow_copy */ true);
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(ret));
+    } else {
+      output.move_into(std::move(ret));
+    }
   }
 };
 
@@ -65,7 +69,11 @@ class ExtractTimestampComponentTask
     ret = cudf::datetime::extract_datetime_component(
       input.column_view(), component, ctx.stream(), ctx.mr());
 
-    output.move_into(std::move(ret), /* allow_copy */ true);
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(ret));
+    } else {
+      output.move_into(std::move(ret));
+    }
   }
 };
 
