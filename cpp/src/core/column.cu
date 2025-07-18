@@ -619,7 +619,7 @@ struct move_into_fn {
                   std::unique_ptr<cudf::column> column,
                   cudaStream_t stream)
   {
-    // The string version currently doesn't support already bound outputs.  Presumably, this
+    // The string version currently doesn't support already bound chars outputs.  Presumably, this
     // can't happen right now anyway, because the result size is not fixed so it should fail early?
     const auto num_rows = column->size();
     const auto cudf_col = column->view();
@@ -672,32 +672,34 @@ struct move_into_fn {
   }
 };
 
-void from_cudf(legate::PhysicalArray array,
+void from_cudf(TaskContext* ctx,
+               legate::PhysicalArray array,
                std::unique_ptr<cudf::column> column,
                bool scalar = false)
 {
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
   //     seem to get a nullable column.  So also check `has_nulls()`.
-  if (column->nullable() && !array_.nullable() && column->has_nulls()) {
+  if (column->nullable() && !array.nullable() && column->has_nulls()) {
     throw std::invalid_argument(
-      "move_into(): the cudf column is nullable while the PhysicalArray isn't");
+      "from_cudf(): the cudf column is nullable while the PhysicalArray isn't");
   }
 
   if (scalar && column->size() != 1) {
     throw std::invalid_argument("from_cudf(): scalar column must have size one.");
   }
   cudf::type_dispatcher(
-    column->type(), move_into_fn{}, ctx_, array_, std::move(column), ctx_->stream());
+    column->type(), move_into_fn{}, ctx, array, std::move(column), ctx->stream());
 }
 
 }  // namespace
 
 void PhysicalColumn::copy_into(std::unique_ptr<cudf::column> column)
 {
+  // String columns seem tricky, so only check their data for being unbound.
   if (unbound()) {
     throw std::invalid_argument("Cannot call `.copy_into()` on an unbound column.");
   }
-  from_cudf(array_, std::move(column), scalar_out_);
+  from_cudf(ctx_, array_, std::move(column), scalar_out_);
 }
 
 void PhysicalColumn::copy_into(std::unique_ptr<cudf::scalar> scalar)
@@ -710,6 +712,7 @@ void PhysicalColumn::copy_into(std::unique_ptr<cudf::scalar> scalar)
 
 void PhysicalColumn::copy_into(std::shared_ptr<arrow::Array> column)
 {
+  // String columns seem tricky, so only check their data for being unbound.
   if (unbound()) {
     throw std::invalid_argument("Cannot call `.copy_into()` on an unbound column.");
   }
@@ -720,7 +723,7 @@ void PhysicalColumn::copy_into(std::shared_ptr<arrow::Array> column)
 void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
 {
   if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column."); }
-  from_cudf(array_, std::move(column), scalar_out_);
+  from_cudf(ctx_, array_, std::move(column), scalar_out_);
 }
 
 void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)

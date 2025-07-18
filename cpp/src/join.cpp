@@ -136,7 +136,8 @@ void cudf_join_and_gather(TaskContext& ctx,
     cudf::gather(rhs.select(rhs_out_cols), right_indices_col, right_policy, ctx.stream(), ctx.mr());
 
   // Finally, create a vector of both the left and right results and move it into the output table
-  if (get_prefer_eager_allocations()) {
+  if (get_prefer_eager_allocations() &&
+      !output.unbound()) {  // hard to guess if bound so just inspect
     output.copy_into(std::move(concat(left_result->release(), right_result->release())));
   } else {
     output.move_into(std::move(concat(left_result->release(), right_result->release())));
@@ -280,7 +281,7 @@ void append_empty_like_columns(std::vector<LogicalColumn>& output,
 {
   for (const auto& col : table.get_columns()) {
     output.push_back(
-      LogicalColumn::empty_like(col.type(), col.nullable(), /* scalar */ false, size));
+      LogicalColumn::empty_like(col.cudf_type(), col.nullable(), /* scalar */ false, size));
   }
 }
 
@@ -293,7 +294,7 @@ void append_empty_like_columns_force_nullable(std::vector<LogicalColumn>& output
                                               std::optional<size_t> size = std::nullopt)
 {
   for (const auto& col : table.get_columns()) {
-    output.push_back(LogicalColumn::empty_like(col.type(), true, /* scalar */ false, size));
+    output.push_back(LogicalColumn::empty_like(col.cudf_type(), true, /* scalar */ false, size));
   }
 }
 }  // namespace

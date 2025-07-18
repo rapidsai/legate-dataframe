@@ -115,7 +115,11 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
     cudf::column_view col = input.column_view();
     std::unique_ptr<cudf::column> ret =
       cudf::unary_operation(col, arrow_to_cudf_unary_op(op), ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret), /* allow_copy */ true);
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(ret));
+    } else {
+      output.move_into(std::move(ret));
+    }
   }
 };
 

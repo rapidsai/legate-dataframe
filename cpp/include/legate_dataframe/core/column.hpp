@@ -210,22 +210,14 @@ class LogicalColumn {
    * must use the long signature.
    *
    * @param other The prototype column
-   * @param bound Whether the new column should be bound with the size of the input.
    * @return The new unbounded column with the type and nullable equal `other`
    */
-  static LogicalColumn empty_like(const LogicalColumn& other, bool bound = false)
+  static LogicalColumn empty_like(const LogicalColumn& other)
   {
-    if (!bound) {
-      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
-                             other.array_->type(), other.array_->dim(), other.array_->nullable()),
-                           other.cudf_type(),
-                           false);
-    } else {
-      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
-                             other.array_->shape(), other.array_->type(), other.array_->nullable()),
-                           other.cudf_type(),
-                           true);
-    }
+    return LogicalColumn(legate::Runtime::get_runtime()->create_array(
+                           other.array_->type(), other.array_->dim(), other.array_->nullable()),
+                         other.cudf_type(),
+                         false);
   }
 
   /**
@@ -479,15 +471,18 @@ class PhysicalColumn {
   /**
    * @brief Indicates whether the column is unbound or not
    *
+   * For string columns the underlying characters will be (or can be) unbound
+   * even if the ranges are bound.
+   *
    * @return true The column is unbound
    * @return false The column is bound
    */
   [[nodiscard]] bool unbound() const
   {
-    // If one of the underlying stores are unbound, the column as a whole is unbound.
-    // TODO: cache this value
-    const std::vector<legate::PhysicalStore> ss = get_stores(array_);
-    return std::any_of(ss.cbegin(), ss.cend(), [](const auto& s) { return s.is_unbound_store(); });
+    if (!array_.nested()) { return array_.data().is_unbound_store(); }
+    // New string columns won't really have bound characters so only check ranges.
+    // (only nested dtypes we have right now)
+    return array_.as_string_array().ranges().data().is_unbound_store();
   }
 
   /**

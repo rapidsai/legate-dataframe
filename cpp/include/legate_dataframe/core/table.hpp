@@ -569,6 +569,20 @@ class PhysicalTable {
     return dtypes;
   }
 
+  /**
+   * @brief Indicates whether the table is unbound
+   *
+   * A table is consider unbound if one of its columns is unbound.
+   *
+   * @return true The table is unbound
+   * @return false The table is bound
+   */
+  [[nodiscard]] bool unbound() const
+  {
+    // Assume the first column is correct for the whole table.
+    return columns_.front().unbound();
+  }
+
  private:
   std::vector<PhysicalColumn> columns_;
 };
