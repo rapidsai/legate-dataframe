@@ -81,10 +81,7 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
   // Result needs to be nullable if the input is and the scalar is also.
   // NOTE: We possibly should bite the bullet here and check if the scalar is null
   // or not.  That is blocking, though.
-  std::optional<size_t> size{};
-  if (get_prefer_eager_allocations()) { size = col.num_rows(); }
-  auto ret =
-    LogicalColumn::empty_like(col.cudf_type(), col.nullable() && scalar.nullable(), false, size);
+  auto ret = LogicalColumn::empty_like(col, /* bound */ get_prefer_eager_allocations());
   if (col.cudf_type() != scalar.cudf_type()) {
     throw std::invalid_argument("Scalar type does not match column type.");
   }
@@ -98,7 +95,7 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
   auto in_var = argument::add_next_input(task, col);
   argument::add_next_input(task, scalar, /* broadcast */ true);
   auto out_var = argument::add_next_output(task, ret);
-  if (size.has_value()) { task.add_constraint(legate::align(out_var, in_var)); }
+  if (get_prefer_eager_allocations()) { task.add_constraint(legate::align(out_var, in_var)); }
 
   runtime->submit(std::move(task));
   return ret;

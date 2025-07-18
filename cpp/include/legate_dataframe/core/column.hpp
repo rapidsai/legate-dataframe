@@ -247,28 +247,6 @@ class LogicalColumn {
    * @param dtype The data type of the new column
    * @param nullable The nullable of the new column
    * @param scalar Whether the result is a scalar column.
-   * @param bound_shape If provided, the column will be bound with the given shape.
-   * @return The new unbounded column
-   */
-  static LogicalColumn empty_like(const legate::Type& dtype,
-                                  bool nullable,
-                                  bool scalar                = false,
-                                  std::optional<size_t> size = std::nullopt)
-  {
-    if (!size.has_value()) {
-      return LogicalColumn(legate::Runtime::get_runtime()->create_array(dtype, 1, nullable));
-    } else {
-      return LogicalColumn(
-        legate::Runtime::get_runtime()->create_array(Shape{size.value()}, dtype, nullable));
-    }
-  }
-
-  /**
-   * @brief Create a new unbounded column from dtype and nullable
-   *
-   * @param dtype The data type of the new column
-   * @param nullable The nullable of the new column
-   * @param scalar Whether the result is a scalar column.
    * @return The new unbounded column
    */
   static LogicalColumn empty_like(cudf::data_type dtype,
