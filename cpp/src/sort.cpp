@@ -305,6 +305,21 @@ std::unique_ptr<std::vector<cudf::size_type>> find_splits_for_distribution(
   return std::move(splits_host);
 }
 
+static std::unique_ptr<cudf::table> apply_limit(std::unique_ptr<cudf::table> tbl, int64_t limit)
+{
+  if (limit != INT64_MIN && std::abs(limit) < tbl->num_rows()) {
+    cudf::size_type cudf_limit = static_cast<cudf::size_type>(limit);
+    cudf::table_view slice;
+    if (limit < 0) {
+      slice = cudf::slice(tbl->view(), {tbl->num_rows() + cudf_limit, tbl->num_rows()})[0];
+    } else {
+      slice = cudf::slice(tbl->view(), {0, cudf_limit})[0];
+    }
+    tbl = std::make_unique<cudf::table>(slice);
+  }
+  return tbl;
+}
+
 }  // namespace
 
 class SortTask : public Task<SortTask, OpCode::Sort> {
@@ -325,6 +340,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     const auto column_order    = argument::get_next_scalar_vector<cudf::order>(ctx);
     const auto null_precedence = argument::get_next_scalar_vector<cudf::null_order>(ctx);
     const auto stable          = argument::get_next_scalar<bool>(ctx);
+    const auto limit           = argument::get_next_scalar<int64_t>(ctx);
     auto output                = argument::get_next_output<PhysicalTable>(ctx);
 
     // Create a new locally sorted table (we always need this)
@@ -333,6 +349,8 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     auto sort_func = stable ? cudf::stable_sort_by_key : cudf::sort_by_key;
     auto my_sorted_tbl =
       sort_func(cudf_tbl, key, column_order, null_precedence, ctx.stream(), ctx.mr());
+
+    my_sorted_tbl = apply_limit(std::move(my_sorted_tbl), limit);
 
     if (ctx.nranks == 1) {
       output.move_into(my_sorted_tbl->release());
@@ -389,7 +407,8 @@ LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
                   const std::vector<cudf::order>& column_order,
                   const std::vector<cudf::null_order>& null_precedence,
-                  bool stable)
+                  bool stable,
+                  std::optional<int64_t> limit)
 {
   if (keys.size() == 0) { throw std::invalid_argument("must sort along at least one column"); }
   if (column_order.size() != keys.size() || null_precedence.size() != keys.size()) {
@@ -419,11 +438,19 @@ LogicalTable sort(const LogicalTable& tbl,
   argument::add_next_scalar_vector(task, column_order_lg);
   argument::add_next_scalar_vector(task, null_precedence_lg);
   argument::add_next_scalar(task, stable);
+  argument::add_next_scalar(task, limit.has_value() ? limit.value() : INT64_MIN);
   argument::add_next_output(task, ret);
 
   task.add_communicator("nccl");
 
   runtime->submit(std::move(task));
+  if (limit.has_value()) {
+    if (limit.value() < 0) {
+      ret = ret.slice({limit.value(), legate::Slice::OPEN});
+    } else {
+      ret = ret.slice({0, limit.value()});
+    }
+  }
   return ret;
 }
 
