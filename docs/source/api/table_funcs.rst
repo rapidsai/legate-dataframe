@@ -33,12 +33,3 @@ Related options/enums
 
 .. autodata:: legate_dataframe.lib.join.null_equality
     :no-value:
-
-.. autodata:: legate_dataframe.lib.sort.Order
-
-    Column sort order, either ``ASCENDING`` or ``DESCENDING`` (from ``pylibcudf``).
-
-.. autodata:: legate_dataframe.lib.sort.NullOrder
-
-    NULL sort order with respect to values, either ``FIRST`` or ``LAST``.
-    I.e. whether NULL is considered smaller or larger any possible value.

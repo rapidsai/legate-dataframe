@@ -36,7 +36,5 @@ legate \
     --ignore=test_groupby_aggregation.py \
     --ignore=test_join.py \
     --ignore=test_replace.py \
-    --ignore=test_sort.py \
-    --ignore=test_stream_compaction.py \
     --ignore=test_timestamps.py \
     "${@}"

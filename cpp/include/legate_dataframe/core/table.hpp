@@ -410,6 +410,58 @@ class PhysicalTable {
   }
 
   /**
+   * @brief Copy local cudf columns into this bound physical table
+   *
+   * Note: to save the copy use `move_into()` on an unbound table.
+   *
+   * @param columns The cudf columns to copy
+   */
+  void copy_into(std::vector<std::unique_ptr<cudf::column>> columns)
+  {
+    if (columns.size() != columns_.size()) {
+      throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
+                               std::to_string(columns_.size()) +
+                               " != " + std::to_string(columns.size()));
+    }
+    for (size_t i = 0; i < columns.size(); ++i) {
+      columns_[i].copy_into(std::move(columns[i]));
+    }
+  }
+
+  /**
+   * @brief Copy a local arrow table into this bound physical table
+   *
+   * Note: to save the copy use `move_into()` on an unbound table.
+   *
+   * @param table The arrow table to copy
+   */
+  void copy_into(std::shared_ptr<arrow::Table> table)
+  {
+    if (static_cast<std::size_t>(table->num_columns()) != columns_.size()) {
+      throw std::runtime_error("LogicalTable.move_into(): number of columns mismatch " +
+                               std::to_string(columns_.size()) +
+                               " != " + std::to_string(table->num_columns()));
+    }
+    // Component chunked arrays must be converted to contiguous arrays
+    auto combined = table->CombineChunks().ValueOrDie();
+    for (int i = 0; i < combined->num_columns(); ++i) {
+      auto chunked_array = combined->column(i);
+      std::shared_ptr<arrow::Array> contiguous_array;
+      if (chunked_array->num_chunks() == 0) { continue; }
+      columns_[i].copy_into(chunked_array->chunk(0));
+    }
+  }
+
+  /**
+   * @brief Copy local cudf table into this bound physical table
+   *
+   * Note: to save the copy use `move_into()` on an unbound table.
+   *
+   * @param table The cudf table to copy
+   */
+  void copy_into(std::unique_ptr<cudf::table> table) { copy_into(table->release()); }
+
+  /**
    * @brief Move local cudf columns into this unbound physical table
    *
    * @param columns The cudf columns to move
@@ -515,6 +567,20 @@ class PhysicalTable {
       dtypes.push_back(col.arrow_type());
     }
     return dtypes;
+  }
+
+  /**
+   * @brief Indicates whether the table is unbound
+   *
+   * A table is consider unbound if one of its columns is unbound.
+   *
+   * @return true The table is unbound
+   * @return false The table is bound
+   */
+  [[nodiscard]] bool unbound() const
+  {
+    // Assume the first column is correct for the whole table.
+    return columns_.front().unbound();
   }
 
  private:

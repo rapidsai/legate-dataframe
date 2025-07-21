@@ -974,13 +974,13 @@ class Join(IR):
 class Sort(IR):
     """Sort a dataframe."""
 
-    __slots__ = ("by", "null_order", "order", "stable", "zlice")
-    _non_child = ("schema", "by", "order", "null_order", "stable", "zlice")
+    __slots__ = ("by", "nulls_at_end", "sort_ascending", "stable", "zlice")
+    _non_child = ("schema", "by", "sort_ascending", "nulls_at_end", "stable", "zlice")
     by: tuple[expr.NamedExpr, ...]
     """Sort keys."""
-    order: tuple[plc.types.Order, ...]
+    sort_ascending: tuple[bool, ...]
     """Sort order for each sort key."""
-    null_order: tuple[plc.types.NullOrder, ...]
+    nulls_at_end: bool
     """Null sorting location for each sort key."""
     stable: bool
     """Should the sort be stable?"""
@@ -991,22 +991,22 @@ class Sort(IR):
         self,
         schema: Schema,
         by: Sequence[expr.NamedExpr],
-        order: Sequence[plc.types.Order],
-        null_order: Sequence[plc.types.NullOrder],
+        sort_ascending: Sequence[bool],
+        nulls_at_end: bool,
         stable: bool,  # noqa: FBT001
         zlice: Zlice | None,
         df: IR,
     ):
         self.schema = schema
         self.by = tuple(by)
-        self.order = tuple(order)
-        self.null_order = tuple(null_order)
+        self.sort_ascending = tuple(sort_ascending)
+        self.nulls_at_end = nulls_at_end
         self.stable = stable
         self.zlice = zlice
         self._non_child_args = (
             self.by,
-            self.order,
-            self.null_order,
+            self.sort_ascending,
+            self.nulls_at_end,
             self.stable,
             self.zlice,
         )
@@ -1016,8 +1016,8 @@ class Sort(IR):
     def do_evaluate(
         cls,
         by: Sequence[expr.NamedExpr],
-        order: Sequence[plc.types.Order],
-        null_order: Sequence[plc.types.NullOrder],
+        sort_ascending: Sequence[bool],
+        nulls_at_end: bool,
         stable: bool,  # noqa: FBT001
         zlice: Zlice | None,
         df: DataFrame,
@@ -1030,8 +1030,8 @@ class Sort(IR):
         table = sort.sort(
             df.table,
             by_names,
-            column_order=list(order),
-            null_precedence=list(null_order),
+            sort_ascending=list(sort_ascending),
+            nulls_at_end=nulls_at_end,
             stable=stable,
         )
 

@@ -359,10 +359,10 @@ def _(node: pl_ir.Sort, translator: Translator, schema: Schema) -> ir.IR:
             for e in node.by_column
         ]
     stable, nulls_last, descending = node.sort_options
-    order, null_order = sorting.sort_order(
+    sort_ascending, nulls_at_end = sorting.sort_order(
         descending, nulls_last=nulls_last, num_keys=len(by)
     )
-    return ir.Sort(schema, by, order, null_order, stable, node.slice, inp)
+    return ir.Sort(schema, by, sort_ascending, nulls_at_end, stable, node.slice, inp)
 
 
 @_translate_ir.register

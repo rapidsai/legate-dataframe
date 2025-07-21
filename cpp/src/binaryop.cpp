@@ -152,7 +152,11 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
       ret = cudf::binary_operation(
         lhs.column_view(), rhs.column_view(), op, output.cudf_type(), ctx.stream(), ctx.mr());
     }
-    output.move_into(std::move(ret));
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(ret));
+    } else {
+      output.move_into(std::move(ret));
+    }
   }
 };
 
@@ -190,7 +194,9 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
 
   bool nullable      = lhs.nullable() || rhs.nullable();
   auto scalar_result = lhs.is_scalar() && rhs.is_scalar();
-  auto ret           = LogicalColumn::empty_like(std::move(output_type), nullable, scalar_result);
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = lhs.is_scalar() ? rhs.num_rows() : lhs.num_rows(); }
+  auto ret = LogicalColumn::empty_like(std::move(output_type), nullable, scalar_result, size);
   legate::AutoTask task =
     runtime->create_task(get_library(), task::BinaryOpColColTask::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, op);
@@ -201,7 +207,10 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
   if (!rhs.is_scalar() && !lhs.is_scalar()) {
     task.add_constraint(legate::align(lhs_var, rhs_var));
   }
-  argument::add_next_output(task, ret);
+  auto out_var = argument::add_next_output(task, ret);
+  if (size.has_value()) {
+    task.add_constraint(legate::align(out_var, lhs.is_scalar() ? rhs_var : lhs_var));
+  }
   runtime->submit(std::move(task));
   return ret;
 }

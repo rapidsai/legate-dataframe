@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import cudf
 import cupy
 import legate.core.types as lg_type
+import pytest
 from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalColumn
@@ -22,6 +25,10 @@ from legate_dataframe.lib.unaryop import unary_operation
 from legate_dataframe.testing import assert_frame_equal
 
 
+@pytest.mark.skipif(
+    os.environ.get("LDF_PREFER_EAGER_ALLOCATIONS") == "1",
+    reason="Test would need to ensure output is bound",
+)
 def test_python_launched_tasks():
     col = LogicalColumn.from_cudf(cudf.Series(cupy.random.random(100))._column)
 

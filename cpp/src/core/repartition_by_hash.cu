@@ -19,8 +19,12 @@
 
 #include <cuda_runtime_api.h>
 
+#include "legate/comm/coll.h"
 #include <legate.h>
 #include <legate/cuda/cuda.h>
+
+#include "arrow/io/api.h"
+#include "arrow/ipc/api.h"
 
 #include <cudf/concatenate.hpp>
 #include <cudf/contiguous_split.hpp>
@@ -123,7 +127,110 @@ class ExchangedSizes {
   }
 };
 
+// Sendcounts contains the size of the buffer send to the j-th rank.
+// Returns recvcounts: the size of the buffer received from the j-th rank.
+std::vector<int> get_recvcounts(TaskContext& ctx, const std::vector<int>& sendcounts)
+{
+  std::vector<int> recvcounts(ctx.nranks);
+  legate::comm::coll::collAlltoall(
+    sendcounts.data(),
+    recvcounts.data(),
+    1,
+    legate::comm::coll::CollDataType::CollInt,
+    ctx.get_legate_context().communicator(0).get<legate::comm::coll::CollComm>());
+
+  return recvcounts;
+}
+
 }  // namespace
+
+/**
+ * @brief Shuffle (all-to-all exchange) packed arrow partitioned table.
+ *
+ *
+ * @param ctx The context of the calling task
+ * @param tbl_partitioned The local table partitioned into multiple tables such
+ * that `tbl_partitioned.at(i)` should end up at rank i.
+ * @return A vector of tables sent to this rank by other ranks.
+ */
+std::vector<std::shared_ptr<arrow::Table>> shuffle(
+  TaskContext& ctx, const std::vector<std::shared_ptr<arrow::Table>>& tbl_partitioned)
+{
+  if (tbl_partitioned.size() != ctx.nranks) {
+    throw std::runtime_error("internal error: partition split has wrong size.");
+  }
+
+  if (ctx.get_legate_context().communicators().empty()) {
+    throw std::runtime_error("internal error: communicator not initialized.");
+  }
+  auto comm      = ctx.get_legate_context().communicator(0);
+  auto* comm_ptr = comm.get<legate::comm::coll::CollComm>();
+
+  // Serialize table as buffers
+  std::vector<std::shared_ptr<arrow::Buffer>> send_buffers;
+  std::vector<int> sendcounts;
+  for (const auto& tbl : tbl_partitioned) {
+    auto output_stream = ARROW_RESULT(arrow::io::BufferOutputStream::Create());
+    auto writer        = ARROW_RESULT(arrow::ipc::MakeStreamWriter(output_stream, tbl->schema()));
+
+    auto status = writer->WriteTable(*tbl);
+    status      = writer->Close();
+    if (!status.ok()) {
+      std::stringstream ss;
+      ss << "Failed to write table to stream: " << status.ToString();
+      throw std::runtime_error(ss.str());
+    }
+    send_buffers.push_back(ARROW_RESULT(output_stream->Finish()));
+    sendcounts.push_back(send_buffers.back()->size());
+  }
+
+  std::size_t total_send_size =
+    std::accumulate(sendcounts.begin(), sendcounts.end(), 0, std::plus<std::size_t>());
+  auto sendbuffer = legate::create_buffer<uint8_t>(total_send_size);
+
+  // Pack the buffers into a single buffer
+  std::size_t offset = 0;
+  std::vector<int> displacements_send;
+  for (size_t i = 0; i < send_buffers.size(); ++i) {
+    displacements_send.push_back(offset);
+    auto& buf = send_buffers[i];
+    std::memcpy(sendbuffer.ptr(offset), buf->data(), buf->size());
+    offset += buf->size();
+  }
+
+  // Communicate the sizes to all ranks
+  auto recvcounts = get_recvcounts(ctx, sendcounts);
+  std::vector<int> displacements_recv;
+  std::size_t total_recv_size = 0;
+  for (size_t i = 0; i < recvcounts.size(); ++i) {
+    displacements_recv.push_back(total_recv_size);
+    total_recv_size += recvcounts[i];
+  }
+
+  auto recvbuffer = legate::create_buffer<uint8_t>(total_recv_size);
+  comm::coll::collAlltoallv(sendbuffer.ptr(0),
+                            sendcounts.data(),
+                            displacements_send.data(),
+                            recvbuffer.ptr(0),
+                            recvcounts.data(),
+                            displacements_recv.data(),
+                            comm::coll::CollDataType::CollInt8,
+                            comm_ptr);
+
+  std::vector<std::shared_ptr<arrow::Table>> result;
+  offset = 0;
+  for (size_t i = 0; i < recvcounts.size(); ++i) {
+    auto buffer = arrow::Buffer::Wrap(recvbuffer.ptr(offset), recvcounts[i]);
+    offset += recvcounts[i];
+    auto input_stream = arrow::io::BufferReader(buffer);
+    auto reader       = ARROW_RESULT(arrow::ipc::RecordBatchStreamReader::Open(&input_stream));
+    result.push_back(ARROW_RESULT(reader->ToTable()));
+  }
+
+  sendbuffer.destroy();
+  recvbuffer.destroy();
+  return result;
+}
 
 /**
  * @brief Shuffle (all-to-all exchange) packed cudf partitioned table.

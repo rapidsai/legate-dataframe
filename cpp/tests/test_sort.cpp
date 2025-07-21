@@ -14,82 +14,104 @@
  * limitations under the License.
  */
 
-#include <cudf/column/column_view.hpp>
-#include <cudf/groupby.hpp>
-#include <cudf/sorting.hpp>
-
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/table_utilities.hpp>
-#include <cudf_test/type_lists.hpp>
-
+#include "gtest/gtest.h"
+#include <arrow/compute/api.h>
 #include <legate_dataframe/sort.hpp>
 
-template <typename T>
-using column_wrapper = cudf::test::fixed_width_column_wrapper<T>;
-using strcol_wrapper = cudf::test::strings_column_wrapper;
-using CVector        = std::vector<std::unique_ptr<cudf::column>>;
-using Table          = cudf::table;
-
-using Order     = cudf::order;
-using NullOrder = cudf::null_order;
+using namespace legate::dataframe;
 
 TEST(SortTest, SimpleNoNulls)
 {
-  column_wrapper<int32_t> col_0{{3, 1, 2, 0, 2, 2}};
-  strcol_wrapper col_1({"s1", "s1", "s1", "s0", "s0", "s0"});
-  column_wrapper<int32_t> col_2{{0, 1, 2, 3, 4, 5}};
+  LogicalColumn a(std::vector<int>{3, 1, 2, 0, 2, 2});
+  LogicalColumn b(std::vector<std::string>{"s1", "s1", "s1", "s0", "s0", "s0"});
+  LogicalColumn c(std::vector<int>{0, 1, 2, 3, 4, 5});
 
-  CVector cols;
-  cols.push_back(col_0.release());
-  cols.push_back(col_1.release());
-  cols.push_back(col_2.release());
+  std::vector<std::string> column_names = {"a", "b", "c"};
 
-  Table tbl(std::move(cols));
+  LogicalTable lg_tbl({a, b, c}, column_names);
 
-  legate::dataframe::LogicalTable lg_tbl(tbl.view(), {"a", "b", "c"});
+  std::vector<bool> sort_ascending({true, true, true});
+  bool nulls_at_end = false;
+  bool stable       = true;
+  std::vector<arrow::compute::SortKey> sort_keys;
+  for (size_t i = 0; i < sort_ascending.size(); i++) {
+    // Translate cudf parameters to arrow parameters
+    auto order_i = sort_ascending[i] ? arrow::compute::SortOrder::Ascending
+                                     : arrow::compute::SortOrder::Descending;
+    sort_keys.push_back(arrow::compute::SortKey{column_names.at(i), order_i});
+  }
+  // Arrow does not support null_order per column, so we use the first one
+  auto null_order =
+    nulls_at_end ? arrow::compute::NullPlacement::AtEnd : arrow::compute::NullPlacement::AtStart;
 
-  std::vector<Order> order({Order::ASCENDING, Order::ASCENDING, Order::ASCENDING});
-  std::vector<NullOrder> null_precedence({NullOrder::AFTER, NullOrder::AFTER, NullOrder::AFTER});
-  bool stable = true;
+  arrow::compute::SortOptions sort_options(sort_keys, null_order);
+  // auto expect = cudf::stable_sorttbl, order, null_precedence);
+  auto indices = ARROW_RESULT(arrow::compute::SortIndices(lg_tbl.get_arrow(), sort_options));
+  auto expect =
+    ARROW_RESULT(arrow::compute::Take(lg_tbl.get_arrow(), *indices, arrow::compute::TakeOptions{}))
+      .table();
 
-  auto expect = cudf::stable_sort(tbl, order, null_precedence);
-  auto result = legate::dataframe::sort(lg_tbl, {"a", "b", "c"}, order, null_precedence, stable);
+  auto result =
+    legate::dataframe::sort(lg_tbl, {"a", "b", "c"}, sort_ascending, nulls_at_end, stable);
 
-  CUDF_TEST_EXPECT_TABLES_EQUIVALENT(*expect, result.get_cudf()->view());
-
-  // Change first column to descending and use the unstable sort path:
-  order           = {Order::DESCENDING, Order::ASCENDING, Order::ASCENDING};
-  null_precedence = {NullOrder::AFTER, NullOrder::AFTER, NullOrder::AFTER};
-  stable          = false;
-
-  expect = cudf::sort(tbl, order, null_precedence);
-  result = legate::dataframe::sort(lg_tbl, {"a", "b", "c"}, order, null_precedence, stable);
-
-  CUDF_TEST_EXPECT_TABLES_EQUIVALENT(*expect, result.get_cudf()->view());
+  EXPECT_TRUE(result.get_arrow()->Equals(*expect))
+    << "Expected: " << expect->ToString() << "\nResult: " << result.get_arrow()->ToString();
 }
 
 TEST(SortTest, SimpleNullsSomeCols)
 {
-  column_wrapper<int32_t> col_0{{3, 1, 2, 0, 2, 2}, {0, 0, 1, 1, 0, 0}};
-  strcol_wrapper col_1({"s1", "s1", "s1", "s0", "s0", "s0"}, {0, 0, 0, 0, 0, 1});
-  column_wrapper<int32_t> col_2{{0, 1, 2, 3, 4, 5}};
+  // Create LogicalColumns with nulls
+  LogicalColumn a(std::vector<int>{3, 1, 2, 0, 2, 2}, std::vector<bool>{0, 0, 1, 1, 0, 0});
+  LogicalColumn b(std::vector<std::string>{"s1", "s1", "s1", "s0", "s0", "s0"},
+                  std::vector<bool>{0, 0, 0, 0, 0, 1});
+  LogicalColumn c(std::vector<int>{0, 1, 2, 3, 4, 5});
 
-  CVector cols;
-  cols.push_back(col_0.release());
-  cols.push_back(col_1.release());
-  cols.push_back(col_2.release());
+  std::vector<std::string> column_names = {"a", "b", "c"};
 
-  Table tbl(std::move(cols));
+  LogicalTable lg_tbl({a, b, c}, column_names);
 
-  legate::dataframe::LogicalTable lg_tbl(tbl.view(), {"a", "b", "c"});
+  std::vector<bool> sort_ascending({true, false});
+  bool nulls_at_end = false;
+  bool stable       = true;
 
-  std::vector<Order> order({Order::ASCENDING, Order::DESCENDING});
-  std::vector<NullOrder> null_precedence({NullOrder::BEFORE, NullOrder::AFTER});
-  bool stable = true;
+  // Create expected result using Arrow compute functions
+  std::vector<arrow::compute::SortKey> sort_keys;
+  for (size_t i = 0; i < sort_ascending.size(); i++) {
+    auto order_i = sort_ascending[i] ? arrow::compute::SortOrder::Ascending
+                                     : arrow::compute::SortOrder::Descending;
+    sort_keys.push_back(arrow::compute::SortKey{column_names.at(i), order_i});
+  }
 
-  auto expect = cudf::stable_sort_by_key(tbl, tbl.select({0, 1}), order, null_precedence);
-  auto result = legate::dataframe::sort(lg_tbl, {"a", "b"}, order, null_precedence, stable);
+  arrow::compute::SortOptions sort_options(
+    sort_keys,
+    nulls_at_end ? arrow::compute::NullPlacement::AtEnd : arrow::compute::NullPlacement::AtStart);
+  auto indices = ARROW_RESULT(arrow::compute::SortIndices(lg_tbl.get_arrow(), sort_options));
+  auto expect =
+    ARROW_RESULT(arrow::compute::Take(lg_tbl.get_arrow(), *indices, arrow::compute::TakeOptions{}))
+      .table();
 
-  CUDF_TEST_EXPECT_TABLES_EQUIVALENT(*expect, result.get_cudf()->view());
+  auto result = legate::dataframe::sort(lg_tbl, {"a", "b"}, sort_ascending, nulls_at_end, stable);
+
+  EXPECT_TRUE(result.get_arrow()->Equals(*expect))
+    << "Expected: " << expect->ToString() << "\nResult: " << result.get_arrow()->ToString();
+
+  // Test with null_after
+  nulls_at_end = true;
+
+  arrow::compute::SortOptions sort_options_after(
+    sort_keys,
+    nulls_at_end ? arrow::compute::NullPlacement::AtEnd : arrow::compute::NullPlacement::AtStart);
+  auto indices_after =
+    ARROW_RESULT(arrow::compute::SortIndices(lg_tbl.get_arrow(), sort_options_after));
+  auto expect_after =
+    ARROW_RESULT(
+      arrow::compute::Take(lg_tbl.get_arrow(), *indices_after, arrow::compute::TakeOptions{}))
+      .table();
+
+  auto result_after =
+    legate::dataframe::sort(lg_tbl, {"a", "b"}, sort_ascending, nulls_at_end, stable);
+
+  EXPECT_TRUE(result_after.get_arrow()->Equals(*expect_after))
+    << "Expected: " << expect_after->ToString()
+    << "\nResult: " << result_after.get_arrow()->ToString();
 }
