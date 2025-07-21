@@ -203,7 +203,7 @@ class LogicalColumn {
                 rmm::cuda_stream_view stream = cudf::get_default_stream());
 
   /**
-   * @brief Create a new unbounded column from an existing column
+   * @brief Create a new column from an existing column
    *
    * This function always returns a non-scalar column, even if the input was
    * considered scalar.  Functions that wish to propagate scalar information
@@ -238,27 +238,25 @@ class LogicalColumn {
    *
    * @param dtype The data type of the new column
    * @param nullable The nullable of the new column
-   * @return The new unbounded column
-   */
-  static LogicalColumn empty_like(const legate::Type& dtype, bool nullable, bool scalar = false)
-  {
-    return LogicalColumn(legate::Runtime::get_runtime()->create_array(dtype, 1, nullable));
-  }
-
-  /**
-   * @brief Create a new unbounded column from dtype and nullable
-   *
-   * @param dtype The data type of the new column
-   * @param nullable The nullable of the new column
    * @param scalar Whether the result is a scalar column.
    * @return The new unbounded column
    */
-  static LogicalColumn empty_like(cudf::data_type dtype, bool nullable, bool scalar = false)
+  static LogicalColumn empty_like(cudf::data_type dtype,
+                                  bool nullable,
+                                  bool scalar                = false,
+                                  std::optional<size_t> size = std::nullopt)
   {
-    return LogicalColumn(
-      legate::Runtime::get_runtime()->create_array(to_legate_type(dtype.id()), 1, nullable),
-      dtype,
-      scalar);
+    if (!size.has_value()) {
+      return LogicalColumn(
+        legate::Runtime::get_runtime()->create_array(to_legate_type(dtype.id()), 1, nullable),
+        dtype,
+        scalar);
+    } else {
+      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
+                             Shape{size.value()}, to_legate_type(dtype.id()), nullable),
+                           dtype,
+                           scalar);
+    }
   }
 
  public:
@@ -473,15 +471,18 @@ class PhysicalColumn {
   /**
    * @brief Indicates whether the column is unbound or not
    *
+   * For string columns the underlying characters will be (or can be) unbound
+   * even if the ranges are bound.
+   *
    * @return true The column is unbound
    * @return false The column is bound
    */
   [[nodiscard]] bool unbound() const
   {
-    // If one of the underlying stores are unbound, the column as a whole is unbound.
-    // TODO: cache this value
-    const std::vector<legate::PhysicalStore> ss = get_stores(array_);
-    return std::any_of(ss.cbegin(), ss.cend(), [](const auto& s) { return s.is_unbound_store(); });
+    if (!array_.nested()) { return array_.data().is_unbound_store(); }
+    // New string columns won't really have bound characters so only check ranges.
+    // (only nested dtypes we have right now)
+    return array_.as_string_array().ranges().data().is_unbound_store();
   }
 
   /**
@@ -598,6 +599,27 @@ class PhysicalColumn {
   std::string repr(legate::Memory::Kind mem_kind,
                    cudaStream_t stream,
                    size_t max_num_items = 30) const;
+
+  /**
+   * @brief Copy local cudf column into this unbound physical column
+   *
+   * @param column The cudf column to copy
+   */
+  void copy_into(std::unique_ptr<cudf::column> column);
+
+  /**
+   * @brief Copy local cudf scalar into this bound physical column
+   *
+   * @param scalar The cudf scalar to copy
+   */
+  void copy_into(std::unique_ptr<cudf::scalar> scalar);
+
+  /**
+   * @brief Copy local arrow array into this unbound physical column
+   *
+   * @param column The arrow array to copy
+   */
+  void copy_into(std::shared_ptr<arrow::Array> column);
 
   /**
    * @brief Move local cudf column into this unbound physical column

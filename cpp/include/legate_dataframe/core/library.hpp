@@ -59,4 +59,6 @@ struct Task : public legate::LegateTask<T> {
 
 legate::Library& get_library();
 
+bool get_prefer_eager_allocations();
+
 }  // namespace legate::dataframe
