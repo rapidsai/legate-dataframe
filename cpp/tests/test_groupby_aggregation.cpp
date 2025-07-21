@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include <arrow/acero/api.h>
+#include <arrow/api.h>
+#include <arrow/compute/api.h>
+
+#include "test_utils.hpp"
+#include <gtest/gtest.h>
+#include <legate.h>
+#include <legate_dataframe/sort.hpp>
 
 #include <cudf/column/column_view.hpp>
 #include <cudf/groupby.hpp>
@@ -28,12 +37,12 @@
 using namespace legate::dataframe;
 
 template <typename V>
-struct GroupByAggregationTest : public cudf::test::BaseFixture {};
+struct GroupByAggregationTest : public testing::Test {};
 
-using K      = int32_t;
-using dtypes = cudf::test::Types<int8_t, int16_t, int32_t, int64_t, float, double>;
+using K     = int32_t;
+using Types = ::testing::Types<int8_t, int16_t, int32_t, int64_t, float, double>;
 
-TYPED_TEST_SUITE(GroupByAggregationTest, dtypes);
+TYPED_TEST_SUITE(GroupByAggregationTest, Types);
 
 namespace {
 
@@ -66,26 +75,41 @@ TYPED_TEST(GroupByAggregationTest, single_sum_with_nulls)
   using V  = TypeParam;
   auto SUM = cudf::aggregation::Kind::SUM;
 
-  cudf::test::fixed_width_column_wrapper<K> _keys{1, 2, 3, 1, 2, 2, 1, 3, 3, 2};
-  cudf::test::fixed_width_column_wrapper<V> _vals({0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-                                                  {0, 1, 0, 1, 1, 1, 0, 1, 0, 0});
-  auto keys = cudf::table_view({_keys});
-  auto vals = cudf::column_view(_vals);
+  auto keys_column = LogicalColumn(narrow<K>({1, 2, 3, 1, 2, 2, 1, 3, 3, 2}));
+  auto values_column =
+    LogicalColumn(narrow<V>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}), {0, 1, 0, 1, 1, 1, 0, 1, 0, 0});
+  const std::vector<std::string> names({"key", "value"});
+  auto table = LogicalTable({keys_column, values_column}, names);
 
-  std::vector<cudf::groupby::aggregation_request> requests(1);
-  requests[0].values       = vals;
-  requests[0].aggregations = make_groupby_aggregations({SUM});
+  arrow::compute::Aggregate aggregate;
+  aggregate.function             = "hash_sum";
+  aggregate.name                 = "sum";
+  aggregate.target               = std::vector<arrow::FieldRef>({"value"});
+  arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
+    {{"table_source", arrow::acero::TableSourceNodeOptions(table.get_arrow())},
+     {"aggregate", arrow::acero::AggregateNodeOptions({aggregate}, {"key"})}});
+  auto expected = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
 
-  cudf::groupby::groupby gb_obj(keys);
-  auto expect = sort_result(gb_obj.aggregate(requests));
+  auto result = groupby_aggregation(table, {"key"}, {std::make_tuple("value", SUM, "sum")});
 
-  std::vector<LogicalColumn> lg_columns    = {keys.column(0), vals};
-  std::vector<std::string> lg_column_names = {"key", "val"};
-  LogicalTable lg_table(std::move(lg_columns), std::move(lg_column_names));
+  result = legate::dataframe::sort(
+    result, {"key"}, {cudf::order::ASCENDING}, {cudf::null_order::AFTER}, true);
 
-  auto result = groupby_aggregation(lg_table, {"key"}, {std::make_tuple("val", SUM, "sum")});
+  auto result_arrow = result.get_arrow();
 
-  CUDF_TEST_EXPECT_TABLES_EQUAL(expect->view(), sort_result(result)->view());
+  for (auto name : expected->ColumnNames()) {
+    auto expected_col = expected->GetColumnByName(name);
+    auto result_col   = result_arrow->GetColumnByName(name);
+    // Cast expected to same type if needed
+    if (expected_col->type() != result_col->type()) {
+      auto cast = ARROW_RESULT(arrow::compute::Cast(*arrow::Concatenate(expected_col->chunks()),
+                                                    result_col->type()))
+                    .make_array();
+      expected_col = std::make_shared<arrow::ChunkedArray>(cast);
+    }
+
+    EXPECT_TRUE(expected_col->ApproxEquals(*result_col));
+  }
 }
 
 TYPED_TEST(GroupByAggregationTest, nunique_and_max)
