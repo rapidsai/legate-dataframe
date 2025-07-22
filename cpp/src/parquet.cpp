@@ -42,8 +42,6 @@
 
 #include <legate_dataframe/parquet.hpp>
 
-#include <iostream>
-
 namespace legate::dataframe::task {
 
 class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
