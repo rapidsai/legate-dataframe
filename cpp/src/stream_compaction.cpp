@@ -43,8 +43,10 @@ class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBool
     const auto boolean_mask = argument::get_next_input<PhysicalColumn>(ctx);
     auto output             = argument::get_next_output<PhysicalTable>(ctx);
 
-    auto dummy_column_names = std::vector<std::string>(tbl.num_columns());
-    std::iota(dummy_column_names.begin(), dummy_column_names.end(), 0);
+    std::vector<std::string> dummy_column_names;
+    for (int i = 0; i < tbl.num_columns(); i++) {
+      dummy_column_names.push_back(std::to_string(i));
+    }
 
     auto result =
       ARROW_RESULT(

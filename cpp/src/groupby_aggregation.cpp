@@ -21,6 +21,9 @@
 #include <tuple>
 #include <vector>
 
+#include <arrow/acero/api.h>
+#include <arrow/api.h>
+#include <arrow/compute/api.h>
 #include <legate.h>
 
 #include <cudf/detail/aggregation/aggregation.hpp>  // cudf::detail::target_type
@@ -33,6 +36,19 @@
 namespace legate::dataframe {
 namespace task {
 
+std::string cudf_to_arrow_aggregate_type(cudf::aggregation::Kind kind)
+{
+  switch (kind) {
+    case cudf::aggregation::Kind::SUM: return "hash_sum";
+    case cudf::aggregation::Kind::NUNIQUE: return "hash_count_distinct";
+    case cudf::aggregation::Kind::MAX: return "hash_max";
+    case cudf::aggregation::Kind::MIN: return "hash_min";
+    case cudf::aggregation::Kind::MEAN: return "hash_mean";
+    case cudf::aggregation::Kind::MEDIAN: return "hash_approximate_median";
+    default: throw std::invalid_argument("Unsupported aggregation kind");
+  }
+}
+
 class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::GroupByAggregation> {
  public:
   static inline const auto TASK_CONFIG =
@@ -42,6 +58,61 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
                                                 .with_has_allocations(true)
                                                 .with_concurrent(true)
                                                 .with_elide_device_ctx_sync(true);
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    auto table        = argument::get_next_input<PhysicalTable>(ctx);
+    auto output       = argument::get_next_output<PhysicalTable>(ctx);
+    auto _key_col_idx = argument::get_next_scalar_vector<size_t>(ctx);
+    std::vector<cudf::size_type> key_col_idx(_key_col_idx.begin(), _key_col_idx.end());
+
+    // Get the `column_aggs` task argument
+    std::vector<arrow::compute::Aggregate> aggregates;
+    auto column_aggs_size = argument::get_next_scalar<size_t>(ctx);
+    for (size_t i = 0; i < column_aggs_size; ++i) {
+      auto in_col_idx  = argument::get_next_scalar<size_t>(ctx);
+      auto kind        = argument::get_next_scalar<cudf::aggregation::Kind>(ctx);
+      auto out_col_idx = argument::get_next_scalar<size_t>(ctx);
+      aggregates.push_back(
+        {cudf_to_arrow_aggregate_type(kind), std::to_string(in_col_idx), std::to_string(i)});
+    }
+
+    std::vector<std::string> dummy_column_names;
+    for (int i = 0; i < table.num_columns(); i++) {
+      dummy_column_names.push_back(std::to_string(i));
+    }
+    auto table_view = table.arrow_table_view(dummy_column_names);
+
+    // Repartition `table` based on the keys such that each node can do a local groupby.
+    auto repartitioned = repartition_by_hash(ctx, table_view, key_col_idx);
+
+    // Do the groupby
+    std::vector<arrow::FieldRef> key_names;
+    for (auto idx : key_col_idx) {
+      key_names.push_back(std::to_string(idx));
+    }
+    arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
+      {{"table_source", arrow::acero::TableSourceNodeOptions(repartitioned)},
+       {"aggregate", arrow::acero::AggregateNodeOptions(aggregates, key_names)}});
+    auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+
+    // Make sure the columns match the output type
+    // TODO: this may not be necessary if we create the column types to match arrow
+    auto expected_arrow_types = output.arrow_types();
+    for (size_t i = 0; i < result->num_columns(); ++i) {
+      auto col = result->column(i);
+      if (col->type() != expected_arrow_types.at(i)) {
+        auto cast = ARROW_RESULT(arrow::compute::Cast(*arrow::Concatenate(col->chunks()),
+                                                      expected_arrow_types.at(i)))
+                      .make_array();
+        auto field = arrow::field(std::to_string(i), expected_arrow_types.at(i));
+        result =
+          ARROW_RESULT(result->SetColumn(i, field, std::make_shared<arrow::ChunkedArray>(cast)));
+      }
+    }
+
+    output.move_into(std::move(result));
+  }
 
   static void gpu_variant(legate::TaskContext context)
   {
@@ -245,7 +316,11 @@ LogicalTable groupby_aggregation(
     argument::add_next_scalar(task, out_col_idx);
   }
 
-  task.add_communicator("nccl");
+  if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0) {
+    task.add_communicator("cpu");
+  } else {
+    task.add_communicator("nccl");
+  }
   runtime->submit(std::move(task));
   return output;
 }
