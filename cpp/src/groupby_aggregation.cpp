@@ -28,6 +28,7 @@
 
 #include <cudf/detail/aggregation/aggregation.hpp>  // cudf::detail::target_type
 #include <cudf/groupby.hpp>
+#include <cudf/unary.hpp>
 
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/repartition_by_hash.hpp>
@@ -35,6 +36,45 @@
 
 namespace legate::dataframe {
 namespace task {
+
+std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggregation::Kind kind)
+{
+  switch (kind) {
+    case cudf::aggregation::Kind::SUM: {
+      return cudf::make_sum_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::PRODUCT: {
+      return cudf::make_product_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::MIN: {
+      return cudf::make_min_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::MAX: {
+      return cudf::make_max_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::SUM_OF_SQUARES: {
+      return cudf::make_sum_of_squares_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::MEAN: {
+      return cudf::make_mean_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::STD: {
+      return cudf::make_std_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::VARIANCE: {
+      return cudf::make_variance_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::MEDIAN: {
+      return cudf::make_median_aggregation<cudf::groupby_aggregation>();
+    }
+    case cudf::aggregation::Kind::NUNIQUE: {
+      return cudf::make_nunique_aggregation<cudf::groupby_aggregation>();
+    }
+    default: {
+      throw std::invalid_argument("Unsupported groupby aggregation");
+    }
+  }
+}
 
 cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
 {
@@ -207,66 +247,33 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
     // Then we add the columns in `agg_result` using the order recorded
     // in `out_col_to_request_and_agg_idx`.
     output_columns.resize(output_columns.size() + out_col_to_request_and_agg_idx.size());
+    auto out_types = output.cudf_types();
     for (auto [out_col_idx, request_and_agg_idx] : out_col_to_request_and_agg_idx) {
-      auto [request_idx, agg_idx]    = request_and_agg_idx;
+      auto [request_idx, agg_idx] = request_and_agg_idx;
+
       output_columns.at(out_col_idx) = std::move(agg_result.at(request_idx).results.at(agg_idx));
+
+      // Cast the cudf output to be consistent with the output, which has output types according to
+      // arrow convention
+      if (output_columns.at(out_col_idx)->type() != out_types.at(out_col_idx)) {
+        output_columns.at(out_col_idx) = cudf::cast(output_columns.at(out_col_idx)->view(),
+                                                    out_types.at(out_col_idx),
+                                                    ctx.stream(),
+                                                    ctx.mr());
+      }
+
+      std::shared_ptr<arrow::DataType> arrow_type =
+        to_arrow_type(output_columns.at(out_col_idx)->type().id());
     }
+
     output.move_into(std::move(output_columns));
   }
 };
 
 }  // namespace task
 
-std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggregation::Kind kind)
-{
-  switch (kind) {
-    case cudf::aggregation::Kind::SUM: {
-      return cudf::make_sum_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::PRODUCT: {
-      return cudf::make_product_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::MIN: {
-      return cudf::make_min_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::MAX: {
-      return cudf::make_max_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::SUM_OF_SQUARES: {
-      return cudf::make_sum_of_squares_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::MEAN: {
-      return cudf::make_mean_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::STD: {
-      return cudf::make_std_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::VARIANCE: {
-      return cudf::make_variance_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::MEDIAN: {
-      return cudf::make_median_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::NUNIQUE: {
-      return cudf::make_nunique_aggregation<cudf::groupby_aggregation>();
-    }
-    default: {
-      throw std::invalid_argument("Unsupported groupby aggregation");
-    }
-  }
-}
-
-std::vector<std::unique_ptr<cudf::groupby_aggregation>> make_groupby_aggregations(
-  const std::vector<cudf::aggregation::Kind>& kinds)
-{
-  std::vector<std::unique_ptr<cudf::groupby_aggregation>> ret;
-  for (auto kind : kinds) {
-    ret.push_back(make_groupby_aggregation(kind));
-  }
-  return ret;
-}
-
 namespace {
+
 LogicalColumn make_output_column(const LogicalColumn& values, std::string aggregation_kind)
 {
   // Run a dummy arrow aggregation to get the output type
@@ -282,8 +289,8 @@ LogicalColumn make_output_column(const LogicalColumn& values, std::string aggreg
         {arrow::compute::Aggregate("hash_" + aggregation_kind, {"values"}, "result")},
         {"keys", "values"})}});
   auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
-  // TODO(Rory): Left nullable here as true - not sure I have a way to know in advance if it should
-  // be nullable or not
+  // Note: Left nullable here as true - not sure there is a way to know in advance if it should
+  // be nullable or not. The safe option is leave it true always.
   return LogicalColumn::empty_like(to_cudf_type(result->column(2)->type()), /* nullable = */ true);
 }
 }  // namespace

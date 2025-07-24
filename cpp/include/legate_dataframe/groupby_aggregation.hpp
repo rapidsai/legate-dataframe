@@ -28,15 +28,12 @@ namespace legate::dataframe {
 /**
  * @brief Perform a groupby and aggregation in a single operation.
  *
- * WARN: non-default cudf::aggregation arguments are ignored. The default constructor is used
- *       always. This also means that we only support aggregations that have a default constructor!
- *
  * @param table The table to group and aggregate.
  * @param keys The names of the columns whose rows act as the groupby keys.
  * @param column_aggregations A vector of column aggregations to perform. Each column aggregation
  * produces a column in the output table by performing an aggregation-kind on a column in `table`.
  * It consist of a tuple: `(<input-column-name>, <aggregation-kind>, <output-column-name>)`. E.g.
- * `("x", SUM, "sum-of-x")}` will produce a column named "sum-of-x" in the output table, which, for
+ * `("x", "sum", "sum-of-x")` will produce a column named "sum-of-x" in the output table, which, for
  * each groupby key, has a row that contains the sum of the values in the column "x". Multiple
  * column aggregations can share the same input column but all output columns must be unique and not
  * conflict with the name of the key columns.

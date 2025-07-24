@@ -721,6 +721,11 @@ void PhysicalColumn::copy_into(std::shared_ptr<arrow::Array> column)
 void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
 {
   if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column."); }
+  // Expect the types to match
+  if (cudf_type_ != column->type()) {
+    throw std::invalid_argument("move_into(): type mismatch: " + this->arrow_type()->ToString() +
+                                " != " + to_arrow_type(column->type().id())->ToString());
+  }
   from_cudf(ctx_, array_, std::move(column), scalar_out_);
 }
 
@@ -728,6 +733,7 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be
   // preferable (although libcudf could also grow a way to get a column view).
+
   auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream());
   move_into(std::move(col));
 }
