@@ -38,8 +38,16 @@ set(LDF_TEST_CUDA_FLAGS --expt-extended-lambda --expt-relaxed-constexpr)
 target_compile_options(cpp_tests PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${LDF_TEST_CUDA_FLAGS}>")
 
 target_link_libraries(
-  cpp_tests PRIVATE LegateDataframe cudf cudf::cudftestutil cudf::cudftestutil_impl GTest::gmock
-                    GTest::gtest $<TARGET_NAME_IF_EXISTS:conda_env>
+  cpp_tests
+  PRIVATE LegateDataframe
+          cudf
+          cudf::cudftestutil
+          cudf::cudftestutil_impl
+          GTest::gmock
+          Arrow::arrow_shared
+          ArrowAcero::arrow_acero_shared
+          GTest::gtest
+          $<TARGET_NAME_IF_EXISTS:conda_env>
 )
 rapids_test_add(
   NAME cpp_tests

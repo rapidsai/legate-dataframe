@@ -94,6 +94,12 @@ rapids_find_package(
 )
 
 rapids_find_package(
+  ArrowAcero REQUIRED
+  BUILD_EXPORT_SET LegateDataframe-exports
+  INSTALL_EXPORT_SET LegateDataframe-exports
+)
+
+rapids_find_package(
   Parquet REQUIRED
   BUILD_EXPORT_SET LegateDataframe-exports
   INSTALL_EXPORT_SET LegateDataframe-exports
