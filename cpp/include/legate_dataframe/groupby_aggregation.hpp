@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,27 +26,6 @@
 namespace legate::dataframe {
 
 /**
- * @brief Help function to make `cudf::groupby_aggregation` object from a kind.
- *
- * Notice, only aggregations with a default constructor is supported.
- *
- * @param kind Aggregation kind
- * @return Groupby aggregation corresponding to `kind`
- */
-std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggregation::Kind kind);
-
-/**
- * @brief Help function to make `cudf::groupby_aggregation` objects from kinds.
- *
- * Notice, only aggregations with a default constructor are supported.
- *
- * @param kinds Aggregation kinds
- * @return Vector of groupby aggregations corresponding to each kind in `kinds`
- */
-std::vector<std::unique_ptr<cudf::groupby_aggregation>> make_groupby_aggregations(
-  const std::vector<cudf::aggregation::Kind>& kinds);
-
-/**
  * @brief Perform a groupby and aggregation in a single operation.
  *
  * WARN: non-default cudf::aggregation arguments are ignored. The default constructor is used
@@ -67,7 +46,6 @@ std::vector<std::unique_ptr<cudf::groupby_aggregation>> make_groupby_aggregation
 LogicalTable groupby_aggregation(
   const LogicalTable& table,
   const std::vector<std::string>& keys,
-  const std::vector<std::tuple<std::string, cudf::aggregation::Kind, std::string>>&
-    column_aggregations);
+  const std::vector<std::tuple<std::string, std::string, std::string>>& column_aggregations);
 
 }  // namespace legate::dataframe

@@ -36,17 +36,66 @@
 namespace legate::dataframe {
 namespace task {
 
-std::string cudf_to_arrow_aggregate_type(cudf::aggregation::Kind kind)
+cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
 {
-  switch (kind) {
-    case cudf::aggregation::Kind::SUM: return "hash_sum";
-    case cudf::aggregation::Kind::NUNIQUE: return "hash_count_distinct";
-    case cudf::aggregation::Kind::MAX: return "hash_max";
-    case cudf::aggregation::Kind::MIN: return "hash_min";
-    case cudf::aggregation::Kind::MEAN: return "hash_mean";
-    case cudf::aggregation::Kind::MEDIAN: return "hash_approximate_median";
-    default: throw std::invalid_argument("Unsupported aggregation kind");
+  std::map<std::string, cudf::aggregation::Kind> agg_map = {
+    // Direct mappings
+    {"sum", cudf::aggregation::Kind::SUM},
+    {"product", cudf::aggregation::Kind::PRODUCT},
+    {"min", cudf::aggregation::Kind::MIN},
+    {"max", cudf::aggregation::Kind::MAX},
+    {"count", cudf::aggregation::Kind::COUNT_VALID},
+    {"count_all", cudf::aggregation::Kind::COUNT_ALL},
+    {"any", cudf::aggregation::Kind::ANY},
+    {"all", cudf::aggregation::Kind::ALL},
+    {"mean", cudf::aggregation::Kind::MEAN},
+    {"variance", cudf::aggregation::Kind::VARIANCE},
+    {"stddev", cudf::aggregation::Kind::STD},
+    {"approximate_median", cudf::aggregation::Kind::MEDIAN},
+    {"count_distinct", cudf::aggregation::Kind::NUNIQUE},
+    {"list", cudf::aggregation::Kind::COLLECT_LIST},
+    {"tdigest", cudf::aggregation::Kind::TDIGEST}};
+
+  // Arrow aggregations with no direct cuDF equivalent:
+  // distinct
+  // first - could map to NTH_ELEMENT with n=0
+  // first_last - no equivalent
+  // kurtosis - no equivalent
+  // last - could map to NTH_ELEMENT with n=-1
+  // min_max - no single equivalent (would need separate MIN/MAX)
+  // one - no equivalent
+  // pivot_wider - no equivalent
+  // skew - no equivalent
+
+  // cuDF aggregations with no direct Arrow equivalent:
+  // SUM_OF_SQUARES - no equivalent
+  // M2 - no equivalent
+  // QUANTILE - no equivalent (approximate_median is specific case)
+  // ARGMAX - no equivalent
+  // ARGMIN - no equivalent
+  // NTH_ELEMENT - no equivalent
+  // ROW_NUMBER - no equivalent
+  // EWMA - no equivalent
+  // RANK - no equivalent
+  // COLLECT_SET - no equivalent
+  // LEAD - no equivalent
+  // LAG - no equivalent
+  // PTX - no equivalent
+  // CUDA - no equivalent
+  // HOST_UDF - no equivalent
+  // MERGE_LISTS - no equivalent
+  // MERGE_SETS - no equivalent
+  // MERGE_M2 - no equivalent
+  // COVARIANCE - no equivalent
+  // CORRELATION - no equivalent
+  // MERGE_TDIGEST - no equivalent
+  // HISTOGRAM - no equivalent
+  // MERGE_HISTOGRAM - no equivalent
+  // BITWISE_AGG - no equivalent
+  if (agg_map.count(agg_name) == 0) {
+    throw std::invalid_argument("Unsupported aggregation: " + agg_name);
   }
+  return agg_map.at(agg_name);
 }
 
 class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::GroupByAggregation> {
@@ -71,10 +120,9 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
     auto column_aggs_size = argument::get_next_scalar<size_t>(ctx);
     for (size_t i = 0; i < column_aggs_size; ++i) {
       auto in_col_idx  = argument::get_next_scalar<size_t>(ctx);
-      auto kind        = argument::get_next_scalar<cudf::aggregation::Kind>(ctx);
+      auto kind        = argument::get_next_scalar<std::string>(ctx);
       auto out_col_idx = argument::get_next_scalar<size_t>(ctx);
-      aggregates.push_back(
-        {cudf_to_arrow_aggregate_type(kind), std::to_string(in_col_idx), std::to_string(i)});
+      aggregates.push_back({"hash_" + kind, std::to_string(in_col_idx), std::to_string(i)});
     }
 
     std::vector<std::string> dummy_column_names;
@@ -96,21 +144,6 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
        {"aggregate", arrow::acero::AggregateNodeOptions(aggregates, key_names)}});
     auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
 
-    // Make sure the columns match the output type
-    // TODO: this may not be necessary if we create the column types to match arrow
-    auto expected_arrow_types = output.arrow_types();
-    for (size_t i = 0; i < result->num_columns(); ++i) {
-      auto col = result->column(i);
-      if (col->type() != expected_arrow_types.at(i) && col->num_chunks() > 0) {
-        auto cast = ARROW_RESULT(arrow::compute::Cast(*arrow::Concatenate(col->chunks()),
-                                                      expected_arrow_types.at(i)))
-                      .make_array();
-        auto field = arrow::field(std::to_string(i), expected_arrow_types.at(i));
-        result =
-          ARROW_RESULT(result->SetColumn(i, field, std::make_shared<arrow::ChunkedArray>(cast)));
-      }
-    }
-
     output.move_into(std::move(result));
   }
 
@@ -127,9 +160,9 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
     auto column_aggs_size = argument::get_next_scalar<size_t>(ctx);
     for (size_t i = 0; i < column_aggs_size; ++i) {
       auto in_col_idx  = argument::get_next_scalar<size_t>(ctx);
-      auto kind        = argument::get_next_scalar<cudf::aggregation::Kind>(ctx);
+      auto kind        = argument::get_next_scalar<std::string>(ctx);
       auto out_col_idx = argument::get_next_scalar<size_t>(ctx);
-      column_aggs.push_back({in_col_idx, kind, out_col_idx});
+      column_aggs.push_back({in_col_idx, arrow_to_cudf_aggregation(kind), out_col_idx});
     }
 
     // Repartition `table` based on the keys such that each node can do a local groupby.
@@ -234,37 +267,33 @@ std::vector<std::unique_ptr<cudf::groupby_aggregation>> make_groupby_aggregation
 }
 
 namespace {
-LogicalColumn make_output_column(const LogicalColumn& values, cudf::aggregation::Kind kind)
+LogicalColumn make_output_column(const LogicalColumn& values, std::string aggregation_kind)
 {
-  auto dtype = cudf::detail::target_type(values.cudf_type(), kind);
+  // Run a dummy arrow aggregation to get the output type
+  auto table = arrow::Table::Make(arrow::schema({arrow::field("keys", arrow::int32()),
+                                                 arrow::field("values", values.arrow_type())}),
+                                  {ARROW_RESULT(arrow::MakeEmptyArray(arrow::int32())),
+                                   ARROW_RESULT(arrow::MakeEmptyArray(values.arrow_type()))});
 
-  switch (kind) {
-    case cudf::aggregation::Kind::SUM:
-    case cudf::aggregation::Kind::PRODUCT:
-    case cudf::aggregation::Kind::MIN:
-    case cudf::aggregation::Kind::MAX:
-    case cudf::aggregation::Kind::SUM_OF_SQUARES:
-    case cudf::aggregation::Kind::MEAN:
-    case cudf::aggregation::Kind::NUNIQUE: {
-      return LogicalColumn::empty_like(dtype, values.nullable());
-    }
-    case cudf::aggregation::Kind::STD:
-    case cudf::aggregation::Kind::VARIANCE:
-    case cudf::aggregation::Kind::MEDIAN: {
-      // These might be nullable even when the input isn't
-      return LogicalColumn::empty_like(dtype, /* nullable = */ true);
-    }
-    default: {
-      throw std::invalid_argument("Unsupported groupby aggregation");
-    }
-  }
+  arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
+    {{"table_source", arrow::acero::TableSourceNodeOptions(table)},
+     {"aggregate",
+      arrow::acero::AggregateNodeOptions(
+        {arrow::compute::Aggregate("hash_" + aggregation_kind, {"values"}, "result")},
+        {"keys", "values"})}});
+  auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+  // TODO(Rory): Left nullable here as true - not sure I have a way to know in advance if it should
+  // be nullable or not
+  return LogicalColumn::empty_like(to_cudf_type(result->column(2)->type()), /* nullable = */ true);
 }
 }  // namespace
 
 LogicalTable groupby_aggregation(
   const LogicalTable& table,
   const std::vector<std::string>& keys,
-  const std::vector<std::tuple<std::string, cudf::aggregation::Kind, std::string>>&
+  const std::vector<std::tuple<std::string, std::string, std::string>>&  // input column name,
+                                                                         // aggregation kind, output
+                                                                         // column name
     column_aggregations)
 {
   // Let's create the output table
@@ -289,7 +318,7 @@ LogicalTable groupby_aggregation(
   LogicalTable output(std::move(output_columns), std::move(output_column_names));
 
   // Since `PhysicalTable` doesn't have column names, we convert names to indices
-  std::vector<std::tuple<size_t, cudf::aggregation::Kind, size_t>> column_aggs;
+  std::vector<std::tuple<size_t, std::string, size_t>> column_aggs;
   for (const auto& [in_col_name, kind, out_col_name] : column_aggregations) {
     size_t in_col_idx = table.get_column_names().at(in_col_name);
     // We index the output columns after the key columns
@@ -311,8 +340,7 @@ LogicalTable groupby_aggregation(
   argument::add_next_scalar(task, column_aggs.size());
   for (const auto& [in_col_idx, kind, out_col_idx] : column_aggs) {
     argument::add_next_scalar(task, in_col_idx);
-    argument::add_next_scalar(task,
-                              static_cast<std::underlying_type_t<cudf::aggregation::Kind>>(kind));
+    argument::add_next_scalar(task, kind);
     argument::add_next_scalar(task, out_col_idx);
   }
 

@@ -93,7 +93,7 @@ TYPED_TEST(GroupByAggregationTest, single_sum_with_nulls)
      {"aggregate", arrow::acero::AggregateNodeOptions({aggregate}, {"key"})}});
   auto expected = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
 
-  auto result = groupby_aggregation(table, {"key"}, {std::make_tuple("value", SUM, "sum")});
+  auto result = groupby_aggregation(table, {"key"}, {std::make_tuple("value", "sum", "sum")});
 
   result = legate::dataframe::sort(result, {"key"}, {true}, true, true);
 
@@ -130,10 +130,10 @@ TYPED_TEST(GroupByAggregationTest, nunique_and_max)
 
   auto result = groupby_aggregation(table,
                                     {"key"},
-                                    {std::make_tuple("vals1", NUNIQUE, "nunique1"),
-                                     std::make_tuple("vals1", MAX, "max1"),
-                                     std::make_tuple("vals2", NUNIQUE, "nunique2"),
-                                     std::make_tuple("vals2", MAX, "max2")});
+                                    {std::make_tuple("vals1", "count_distinct", "nunique1"),
+                                     std::make_tuple("vals1", "max", "max1"),
+                                     std::make_tuple("vals2", "count_distinct", "nunique2"),
+                                     std::make_tuple("vals2", "max", "max2")});
 
   result = legate::dataframe::sort(result, {"key"}, {true}, true, true);
 
@@ -169,10 +169,10 @@ TYPED_TEST(GroupByAggregationTest, median_and_mean_with_multiple_keys)
 
   auto result = groupby_aggregation(table,
                                     {"keys1", "keys2"},
-                                    {std::make_tuple("vals1", MEDIAN, "median1"),
-                                     std::make_tuple("vals1", MEAN, "mean1"),
-                                     std::make_tuple("vals2", MEDIAN, "median2"),
-                                     std::make_tuple("vals2", MEAN, "mean2")});
+                                    {std::make_tuple("vals1", "approximate_median", "median1"),
+                                     std::make_tuple("vals1", "mean", "mean1"),
+                                     std::make_tuple("vals2", "approximate_median", "median2"),
+                                     std::make_tuple("vals2", "mean", "mean2")});
 
   result = legate::dataframe::sort(result, {"keys1", "keys2"}, {true, true}, true, true);
 
