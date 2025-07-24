@@ -161,6 +161,9 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
   if (tbl_partitioned.size() != ctx.nranks) {
     throw std::runtime_error("internal error: partition split has wrong size.");
   }
+  for (auto& tbl : tbl_partitioned) {
+    if (!tbl) { throw std::runtime_error("internal error: partitioned table is null."); }
+  }
 
   if (ctx.get_legate_context().communicators().empty()) {
     throw std::runtime_error("internal error: communicator not initialized.");
@@ -408,7 +411,8 @@ std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
   auto lists = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
   auto keys  = lists->GetColumnByName(hash_column_name);
 
-  std::vector<std::shared_ptr<arrow::Table>> result(ctx.nranks);
+  // Fill with empty table in case no keys for a rank
+  std::vector<std::shared_ptr<arrow::Table>> result(ctx.nranks, table->Slice(0, 0));
   for (int i = 0; i < lists->num_rows(); ++i) {
     auto key =
       std::dynamic_pointer_cast<arrow::Int64Scalar>(ARROW_RESULT(keys->GetScalar(i)))->value;
@@ -421,6 +425,7 @@ std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
     }
     result[key] = arrow::Table::Make(table->schema(), partition_columns);
   }
+
   return result;
 }
 

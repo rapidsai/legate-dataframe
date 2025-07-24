@@ -101,7 +101,7 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
     auto expected_arrow_types = output.arrow_types();
     for (size_t i = 0; i < result->num_columns(); ++i) {
       auto col = result->column(i);
-      if (col->type() != expected_arrow_types.at(i)) {
+      if (col->type() != expected_arrow_types.at(i) && col->num_chunks() > 0) {
         auto cast = ARROW_RESULT(arrow::compute::Cast(*arrow::Concatenate(col->chunks()),
                                                       expected_arrow_types.at(i)))
                       .make_array();
