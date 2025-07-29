@@ -102,7 +102,11 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
     auto output      = argument::get_next_output<PhysicalColumn>(ctx);
     auto result =
       ARROW_RESULT(arrow::compute::CallFunction(op, {input.arrow_array_view()})).make_array();
-    output.move_into(std::move(result));
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(result));
+    } else {
+      output.move_into(std::move(result));
+    }
   }
 
   static void gpu_variant(legate::TaskContext context)

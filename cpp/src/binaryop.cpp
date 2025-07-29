@@ -120,9 +120,17 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
 
     if (datum_result.is_scalar()) {
       auto as_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*datum_result.scalar(), 1));
-      output.move_into(std::move(as_array));
+      if (get_prefer_eager_allocations()) {
+        output.copy_into(std::move(as_array));
+      } else {
+        output.move_into(std::move(as_array));
+      }
     } else {
-      output.move_into(std::move(datum_result.make_array()));
+      if (get_prefer_eager_allocations()) {
+        output.copy_into(std::move(datum_result.make_array()));
+      } else {
+        output.move_into(std::move(datum_result.make_array()));
+      }
     }
   }
 

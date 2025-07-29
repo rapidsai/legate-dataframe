@@ -317,7 +317,9 @@ cdef class LogicalTable:
         """
         from cupynumeric import stack
 
-        return stack([self[n] for n in range(self.num_columns())], axis=1, out=out)
+        return stack(
+            [self[n].to_array() for n in range(self.num_columns())], axis=1, out=out
+        )
 
     def to_cudf(self) -> cudf.DataFrame:
         """Copy the logical table into a local cudf table

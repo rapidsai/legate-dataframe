@@ -110,3 +110,45 @@ def test_select_and_getitem_table_errors(cols):
 
     with pytest.raises(TypeError):
         tbl[cols]
+
+
+def test_to_array_nullable():
+    cn = pytest.importorskip("cupynumeric")
+
+    table = pa.table(
+        {
+            "a": pa.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            "b": pa.array([2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mask=[False] * 10),
+        }
+    )
+    # NOTE: Ideally, `b` will be nullable (it probably is not), we check the error below though
+    lg_table = LogicalTable.from_arrow(table)
+
+    res = lg_table.to_array()
+    expected = cn.array(
+        [
+            [1, 2],
+            [2, 3],
+            [3, 4],
+            [4, 5],
+            [5, 6],
+            [6, 7],
+            [7, 8],
+            [8, 9],
+            [9, 10],
+            [10, 11],
+        ]
+    )
+    assert (res == expected).all()
+    assert res.dtype == "int64"
+
+    # Also check that we see when there are masked values and give an error:
+    table = pa.table(
+        {
+            "a": pa.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            "b": pa.array([2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mask=[True, False] * 5),
+        }
+    )
+    lg_table = LogicalTable.from_arrow(table)
+    with pytest.raises(ValueError, match=".*contains NULLs to cupynumeric"):
+        lg_table.to_array()

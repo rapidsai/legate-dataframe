@@ -165,17 +165,28 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
-    argument::get_parallel_launch_task(ctx);
+
+    size_t my_groups_offset{};
+    size_t my_num_groups{};
+
+    if (!get_prefer_eager_allocations()) {
+      /* Infer ranges from number of ranks */
+      argument::get_parallel_launch_task(ctx);
+      std::tie(my_groups_offset, my_num_groups) =
+        evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+    } else {
+      /* Infer ranges from constraint array assigned to us */
+      auto row_group_ranges = ctx.get_next_input_arg();
+      my_groups_offset      = row_group_ranges.shape<1>().lo[0];
+      my_num_groups         = row_group_ranges.shape<1>().hi[0] - my_groups_offset + 1;
+    }
 
     if (file_paths.size() != ngroups_per_file.size()) {
       throw std::runtime_error("internal error: file path and nrows size mismatch");
     }
 
-    auto [my_groups_offset, my_num_groups] =
-      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
-
     if (my_num_groups == 0) {
-      tbl_arg.bind_empty_data();
+      if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
       return;
     }
 
@@ -193,9 +204,13 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     }
     // Concatenate the tables
     if (tables.size() == 0) {
-      tbl_arg.bind_empty_data();
+      if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
     } else {
-      tbl_arg.move_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
+      if (get_prefer_eager_allocations()) {
+        tbl_arg.copy_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
+      } else {
+        tbl_arg.move_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
+      }
     }
   }
 
@@ -209,17 +224,28 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
-    argument::get_parallel_launch_task(ctx);
+
+    size_t my_groups_offset{};
+    size_t my_num_groups{};
+
+    if (!get_prefer_eager_allocations()) {
+      /* Infer ranges from number of ranks */
+      argument::get_parallel_launch_task(ctx);
+      std::tie(my_groups_offset, my_num_groups) =
+        evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+    } else {
+      /* Infer ranges from constraint array assigned to us */
+      auto row_group_ranges = ctx.get_next_input_arg();
+      my_groups_offset      = row_group_ranges.shape<1>().lo[0];
+      my_num_groups         = row_group_ranges.shape<1>().hi[0] - my_groups_offset + 1;
+    }
 
     if (file_paths.size() != ngroups_per_file.size()) {
       throw std::runtime_error("internal error: file path and nrows size mismatch");
     }
 
-    auto [my_groups_offset, my_num_groups] =
-      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
-
     if (my_num_groups == 0) {
-      tbl_arg.bind_empty_data();
+      if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
       return;
     }
 
@@ -232,7 +258,11 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     opt.row_groups(row_groups);
     auto res = cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl;
 
-    tbl_arg.move_into(std::move(res));
+    if (get_prefer_eager_allocations()) {
+      tbl_arg.copy_into(std::move(res));
+    } else {
+      tbl_arg.move_into(std::move(res));
+    }
   }
 };
 
@@ -248,7 +278,7 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
     const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<2>>(ctx);
+    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<1>>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     auto null_value              = ctx.get_next_scalar_arg();
     auto out                     = ctx.get_next_output_arg();
@@ -268,8 +298,8 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
 
     const size_t ncols = columns.size();
 
-    legate::Rect<2> start = row_group_ranges.at(my_groups_offset);
-    legate::Rect<2> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
+    legate::Rect<1> start = row_group_ranges.at(my_groups_offset);
+    legate::Rect<1> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
 
     auto num_output_rows = end.hi[0] - start.lo[0] + 1;
     void* data_ptr       = legate::type_dispatch(out.data().code(),
@@ -282,10 +312,6 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
         legate::Point<2>({num_output_rows, ncols}), true);
       auto ptr = null_buf.ptr({0, 0});
       null_ptr = ptr;
-    }
-
-    if (columns.size() != start.hi[1] - start.lo[1] + 1) {
-      throw std::runtime_error("internal error: columns size and result shape mismatch");
     }
 
     // Iterate over files
@@ -322,7 +348,7 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
     const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
     const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<2>>(ctx);
+    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<1>>(ctx);
     const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
     auto null_value              = ctx.get_next_scalar_arg();
     auto out                     = ctx.get_next_output_arg();
@@ -345,8 +371,8 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
     // TODO: This is hack (including the partitioning above).  We should be passing in a bound
     // output with image constraints on row_group_ranges at which point we would just need to know
     // the row groups assigned to us (the number of rows will be correct in the output array shape).
-    legate::Rect<2> start = row_group_ranges.at(my_groups_offset);
-    legate::Rect<2> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
+    legate::Rect<1> start = row_group_ranges.at(my_groups_offset);
+    legate::Rect<1> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
 
     void* data_ptr = legate::type_dispatch(out.data().code(),
                                            create_result_store_fn{},
@@ -358,10 +384,6 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
         legate::Point<2>({end.hi[0] - start.lo[0] + 1, ncols}), true);
       auto ptr = null_buf.ptr({0, 0});
       null_ptr = ptr;
-    }
-
-    if (columns.size() != start.hi[1] - start.lo[1] + 1) {
-      throw std::runtime_error("internal error: columns size and result shape mismatch");
     }
 
     auto [files, row_groups] =
@@ -414,7 +436,7 @@ struct ParquetReadInfo {
   std::vector<cudf::data_type> column_types;
   std::vector<bool> column_nullable;
   std::vector<size_t> nrow_groups;
-  std::vector<legate::Rect<2>> row_group_ranges_vec;
+  std::vector<legate::Rect<1>> row_group_ranges_vec;
   LogicalArray row_group_ranges;
   size_t nrow_groups_total;
   size_t nrows_total;
@@ -484,7 +506,7 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
   size_t nrows_total       = 0;
   size_t nrow_groups_total = 0;
   std::vector<size_t> nrow_groups;
-  std::vector<legate::Rect<2>> row_group_ranges;
+  std::vector<legate::Rect<1>> row_group_ranges;
   for (const auto& path : file_paths) {
     auto reader         = ARROW_RESULT(arrow::io::ReadableFile::Open(path));
     auto parquet_reader = parquet::ParquetFileReader::Open(reader);
@@ -497,21 +519,22 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
       auto row_group_metadata = row_group->metadata();
 
       auto nrows_in_group = row_group_metadata->num_rows();
-      // TODO: Legate limitations force us to use a 2D rect here, which we don't actually want/need
-      // but the array is 2-D and the broadcast constraint currently doesn't work to make it 1-D
-      // for this purpose. (As of legate 25.05)
-      row_group_ranges.emplace_back(legate::Rect<2>(
-        {nrows_total, 0}, {nrows_total + nrows_in_group - 1, column_names.size() - 1}));
+      // NOTE: For array reading legate limitations required us to use 2D rects
+      // but it doesn't work either way (As of legate 25.07).  For table reading
+      // 1-D rects can be used (and are for eager mode).
+      row_group_ranges.emplace_back(
+        legate::Rect<1>({static_cast<int64_t>(nrows_total)},
+                        {static_cast<int64_t>(nrows_total + nrows_in_group - 1)}));
       nrows_total += nrows_in_group;
     }
   }
 
   auto runtime = legate::Runtime::get_runtime();
   auto row_group_ranges_arr =
-    runtime->create_array({row_group_ranges.size()}, legate::rect_type(2));
+    runtime->create_array({row_group_ranges.size()}, legate::rect_type(1));
   auto ptr = row_group_ranges_arr.get_physical_array()
                .data()
-               .write_accessor<legate::Rect<2>, 1, false>()
+               .write_accessor<legate::Rect<1>, 1, false>()
                .ptr(0);
   std::copy(row_group_ranges.begin(), row_group_ranges.end(), ptr);
 
@@ -550,9 +573,12 @@ LogicalTable parquet_read(const std::vector<std::string>& files,
 
   std::vector<LogicalColumn> logical_columns;
   logical_columns.reserve(info.column_types.size());
+
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = info.nrows_total; }
   for (int i = 0; i < info.column_types.size(); i++) {
     logical_columns.emplace_back(
-      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false));
+      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false, size));
   }
   auto ret = LogicalTable(std::move(logical_columns), info.column_names);
 
@@ -564,8 +590,27 @@ LogicalTable parquet_read(const std::vector<std::string>& files,
   argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
   argument::add_next_scalar(task, info.nrow_groups_total);
-  argument::add_next_output(task, ret);
-  argument::add_parallel_launch_task(task);
+  auto vars = argument::add_next_output(task, ret);
+
+  if (!size.has_value()) {
+    argument::add_parallel_launch_task(task);
+  } else {
+    auto constraint_var = task.add_input(info.row_group_ranges);
+    // As of 25.08.dev image constraints don't work properly so need to set them
+    // on all column arrays.
+    // It should be sufficient to only set it on the first `var` here.
+    for (auto& var : vars) {
+      task.add_constraint(legate::image(constraint_var, var));
+    }
+    // Maybe more important than doing it for all of the above, need to do it for the mask
+    for (auto& col : ret.get_columns()) {
+      auto arr = col.get_logical_array();
+      if (arr.nullable()) {
+        auto var = task.find_or_declare_partition(arr.null_mask());
+        task.add_constraint(legate::image(constraint_var, var));
+      }
+    }
+  }
   runtime->submit(std::move(task));
   return ret;
 }
