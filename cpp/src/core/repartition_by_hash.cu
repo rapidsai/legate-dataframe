@@ -372,6 +372,14 @@ shuffle(TaskContext& ctx,
     std::make_unique<owner_t>(std::make_pair(std::move(recv_gpu_data), std::move(local_table))));
 }
 
+// Boost hash combine
+inline int64_t hash_combine(int64_t seed, const int64_t& v)
+{
+  std::hash<int64_t> hasher;
+  seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+  return seed;
+}
+
 // Partition the Arrow table by hashing key columns into n_ranks bins
 // Result is a map of key to table
 std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
@@ -385,7 +393,7 @@ std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
     uint64_t hash = 0;
     for (const auto& col_idx : columns_to_hash) {
       auto col = table->column(col_idx);
-      hash ^= ARROW_RESULT(col->GetScalar(i))->hash();
+      hash     = hash_combine(ARROW_RESULT(col->GetScalar(i))->hash(), hash);
     }
     key_hashes.at(i) = hash;
   }
