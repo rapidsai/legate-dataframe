@@ -675,6 +675,10 @@ void from_cudf(TaskContext* ctx,
                std::unique_ptr<cudf::column> column,
                bool scalar = false)
 {
+  // Expect the types to match
+  if (array.type() != to_legate_type(column->type().code())) {
+    throw std::invalid_argument("from_cudf(): type mismatch.");
+  }
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
   //     seem to get a nullable column.  So also check `has_nulls()`.
   if (column->nullable() && !array.nullable() && column->has_nulls()) {
@@ -721,11 +725,6 @@ void PhysicalColumn::copy_into(std::shared_ptr<arrow::Array> column)
 void PhysicalColumn::move_into(std::unique_ptr<cudf::column> column)
 {
   if (!unbound()) { throw std::invalid_argument("Cannot call `.move_into()` on a bound column."); }
-  // Expect the types to match
-  if (cudf_type_ != column->type()) {
-    throw std::invalid_argument("move_into(): type mismatch: " + this->arrow_type()->ToString() +
-                                " != " + to_arrow_type(column->type().id())->ToString());
-  }
   from_cudf(ctx_, array_, std::move(column), scalar_out_);
 }
 
