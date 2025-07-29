@@ -676,7 +676,7 @@ void from_cudf(TaskContext* ctx,
                bool scalar = false)
 {
   // Expect the types to match
-  if (array.type() != to_legate_type(column->type().code())) {
+  if (array.type() != to_legate_type(column->type().id())) {
     throw std::invalid_argument("from_cudf(): type mismatch.");
   }
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
