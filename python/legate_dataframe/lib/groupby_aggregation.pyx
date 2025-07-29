@@ -45,9 +45,8 @@ def groupby_aggregation(
 ) -> LogicalTable:
     """Perform a groupby and aggregation in a single operation.
     Available aggregations are:
-    "sum", "product", "min", "max", "count", "count_all", "any", "all",
-    "mean", "variance", "stddev", "approximate_median", "count_distinct",
-    "list", "tdigest".
+    "sum", "product", "min", "max", "count",
+    "mean", "variance", "stddev", "approximate_median", "count_distinct".
 
     Parameters
     ----------

@@ -58,17 +58,18 @@ std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggreg
     case cudf::aggregation::Kind::MAX: {
       return cudf::make_max_aggregation<cudf::groupby_aggregation>();
     }
-    case cudf::aggregation::Kind::SUM_OF_SQUARES: {
-      return cudf::make_sum_of_squares_aggregation<cudf::groupby_aggregation>();
+    case cudf::aggregation::Kind::COUNT_VALID: {
+      return cudf::make_count_aggregation<cudf::groupby_aggregation>();
     }
     case cudf::aggregation::Kind::MEAN: {
       return cudf::make_mean_aggregation<cudf::groupby_aggregation>();
     }
-    case cudf::aggregation::Kind::STD: {
-      return cudf::make_std_aggregation<cudf::groupby_aggregation>();
-    }
+    // 0 degrees of freedom instead of default 1 to match Arrow's behavior
     case cudf::aggregation::Kind::VARIANCE: {
-      return cudf::make_variance_aggregation<cudf::groupby_aggregation>();
+      return cudf::make_variance_aggregation<cudf::groupby_aggregation>(0);
+    }
+    case cudf::aggregation::Kind::STD: {
+      return cudf::make_std_aggregation<cudf::groupby_aggregation>(0);
     }
     case cudf::aggregation::Kind::MEDIAN: {
       return cudf::make_median_aggregation<cudf::groupby_aggregation>();
@@ -91,18 +92,22 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
     {"min", cudf::aggregation::Kind::MIN},
     {"max", cudf::aggregation::Kind::MAX},
     {"count", cudf::aggregation::Kind::COUNT_VALID},
-    {"count_all", cudf::aggregation::Kind::COUNT_ALL},
-    {"any", cudf::aggregation::Kind::ANY},
-    {"all", cudf::aggregation::Kind::ALL},
     {"mean", cudf::aggregation::Kind::MEAN},
     {"variance", cudf::aggregation::Kind::VARIANCE},
     {"stddev", cudf::aggregation::Kind::STD},
     {"approximate_median", cudf::aggregation::Kind::MEDIAN},
-    {"count_distinct", cudf::aggregation::Kind::NUNIQUE},
-    {"list", cudf::aggregation::Kind::COLLECT_LIST},
-    {"tdigest", cudf::aggregation::Kind::TDIGEST}};
+    {"count_distinct", cudf::aggregation::Kind::NUNIQUE}};
+
+  //  {"count_all", cudf::aggregation::Kind::COUNT_ALL},
+  // "count_all" could be supported but needs some work as it has 0 inputs
+
+  // Don't do these as we don't support nested types at the moment
+  // {"list", cudf::aggregation::Kind::COLLECT_LIST},
+  // {"tdigest", cudf::aggregation::Kind::TDIGEST}
 
   // Arrow aggregations with no direct cuDF equivalent:
+  // any - cudf has as a reduction aggregation but not groupby aggregation
+  // all - cudf has as a reduction aggregation but not groupby aggregation
   // distinct
   // first - could map to NTH_ELEMENT with n=0
   // first_last - no equivalent
@@ -116,7 +121,7 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
   // cuDF aggregations with no direct Arrow equivalent:
   // SUM_OF_SQUARES - no equivalent
   // M2 - no equivalent
-  // QUANTILE - no equivalent (approximate_median is specific case)
+  // QUANTILE - no equivalent
   // ARGMAX - no equivalent
   // ARGMIN - no equivalent
   // NTH_ELEMENT - no equivalent

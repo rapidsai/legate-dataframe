@@ -15,6 +15,7 @@
 
 from typing import Iterable, List, Tuple
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -31,6 +32,11 @@ def arrow_groupby(
     """Helper function that performs Arrow groupby using the legate syntax"""
 
     pyarrow_aggregations = [(a, b) for a, b, _ in column_aggregations]
+    for i in range(len(pyarrow_aggregations)):
+        if pyarrow_aggregations[i][1] == "count_all":
+            # count_all is a special case, it has no input column
+            pyarrow_aggregations[i] = ([], "count_all")
+
     result = pa.TableGroupBy(table, keys).aggregate(pyarrow_aggregations)
 
     # rename the aggregations according to the given names
@@ -75,7 +81,7 @@ def arrow_groupby(
         [("d2", "mean", "mean"), ("d1", "product", "prod")],
     ],
 )
-def test_aggregation(table, keys, aggs):
+def test_aggregation_basic(table, keys, aggs):
     expect = arrow_groupby(table, keys, aggs)
 
     tbl = LogicalTable.from_arrow(table)
@@ -83,4 +89,57 @@ def test_aggregation(table, keys, aggs):
 
     # sort before testing as the order of keys is arbitrary
     sort_keys = [(key, "ascending") for key in keys]
-    assert_arrow_table_equal(result.sort_by(sort_keys), expect.sort_by(sort_keys), True)
+    assert_arrow_table_equal(
+        result.to_arrow().sort_by(sort_keys), expect.sort_by(sort_keys), True
+    )
+
+
+@pytest.mark.parametrize("value_type", ["int64", "float64", "uint8"])
+@pytest.mark.parametrize("key_type", ["int64", "string", "float32"])
+@pytest.mark.parametrize(
+    "aggregation",
+    [
+        "sum",
+        "product",
+        "min",
+        "max",
+        "count",
+        "mean",
+        "variance",
+        "stddev",
+        "approximate_median",
+        "count_distinct",
+    ],
+)
+def test_numeric_aggregations(value_type, key_type, aggregation):
+    rng = np.random.RandomState(42)
+    n_keys = 10
+    n = 1000
+    if key_type == "int64":
+        key_a = pa.array(rng.randint(0, n_keys, n), type=pa.int64())
+    elif key_type == "string":
+        key_a = pa.array([f"key_{i % n_keys}" for i in range(n)], type=pa.string())
+    elif key_type == "float32":
+        key_a = pa.array(
+            rng.randint(0, n_keys, n).astype(np.float32), type=pa.float32()
+        )
+    key_b = pa.array(rng.randint(0, n_keys, n), type=pa.int64())
+    value_a = pa.array(rng.random(n).astype(value_type), type=value_type)
+    value_b = pa.array(rng.random(n), type=pa.float64())
+
+    table = pa.Table.from_arrays(
+        [key_a, value_a, key_b, value_b], names=["key_a", "value_a", "key_b", "value_b"]
+    )
+    keys = ["key_a", "key_b"]
+    column_aggregations = [
+        ("value_a", aggregation, f"value_a_{aggregation}"),
+        ("value_b", aggregation, f"value_b_{aggregation}"),
+    ]
+
+    expected = arrow_groupby(table, keys, column_aggregations)
+    tbl = LogicalTable.from_arrow(table)
+    result = groupby_aggregation(tbl, keys, column_aggregations)
+    sort_keys = [(key, "ascending") for key in keys]
+    assert_arrow_table_equal(
+        result.to_arrow().sort_by(sort_keys), expected.sort_by(sort_keys), True
+    )

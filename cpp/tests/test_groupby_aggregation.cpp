@@ -140,12 +140,9 @@ TYPED_TEST(GroupByAggregationTest, nunique_and_max)
   assert_arrow_tables_equal({"key"}, expected, result.get_arrow());
 }
 
-TYPED_TEST(GroupByAggregationTest, median_and_mean_with_multiple_keys)
+TYPED_TEST(GroupByAggregationTest, stddev_and_mean_with_multiple_keys)
 {
-  using V     = TypeParam;
-  auto MEDIAN = cudf::aggregation::Kind::MEDIAN;
-  auto MEAN   = cudf::aggregation::Kind::MEAN;
-
+  using V           = TypeParam;
   auto keys1_column = LogicalColumn(narrow<K>({1, 2, 3, 1, 2, 1, 1, 3, 1, 2}));
   auto vals1_column = LogicalColumn(narrow<V>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
   auto keys2_column = LogicalColumn(narrow<K>({1, 2, 3, 1, 1, 2, 1, 3, 2, 2}));
@@ -155,23 +152,21 @@ TYPED_TEST(GroupByAggregationTest, median_and_mean_with_multiple_keys)
   auto table = LogicalTable({keys1_column, vals1_column, keys2_column, vals2_column}, names);
 
   // Create expected result using Arrow
-  arrow::compute::Aggregate median_agg1("hash_approximate_median", {"vals1"}, "median1");
-  arrow::compute::Aggregate mean_agg1("hash_mean", {"vals1"}, "mean1");
-  arrow::compute::Aggregate median_agg2("hash_approximate_median", {"vals2"}, "median2");
-  arrow::compute::Aggregate mean_agg2("hash_mean", {"vals2"}, "mean2");
-
   arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
     {{"table_source", arrow::acero::TableSourceNodeOptions(table.get_arrow())},
      {"aggregate",
-      arrow::acero::AggregateNodeOptions({median_agg1, mean_agg1, median_agg2, mean_agg2},
+      arrow::acero::AggregateNodeOptions({{"hash_stddev", "vals1", "stddev1"},
+                                          {"hash_mean", "vals1", "mean1"},
+                                          {"hash_stddev", "vals2", "stddev2"},
+                                          {"hash_mean", "vals2", "mean2"}},
                                          {"keys1", "keys2"})}});
   auto expected = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
 
   auto result = groupby_aggregation(table,
                                     {"keys1", "keys2"},
-                                    {std::make_tuple("vals1", "approximate_median", "median1"),
+                                    {std::make_tuple("vals1", "stddev", "stddev1"),
                                      std::make_tuple("vals1", "mean", "mean1"),
-                                     std::make_tuple("vals2", "approximate_median", "median2"),
+                                     std::make_tuple("vals2", "stddev", "stddev2"),
                                      std::make_tuple("vals2", "mean", "mean2")});
 
   result = legate::dataframe::sort(result, {"keys1", "keys2"}, {true, true}, true, true);
