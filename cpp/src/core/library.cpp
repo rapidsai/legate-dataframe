@@ -21,6 +21,13 @@
 #include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
+
+auto GetLogger() -> Legion::Logger&
+{
+  static Legion::Logger logger("legate_dataframe");
+  return logger;
+}
+
 namespace task {
 
 legate::TaskRegistrar& Registry::get_registrar()
@@ -33,8 +40,6 @@ legate::TaskRegistrar& Registry::get_registrar()
 namespace {
 
 constexpr auto library_name = "legate_dataframe";
-
-Legion::Logger logger(library_name);
 
 class Mapper : public legate::mapping::Mapper {
  public:

@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -8,13 +8,9 @@
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
-from pylibcudf.aggregation cimport aggregation as cudf_agg
-
 from legate_dataframe.lib.core.table cimport LogicalTable, cpp_LogicalTable
 
 from typing import Iterable, Tuple
-
-from pylibcudf.libcudf.aggregation import Kind as AggregationKind
 
 from legate_dataframe.utils import _track_provenance
 
@@ -25,11 +21,11 @@ cdef extern from * nogil:
     """
     #include <legate_dataframe/groupby_aggregation.hpp>
 
-    using AggTuple = std::tuple<std::string, cudf::aggregation::Kind, std::string>;
+    using AggTuple = std::tuple<std::string, std::string, std::string>;
     """
 
     cdef cppclass AggTuple:
-        AggTuple(string, cudf_agg.Kind, string) except +
+        AggTuple(string, string, string) except +
 
 
 cdef extern from "<legate_dataframe/groupby_aggregation.hpp>" nogil:
@@ -45,15 +41,13 @@ cdef extern from "<legate_dataframe/groupby_aggregation.hpp>" nogil:
 def groupby_aggregation(
   LogicalTable table,
   keys: Iterable[str],
-  column_aggregations: Iterable[Tuple[str, AggregationKind, str]]
+  column_aggregations: Iterable[Tuple[str, str, str]]
 ) -> LogicalTable:
     """Perform a groupby and aggregation in a single operation.
-
-    Warning
-    -------
-    non-default cudf::aggregation arguments are ignored. The default constructor
-    is used always. This also means that we only support aggregations that have
-    a default constructor!
+    Available aggregations are:
+    "sum", "product", "min", "max", "count", "count_all", "any", "all",
+    "mean", "variance", "stddev", "approximate_median", "count_distinct",
+    "list", "tdigest".
 
     Parameters
     ----------
@@ -66,7 +60,7 @@ def groupby_aggregation(
         column in the output table by performing an `AggregationKind` on a column in
         `table`. It consist of a tuple:
         ``(<input-column-name>, <aggregation-kind>, <output-column-name>)``.
-        E.g. ``("x", SUM, "sum-of-x")}`` will produce a column named "sum-of-x" in
+        E.g. ``("x", "sum", "sum-of-x")`` will produce a column named "sum-of-x" in
         the output table, which, for each groupby key, has a row that contains the
         sum of the values in the column "x". Multiple column aggregations can share
         the same input column but all output columns must be unique and not conflict
@@ -86,7 +80,7 @@ def groupby_aggregation(
         aggs.push_back(
             AggTuple(
                 in_col_name.encode('UTF-8'),
-                kind.value,
+                kind.encode('UTF-8'),
                 out_col_name.encode('UTF-8')
             )
         )

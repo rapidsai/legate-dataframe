@@ -37,6 +37,12 @@
 namespace legate::dataframe {
 namespace task {
 
+std::string arrow_aggregation_name(std::string name)
+{
+  if (name.substr(0, 5) != "hash_") { return "hash_" + name; }
+  return name;
+}
+
 std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggregation::Kind kind)
 {
   switch (kind) {
@@ -162,7 +168,8 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
       auto in_col_idx  = argument::get_next_scalar<size_t>(ctx);
       auto kind        = argument::get_next_scalar<std::string>(ctx);
       auto out_col_idx = argument::get_next_scalar<size_t>(ctx);
-      aggregates.push_back({"hash_" + kind, std::to_string(in_col_idx), std::to_string(i)});
+      aggregates.push_back(
+        {arrow_aggregation_name(kind), std::to_string(in_col_idx), std::to_string(i)});
     }
 
     std::vector<std::string> dummy_column_names;
@@ -286,11 +293,12 @@ LogicalColumn make_output_column(const LogicalColumn& values, std::string aggreg
     {{"table_source", arrow::acero::TableSourceNodeOptions(table)},
      {"aggregate",
       arrow::acero::AggregateNodeOptions(
-        {arrow::compute::Aggregate("hash_" + aggregation_kind, {"values"}, "result")},
+        {arrow::compute::Aggregate(
+          task::arrow_aggregation_name(aggregation_kind), {"values"}, "result")},
         {"keys", "values"})}});
   auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
   // Note: Left nullable here as true - not sure there is a way to know in advance if it should
-  // be nullable or not. The safe option is leave it true always.
+  // be nullable or not. The safe option is to set it true always.
   return LogicalColumn::empty_like(to_cudf_type(result->column(2)->type()), /* nullable = */ true);
 }
 }  // namespace

@@ -22,6 +22,7 @@
 #include "legate/comm/coll.h"
 #include <legate.h>
 #include <legate/cuda/cuda.h>
+#include <legate_dataframe/core/library.hpp>
 
 #include "arrow/io/api.h"
 #include "arrow/ipc/api.h"
@@ -232,8 +233,8 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
     result.push_back(ARROW_RESULT(reader->ToTable()));
   }
 
-  sendbuffer.destroy();
   recvbuffer.destroy();
+  sendbuffer.destroy();
   return result;
 }
 
@@ -379,19 +380,19 @@ std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
   const std::vector<cudf::size_type>& columns_to_hash)
 {
   // Assign unique keys to ranks based on hash function
-  std::vector<int64_t> key_hashes(table->num_rows());
+  std::vector<uint64_t> key_hashes(table->num_rows());
   for (int64_t i = 0; i < table->num_rows(); ++i) {
-    int64_t hash = 0;
+    uint64_t hash = 0;
     for (const auto& col_idx : columns_to_hash) {
       auto col = table->column(col_idx);
       hash ^= ARROW_RESULT(col->GetScalar(i))->hash();
     }
-    key_hashes[i] = hash;
+    key_hashes.at(i) = hash;
   }
   for (auto& hash : key_hashes) {
     hash = hash % ctx.nranks;
   }
-  arrow::Int64Builder builder;
+  arrow::UInt64Builder builder;
   auto status           = builder.AppendValues(key_hashes);
   auto key_hash_col     = ARROW_RESULT(builder.Finish());
   auto hash_column_name = "destination_rank";
@@ -412,10 +413,11 @@ std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
   auto keys  = lists->GetColumnByName(hash_column_name);
 
   // Fill with empty table in case no keys for a rank
-  std::vector<std::shared_ptr<arrow::Table>> result(ctx.nranks, table->Slice(0, 0));
+  std::vector<std::shared_ptr<arrow::Table>> result(
+    ctx.nranks, ARROW_RESULT(arrow::Table::MakeEmpty(table->schema())));
   for (int i = 0; i < lists->num_rows(); ++i) {
     auto key =
-      std::dynamic_pointer_cast<arrow::Int64Scalar>(ARROW_RESULT(keys->GetScalar(i)))->value;
+      std::dynamic_pointer_cast<arrow::UInt64Scalar>(ARROW_RESULT(keys->GetScalar(i)))->value;
     std::vector<std::shared_ptr<arrow::Array>> partition_columns;
     for (auto name : table->ColumnNames()) {
       auto list = lists->GetColumnByName(name);
@@ -423,7 +425,7 @@ std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
         std::dynamic_pointer_cast<arrow::ListScalar>(ARROW_RESULT(list->GetScalar(i)));
       partition_columns.push_back(list_scalar->value);
     }
-    result[key] = arrow::Table::Make(table->schema(), partition_columns);
+    result.at(key) = arrow::Table::Make(table->schema(), partition_columns);
   }
 
   return result;
@@ -439,7 +441,7 @@ std::shared_ptr<arrow::Table> repartition_by_hash(
   std::vector<std::shared_ptr<arrow::Table>> partitioned_table(ctx.nranks);
   if (table->num_rows() == 0) {
     for (auto& p : partitioned_table) {
-      p = table;
+      p = ARROW_RESULT(arrow::Table::MakeEmpty(table->schema()));
     }
   } else {
     partitioned_table = partition_arrow_table(ctx, table, columns_to_hash);
