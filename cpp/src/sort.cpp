@@ -313,6 +313,20 @@ std::vector<std::size_t> find_splits_for_distribution(
     ctx, sorted_table, global_split_values, keys_idx, column_order, null_precedence);
 }
 
+static std::shared_ptr<arrow::Table> apply_limit(std::shared_ptr<arrow::Table> tbl, int64_t limit)
+{
+  if (limit != INT64_MIN && std::abs(limit) < tbl->num_rows()) {
+    std::shared_ptr<arrow::Table> slice;
+    if (limit < 0) {
+      slice = tbl->Slice(tbl->num_rows() + limit, -limit);
+    } else {
+      slice = tbl->Slice(0, limit);
+    }
+    return slice;
+  }
+  return tbl;
+}
+
 }  // namespace cpu
 
 namespace gpu {
@@ -541,6 +555,21 @@ std::vector<cudf::size_type> find_splits_for_distribution(
     ctx, sorted_table, global_split_values->view(), keys_idx, column_order, null_precedence);
 }
 
+static std::unique_ptr<cudf::table> apply_limit(std::unique_ptr<cudf::table> tbl, int64_t limit)
+{
+  if (limit != INT64_MIN && std::abs(limit) < tbl->num_rows()) {
+    cudf::size_type cudf_limit = static_cast<cudf::size_type>(limit);
+    cudf::table_view slice;
+    if (limit < 0) {
+      slice = cudf::slice(tbl->view(), {tbl->num_rows() + cudf_limit, tbl->num_rows()})[0];
+    } else {
+      slice = cudf::slice(tbl->view(), {0, cudf_limit})[0];
+    }
+    tbl = std::make_unique<cudf::table>(slice);
+  }
+  return tbl;
+}
+
 }  // namespace gpu
 
 class SortTask : public Task<SortTask, OpCode::Sort> {
@@ -561,6 +590,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     const auto sort_ascending = argument::get_next_scalar_vector<bool>(ctx);
     const auto nulls_at_end   = argument::get_next_scalar<bool>(ctx);
     const auto stable         = argument::get_next_scalar<bool>(ctx);
+    const auto limit          = argument::get_next_scalar<int64_t>(ctx);
     auto output               = argument::get_next_output<PhysicalTable>(ctx);
 
     // Sort the table
@@ -585,6 +615,8 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     auto sorted_table   = ARROW_RESULT(arrow::compute::Take(
                                        arrow_table, *sorted_indices, arrow::compute::TakeOptions{}))
                           .table();
+
+    sorted_table = cpu::apply_limit(sorted_table, limit);
 
     if (ctx.nranks == 1) {
       output.move_into(sorted_table);
@@ -629,6 +661,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     const auto sort_ascending = argument::get_next_scalar_vector<bool>(ctx);
     const auto nulls_at_end   = argument::get_next_scalar<bool>(ctx);
     const auto stable         = argument::get_next_scalar<bool>(ctx);
+    const auto limit          = argument::get_next_scalar<int64_t>(ctx);
     auto output               = argument::get_next_output<PhysicalTable>(ctx);
 
     // Convert ordering parameters to cudf types
@@ -655,6 +688,8 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     auto sort_func = stable ? cudf::stable_sort_by_key : cudf::sort_by_key;
     auto sorted_table =
       sort_func(cudf_tbl, key, column_order, null_precedence, ctx.stream(), ctx.mr());
+
+    sorted_table = gpu::apply_limit(std::move(sorted_table), limit);
 
     if (ctx.nranks == 1) {
       output.move_into(sorted_table->release());
@@ -711,7 +746,8 @@ LogicalTable sort(const LogicalTable& tbl,
                   const std::vector<std::string>& keys,
                   const std::vector<bool>& sort_ascending,
                   bool nulls_at_end,
-                  bool stable)
+                  bool stable,
+                  std::optional<int64_t> limit)
 {
   if (keys.size() == 0) { throw std::invalid_argument("must sort along at least one column"); }
   if (sort_ascending.size() != keys.size()) {
@@ -726,6 +762,8 @@ LogicalTable sort(const LogicalTable& tbl,
 
   bool use_arrow          = runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0;
   const auto& name_to_idx = tbl.get_column_names();
+  auto keys_set           = std::unordered_set<std::string>(keys.begin(), keys.end());
+  if (keys_set.size() != keys.size()) { throw std::invalid_argument("duplicate sort keys"); }
   for (size_t i = 0; i < keys.size(); i++) {
     if (name_to_idx.count(keys[i]) == 0) {
       throw std::invalid_argument("sort key '" + keys[i] + "' not found in table");
@@ -740,6 +778,7 @@ LogicalTable sort(const LogicalTable& tbl,
   argument::add_next_scalar_vector(task, sort_ascending);
   argument::add_next_scalar(task, nulls_at_end);
   argument::add_next_scalar(task, stable);
+  argument::add_next_scalar(task, limit.has_value() ? limit.value() : INT64_MIN);
   argument::add_next_output(task, ret);
 
   if (use_arrow) {
@@ -749,6 +788,13 @@ LogicalTable sort(const LogicalTable& tbl,
   }
 
   runtime->submit(std::move(task));
+  if (limit.has_value()) {
+    if (limit.value() < 0) {
+      ret = ret.slice({limit.value(), legate::Slice::OPEN});
+    } else {
+      ret = ret.slice({0, limit.value()});
+    }
+  }
   return ret;
 }
 

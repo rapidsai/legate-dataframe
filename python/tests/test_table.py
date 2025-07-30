@@ -11,6 +11,7 @@ from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import (
     assert_arrow_table_equal,
     assert_frame_equal,
+    assert_matches_polars,
     guess_available_mem,
 )
 
@@ -72,6 +73,25 @@ def test_table_slice(slice_):
     expected = table.slice(start, stop - start)
     res = lg_table.slice(slice_)
     assert_arrow_table_equal(res.to_arrow(), expected)
+
+
+def test_table_slice_polars():
+    pl = pytest.importorskip("polars")
+
+    q = pl.DataFrame(
+        {
+            "a": pa.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            "b": pa.array([2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mask=[False, True] * 5),
+        }
+    ).lazy()
+    # Add an "unused" head call to prevent polars pushing down the slice
+    # (right now this works, it's plausible to change...)
+    q = q.head(9)
+
+    assert_matches_polars(q.slice(1, 4))
+    assert_matches_polars(q.slice(-5, 3))
+    assert_matches_polars(q.tail(5))
+    assert_matches_polars(q.head(7))
 
 
 @pytest.mark.parametrize(

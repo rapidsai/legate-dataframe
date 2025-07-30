@@ -183,6 +183,10 @@ class UnaryFunction(Expr):
             else:
                 arg = column.obj
             return Column(unaryop.unary_operation(arg, self._OP_MAPPING[self.name]))
+
         raise NotImplementedError(
             f"Unimplemented unary function {self.name=}"
         )  # pragma: no cover; init trips first
+
+    def agg_request(self):
+        return self.name

@@ -21,7 +21,7 @@ import pytest
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.groupby_aggregation import groupby_aggregation
-from legate_dataframe.testing import assert_arrow_table_equal
+from legate_dataframe.testing import assert_arrow_table_equal, assert_matches_polars
 
 
 def arrow_groupby(
@@ -143,3 +143,47 @@ def test_numeric_aggregations(value_type, key_type, aggregation):
     assert_arrow_table_equal(
         result.to_arrow().sort_by(sort_keys), expected.sort_by(sort_keys), True
     )
+
+
+@pytest.mark.parametrize(
+    "agg",
+    [
+        "sum",
+        # "product",
+        # TODO: min/max require mask_nan's.
+        # "min",
+        # "max",
+        "mean",
+        "count",
+        # "len",  # -> "count_all"
+        # TODO(seberg): Need to enable any/all in general
+        # (this is slightly harder due to NULL logic handling)
+        # "any",
+        # "all",
+        # "var",  # -> "variance",
+        # "std",  # -> "stddev",
+        # "approximate_median",
+        # "n_unique",  # -> "count_distinct"
+        # "tdigest",
+    ],
+)
+def test_polars_basic(agg):
+    pl = pytest.importorskip("polars")
+
+    mask = np.random.randint(2, size=10_000, dtype=bool)
+    q = pl.DataFrame(
+        {
+            "a": pa.array(np.random.random(10_000), mask=mask),
+            "b": np.random.randint(100, size=10_000),
+        }
+    ).lazy()
+
+    if agg not in {"any", "all"}:
+        q1 = q.group_by("a").agg(getattr(pl.col("b"), agg)())
+        q2 = q.group_by("b").agg(getattr(pl, agg)("a"))
+    else:
+        q1 = q.cast({"b": pl.Boolean}).group_by("a").agg(getattr(pl.col("b"), agg)())
+        q2 = q.cast({"a": pl.Boolean}).group_by("b").agg(getattr(pl.col("a"), agg)())
+
+    assert_matches_polars(q1.sort("a"), approx=True)
+    assert_matches_polars(q2.sort("b"), approx=True)

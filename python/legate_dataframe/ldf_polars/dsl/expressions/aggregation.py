@@ -87,3 +87,7 @@ class Agg(Expr):
         # preprocessed into pylibcudf requests.
         in_col = self.children[0].evaluate(df, context=context)
         return self.op(in_col)
+
+    @property
+    def agg_request(self):
+        return self.name

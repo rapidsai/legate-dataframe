@@ -16,13 +16,15 @@ from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.nodebase import Node
 
 if TYPE_CHECKING:
+    from typing_extensions import Self
+
     from legate_dataframe.ldf_polars.containers import Column, DataFrame
 
 __all__ = ["AggInfo", "Col", "ColRef", "ExecutionContext", "Expr", "NamedExpr"]
 
 
 class AggInfo(NamedTuple):
-    requests: list[tuple[Expr | None, plc.aggregation.Aggregation, Expr]]
+    requests: list[tuple[Expr | None, str, Expr]]
 
 
 class ExecutionContext(IntEnum):
@@ -114,7 +116,7 @@ class Expr(Node["Expr"]):
         return self.do_evaluate(df, context=context)
 
     @property
-    def agg_request(self) -> plc.aggregation.Aggregation:
+    def agg_request(self) -> str:
         """
         The aggregation for this expression in a grouped aggregation.
 
@@ -205,6 +207,24 @@ class NamedExpr:
         name to a column produced from an expression.
         """
         return self.value.evaluate(df, context=context).rename(self.name)
+
+    def reconstruct(self, expr: Expr) -> Self:
+        """
+        Rebuild with a new `Expr` value.
+
+        Parameters
+        ----------
+        expr
+            New `Expr` value
+
+        Returns
+        -------
+        New `NamedExpr` with `expr` as the underlying expression.
+        The name of the original `NamedExpr` is preserved.
+        """
+        if expr is self.value:
+            return self
+        return type(self)(self.name, expr)
 
 
 class Col(Expr):

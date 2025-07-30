@@ -9,7 +9,8 @@ def sort(
     tbl: LogicalTable,
     keys: list[str],
     *,
-    sort_ascending: list[bool] | None,
+    sort_ascending: list[bool] | None = None,
     nulls_at_end: bool = True,
-    stable: bool,
+    stable: bool = False,
+    limit: int | None = None,
 ) -> LogicalTable: ...

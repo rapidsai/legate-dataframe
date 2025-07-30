@@ -250,7 +250,7 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
     }
 
     // Do a local groupby
-    cudf::groupby::groupby gb_obj(repartitioned->select(key_col_idx));
+    cudf::groupby::groupby gb_obj(repartitioned->select(key_col_idx), cudf::null_policy::INCLUDE);
     auto [unique_keys, agg_result] = gb_obj.aggregate(requests, ctx.stream(), ctx.mr());
 
     // Gather the output columns. The key columns goes first.
