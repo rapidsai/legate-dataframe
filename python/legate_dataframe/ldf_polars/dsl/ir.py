@@ -1170,7 +1170,7 @@ class Slice(IR):
     @classmethod
     def do_evaluate(cls, offset: int, length: int, df: DataFrame) -> DataFrame:
         """Evaluate and return a dataframe."""
-        raise NotImplementedError("slice is not implemented")
+        return df.slice((offset, length))
 
 
 class Filter(IR):

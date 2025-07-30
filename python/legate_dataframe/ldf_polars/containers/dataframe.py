@@ -172,5 +172,11 @@ class DataFrame:
         if zlice is None:
             return self.copy()
 
-        # TODO: This is a more important one, due to .head() and .tail()
-        raise NotImplementedError("slice not implemented")
+        start = zlice[0]
+        if zlice[1] is None:
+            stop = None
+        else:
+            stop = start + zlice[1]
+            if start < 0 and stop == 0:
+                stop = None
+        return type(self).from_table(self.table.slice(slice(start, stop)))
