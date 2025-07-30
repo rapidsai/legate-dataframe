@@ -20,6 +20,9 @@
 #include <legate/mapping/mapping.h>
 
 namespace legate::dataframe {
+
+auto GetLogger() -> Legion::Logger&;
+
 namespace task {
 
 namespace OpCode {

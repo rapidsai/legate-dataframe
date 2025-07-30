@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION
+# Copyright (c) 2024-2025, NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,46 +15,44 @@
 
 from typing import Iterable, List, Tuple
 
-import cudf
+import numpy as np
+import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalTable
-from legate_dataframe.lib.groupby_aggregation import (
-    AggregationKind,
-    groupby_aggregation,
-)
-from legate_dataframe.testing import assert_frame_equal
+from legate_dataframe.lib.groupby_aggregation import groupby_aggregation
+from legate_dataframe.testing import assert_arrow_table_equal
 
 
-def kind_to_cudf_agg(kind: AggregationKind) -> str:
-    if kind == AggregationKind.PRODUCT:
-        return "prod"
-    return kind.name.lower()
-
-
-def cudf_groupby(
-    df: cudf.DataFrame,
+def arrow_groupby(
+    table: pa.Table,
     keys: List[str],
-    column_aggregations: Iterable[Tuple[str, AggregationKind, str]],
-) -> cudf.DataFrame:
-    """Help function that perform cudf groupby using the legate syntax"""
-    ret = {}
-    group = df.groupby(keys, as_index=False)
-    for in_col, kind, out_col in column_aggregations:
-        res = group.agg([kind_to_cudf_agg(kind)])
-        for key in keys:
-            # We assume the key row order is stable between cudf groupby runs
-            ret[key] = res[key]._columns[0]
-        ret[out_col] = res[in_col]._columns[0]
-    return cudf.DataFrame(ret)
+    column_aggregations: Iterable[Tuple[str, str, str]],
+) -> pa.Table:
+    """Helper function that performs Arrow groupby using the legate syntax"""
+
+    pyarrow_aggregations = [(a, b) for a, b, _ in column_aggregations]
+    for i in range(len(pyarrow_aggregations)):
+        if pyarrow_aggregations[i][1] == "count_all":
+            # count_all is a special case, it has no input column
+            pyarrow_aggregations[i] = ([], "count_all")
+
+    result = pa.TableGroupBy(table, keys).aggregate(pyarrow_aggregations)
+
+    # rename the aggregations according to the given names
+    names = keys.copy()
+
+    for _, _, out_name in column_aggregations:
+        names.append(out_name)
+    return result.rename_columns(names)
 
 
 @pytest.mark.parametrize(
-    "keys,df",
+    "keys,table",
     [
         (
             ["k1"],
-            cudf.DataFrame(
+            pa.table(
                 {
                     "k1": ["x", "x", "y", "y", "z"],
                     "d1": [1, 2, 0, 4, 1],
@@ -64,7 +62,7 @@ def cudf_groupby(
         ),
         (
             ["k1", "k2"],
-            cudf.DataFrame(
+            pa.table(
                 {
                     "k1": ["x", "y", "y", "y", "x"],
                     "d1": [1, 2, 0, 4, 1],
@@ -78,15 +76,70 @@ def cudf_groupby(
 @pytest.mark.parametrize(
     "aggs",
     [
-        [("d1", AggregationKind.SUM, "sum")],
-        [("d1", AggregationKind.MIN, "min"), ("d1", AggregationKind.MAX, "max")],
-        [("d2", AggregationKind.MEAN, "mean"), ("d1", AggregationKind.PRODUCT, "prod")],
+        [("d1", "sum", "sum")],
+        [("d1", "min", "min"), ("d1", "max", "max")],
+        [("d2", "mean", "mean"), ("d1", "product", "prod")],
     ],
 )
-def test_aggregation(df, keys, aggs):
-    expect = cudf_groupby(df, keys, aggs)
+def test_aggregation_basic(table, keys, aggs):
+    expect = arrow_groupby(table, keys, aggs)
 
-    tbl = LogicalTable.from_cudf(df)
+    tbl = LogicalTable.from_arrow(table)
     result = groupby_aggregation(tbl, keys, aggs)
 
-    assert_frame_equal(result, expect, ignore_row_order=True)
+    # sort before testing as the order of keys is arbitrary
+    sort_keys = [(key, "ascending") for key in keys]
+    assert_arrow_table_equal(
+        result.to_arrow().sort_by(sort_keys), expect.sort_by(sort_keys), True
+    )
+
+
+@pytest.mark.parametrize("value_type", ["int64", "float64", "uint8"])
+@pytest.mark.parametrize("key_type", ["int64", "string", "float32"])
+@pytest.mark.parametrize(
+    "aggregation",
+    [
+        "sum",
+        "product",
+        "min",
+        "max",
+        "count",
+        "mean",
+        "variance",
+        "stddev",
+        "approximate_median",
+        "count_distinct",
+    ],
+)
+def test_numeric_aggregations(value_type, key_type, aggregation):
+    rng = np.random.RandomState(42)
+    n_keys = 10
+    n = 1000
+    if key_type == "int64":
+        key_a = pa.array(rng.randint(0, n_keys, n), type=pa.int64())
+    elif key_type == "string":
+        key_a = pa.array([f"key_{i % n_keys}" for i in range(n)], type=pa.string())
+    elif key_type == "float32":
+        key_a = pa.array(
+            rng.randint(0, n_keys, n).astype(np.float32), type=pa.float32()
+        )
+    key_b = pa.array(rng.randint(0, n_keys, n), type=pa.int64())
+    value_a = pa.array(rng.random(n).astype(value_type), type=value_type)
+    value_b = pa.array(rng.random(n), type=pa.float64())
+
+    table = pa.Table.from_arrays(
+        [key_a, value_a, key_b, value_b], names=["key_a", "value_a", "key_b", "value_b"]
+    )
+    keys = ["key_a", "key_b"]
+    column_aggregations = [
+        ("value_a", aggregation, f"value_a_{aggregation}"),
+        ("value_b", aggregation, f"value_b_{aggregation}"),
+    ]
+
+    expected = arrow_groupby(table, keys, column_aggregations)
+    tbl = LogicalTable.from_arrow(table)
+    result = groupby_aggregation(tbl, keys, column_aggregations)
+    sort_keys = [(key, "ascending") for key in keys]
+    assert_arrow_table_equal(
+        result.to_arrow().sort_by(sort_keys), expected.sort_by(sort_keys), True
+    )

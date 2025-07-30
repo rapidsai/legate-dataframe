@@ -52,4 +52,8 @@ std::unique_ptr<cudf::table> repartition_by_hash(
   const cudf::table_view& table,
   const std::vector<cudf::size_type>& columns_to_hash);
 
+std::shared_ptr<arrow::Table> repartition_by_hash(
+  TaskContext& ctx,
+  std::shared_ptr<arrow::Table> table,
+  const std::vector<cudf::size_type>& columns_to_hash);
 }  // namespace legate::dataframe::task

@@ -98,9 +98,13 @@ def assert_arrow_table_equal(left: pa.Table, right: pa.Table, approx=False) -> N
         for left_col, right_col in zip(left_copy.columns, right_copy.columns):
             assert left_col.is_valid() == right_col.is_valid()
             assert left_col.type == right_col.type  # probably already checked in schema
-            np.testing.assert_array_almost_equal(
-                left_col.drop_null().to_numpy(), right_col.drop_null().to_numpy()
-            )
+            if left_col.type == pa.string():
+                # For string columns, we can compare the values directly
+                assert left_col.equals(right_col)
+            else:
+                np.testing.assert_array_almost_equal(
+                    left_col.drop_null().to_numpy(), right_col.drop_null().to_numpy()
+                )
 
 
 def assert_frame_equal(

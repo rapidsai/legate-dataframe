@@ -675,6 +675,10 @@ void from_cudf(TaskContext* ctx,
                std::unique_ptr<cudf::column> column,
                bool scalar = false)
 {
+  // Expect the types to match
+  if (array.type() != to_legate_type(column->type().id())) {
+    throw std::invalid_argument("from_cudf(): type mismatch.");
+  }
   // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
   //     seem to get a nullable column.  So also check `has_nulls()`.
   if (column->nullable() && !array.nullable() && column->has_nulls()) {
@@ -728,6 +732,7 @@ void PhysicalColumn::move_into(std::unique_ptr<cudf::scalar> scalar)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be
   // preferable (although libcudf could also grow a way to get a column view).
+
   auto col = cudf::make_column_from_scalar(*scalar, 1, ctx_->stream());
   move_into(std::move(col));
 }

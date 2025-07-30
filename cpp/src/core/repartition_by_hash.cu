@@ -22,9 +22,12 @@
 #include "legate/comm/coll.h"
 #include <legate.h>
 #include <legate/cuda/cuda.h>
+#include <legate_dataframe/core/library.hpp>
 
 #include "arrow/io/api.h"
 #include "arrow/ipc/api.h"
+#include <arrow/acero/api.h>
+#include <arrow/compute/api.h>
 
 #include <cudf/concatenate.hpp>
 #include <cudf/contiguous_split.hpp>
@@ -159,6 +162,9 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
   if (tbl_partitioned.size() != ctx.nranks) {
     throw std::runtime_error("internal error: partition split has wrong size.");
   }
+  for (auto& tbl : tbl_partitioned) {
+    if (!tbl) { throw std::runtime_error("internal error: partitioned table is null."); }
+  }
 
   if (ctx.get_legate_context().communicators().empty()) {
     throw std::runtime_error("internal error: communicator not initialized.");
@@ -227,8 +233,8 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
     result.push_back(ARROW_RESULT(reader->ToTable()));
   }
 
-  sendbuffer.destroy();
   recvbuffer.destroy();
+  sendbuffer.destroy();
   return result;
 }
 
@@ -364,6 +370,93 @@ shuffle(TaskContext& ctx,
   return std::make_pair(
     ret,
     std::make_unique<owner_t>(std::make_pair(std::move(recv_gpu_data), std::move(local_table))));
+}
+
+// Boost hash combine
+inline int64_t hash_combine(int64_t seed, const int64_t& v)
+{
+  std::hash<int64_t> hasher;
+  seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+  return seed;
+}
+
+// Partition the Arrow table by hashing key columns into n_ranks bins
+// Result is a map of key to table
+std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
+  TaskContext& ctx,
+  std::shared_ptr<arrow::Table> table,
+  const std::vector<cudf::size_type>& columns_to_hash)
+{
+  // Assign unique keys to ranks based on hash function
+  std::vector<uint64_t> key_hashes(table->num_rows());
+  for (int64_t i = 0; i < table->num_rows(); ++i) {
+    uint64_t hash = 0;
+    for (const auto& col_idx : columns_to_hash) {
+      auto col = table->column(col_idx);
+      hash     = hash_combine(ARROW_RESULT(col->GetScalar(i))->hash(), hash);
+    }
+    key_hashes.at(i) = hash;
+  }
+  for (auto& hash : key_hashes) {
+    hash = hash % ctx.nranks;
+  }
+  arrow::UInt64Builder builder;
+  auto status           = builder.AppendValues(key_hashes);
+  auto key_hash_col     = ARROW_RESULT(builder.Finish());
+  auto hash_column_name = "destination_rank";
+  auto table_with_hash =
+    ARROW_RESULT(table->AddColumn(table->num_columns(),
+                                  arrow::field(hash_column_name, key_hash_col->type()),
+                                  std::make_shared<arrow::ChunkedArray>(key_hash_col)));
+
+  std::vector<arrow::compute::Aggregate> aggregations;
+  for (auto column_name : table->ColumnNames()) {
+    aggregations.emplace_back("hash_list", column_name, column_name);
+  }
+  arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
+    {{"table_source", arrow::acero::TableSourceNodeOptions(table_with_hash)},
+     {"aggregate", arrow::acero::AggregateNodeOptions(aggregations, {hash_column_name})}});
+  // Each row of the 'lists' table contains a table for the group
+  auto lists = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+  auto keys  = lists->GetColumnByName(hash_column_name);
+
+  // Fill with empty table in case no keys for a rank
+  std::vector<std::shared_ptr<arrow::Table>> result(
+    ctx.nranks, ARROW_RESULT(arrow::Table::MakeEmpty(table->schema())));
+  for (int i = 0; i < lists->num_rows(); ++i) {
+    auto key =
+      std::dynamic_pointer_cast<arrow::UInt64Scalar>(ARROW_RESULT(keys->GetScalar(i)))->value;
+    std::vector<std::shared_ptr<arrow::Array>> partition_columns;
+    for (auto name : table->ColumnNames()) {
+      auto list = lists->GetColumnByName(name);
+      auto list_scalar =
+        std::dynamic_pointer_cast<arrow::ListScalar>(ARROW_RESULT(list->GetScalar(i)));
+      partition_columns.push_back(list_scalar->value);
+    }
+    result.at(key) = arrow::Table::Make(table->schema(), partition_columns);
+  }
+
+  return result;
+}
+
+std::shared_ptr<arrow::Table> repartition_by_hash(
+  TaskContext& ctx,
+  std::shared_ptr<arrow::Table> table,
+  const std::vector<cudf::size_type>& columns_to_hash)
+{
+  if (ctx.nranks == 1) { return table; }
+
+  std::vector<std::shared_ptr<arrow::Table>> partitioned_table(ctx.nranks);
+  if (table->num_rows() == 0) {
+    for (auto& p : partitioned_table) {
+      p = ARROW_RESULT(arrow::Table::MakeEmpty(table->schema()));
+    }
+  } else {
+    partitioned_table = partition_arrow_table(ctx, table, columns_to_hash);
+  }
+
+  auto tables = shuffle(ctx, partitioned_table);
+  return ARROW_RESULT(arrow::ConcatenateTables(tables));
 }
 
 std::unique_ptr<cudf::table> repartition_by_hash(
