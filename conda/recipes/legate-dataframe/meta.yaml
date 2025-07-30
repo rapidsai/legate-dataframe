@@ -60,6 +60,7 @@ requirements:
     - cudf {{ rapids_version }}  # pulls in pyarrow?
     - libcudf {{ rapids_version }}
     - librmm {{ rapids_version }}
+    - nccl {{ nccl_version }}
     - pylibcudf {{ rapids_version }}
 
 
@@ -96,11 +97,13 @@ outputs:
         # released, a new legate-dataframe would be required.
         - legate
         - numpy >=1.23,<3.0.0a0
+        - nccl {{ nccl_version }}
         - rmm {{ rapids_version }}
         - cudf {{ rapids_version }}
         - pynvjitlink<=0.6
     ignore_run_exports_from:
       - cupynumeric  # only a build dependency to help resolver
+      - nncl  # cargo-culted from raft (assume the pin is overly strict)
     run_exports:
       - {{ pin_subpackage("legate-dataframe", max_pin="x.x") }}
     test:

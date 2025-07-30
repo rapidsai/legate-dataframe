@@ -25,5 +25,8 @@ legate_version:
 cupynumeric_version:
   - "=25.08.*,>=0.0.0.dev0"
 
+nccl_version:
+  - ">=2.19"
+
 rapids_version:
   - =25.04.*
