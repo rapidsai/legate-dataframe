@@ -85,9 +85,11 @@ rapids_find_generate_module(
   NCCL
   HEADER_NAMES nccl.h
   LIBRARY_NAMES nccl
-  BUILD_EXPORT_SET LegateDataframe-exports
-  INSTALL_EXPORT_SET LegateDataframe-exports
 )
+
+# Currently NCCL has no CMake build-system so we require it built and installed on the machine
+# already
+rapids_find_package(NCCL REQUIRED)
 
 rapids_find_package(
   legate REQUIRED Legion LegionRuntime
