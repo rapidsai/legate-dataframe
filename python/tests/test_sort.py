@@ -65,25 +65,25 @@ def test_basic(values, scope):
 
 
 @pytest.mark.parametrize(
-    "values",
+    "values,stable",
     [
-        np.arange(0, 1000),
-        np.arange(0, -1000, -1),
-        np.ones(1000),
-        np.ones(3),
-        np.random.randint(0, 1000, size=1000),
+        (np.arange(0, 1000), False),
+        (np.arange(0, -1000, -1), False),
+        (np.ones(1000), True),
+        (np.ones(3), True),
+        (np.random.randint(0, 1000, size=1000), True),
     ],
 )
 @pytest.mark.parametrize("scope", get_test_scoping())
-def test_basic_with_extra_column(values, scope):
+def test_basic_with_extra_column(values, stable, scope):
     df = pa.table({"a": values, "b": np.arange(len(values))})
 
     lg_df = LogicalTable.from_arrow(df)
 
     with scope:
-        lg_sorted = sort(lg_df, ["a"])
+        lg_sorted = sort(lg_df, ["a"], stable=stable)
 
-    df_sorted = df.sort_by("a")
+    df_sorted = df.sort_by("a")  # arrow appears always stable
 
     assert_arrow_table_equal(lg_sorted.to_arrow(), df_sorted)
 
@@ -152,15 +152,15 @@ def test_shifted_equal_window(reversed, scope):
 )
 @pytest.mark.parametrize("scope", get_test_scoping())
 def test_orders(by, ascending, nulls_last, stable, scope):
-
     # Note that Arrow sort_indices doesn't allow passing null_placement as a list.
     # So we'll test with simple cases for now that match the current sort API
     np.random.seed(1)
 
     if not stable:
         # If the sort is not stable, include index to have stable results...
-        by.append("idx")
-        ascending.append(True)
+        # (note: not mutating, because it would mutate the parametrization)
+        by = by + ["idx"]
+        ascending = ascending + [True]
 
     # Generate a dataset with many repeats so all columns should matter
     repeats = 100
@@ -240,6 +240,7 @@ def test_na_position_explicit(scope):
         (["bad_col"], None, None),  # Non-existent column should fail
         (["a"], [True, False], None),  # Mismatched keys and sort_ascending length
         (["a", "b"], [True], None),  # Mismatched keys and sort_ascending length
+        (["a", "a"], [True], None),  # Duplicate keys
     ],
 )
 def test_errors_incorrect_args(keys, sort_ascending, nulls_at_end):

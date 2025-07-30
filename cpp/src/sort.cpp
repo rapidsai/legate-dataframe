@@ -726,6 +726,8 @@ LogicalTable sort(const LogicalTable& tbl,
 
   bool use_arrow          = runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0;
   const auto& name_to_idx = tbl.get_column_names();
+  auto keys_set           = std::unordered_set<std::string>(keys.begin(), keys.end());
+  if (keys_set.size() != keys.size()) { throw std::invalid_argument("duplicate sort keys"); }
   for (size_t i = 0; i < keys.size(); i++) {
     if (name_to_idx.count(keys[i]) == 0) {
       throw std::invalid_argument("sort key '" + keys[i] + "' not found in table");
