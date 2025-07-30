@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
+#include <map>
 #include <numeric>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
 #include <legate.h>
+
+#include <arrow/acero/api.h>
+#include <arrow/api.h>
+#include <arrow/compute/api.h>
 
 #include <cudf/column/column_factories.hpp>
 #include <cudf/copying.hpp>
@@ -162,9 +167,9 @@ std::unique_ptr<cudf::table> no_rows_table_like(const PhysicalTable& other)
  * The table is passed through on rank 0 and on the other ranks, an empty table is returned.
  * The `owners` argument is used to keep new cudf allocations alive
  */
-cudf::table_view revert_broadcast(TaskContext& ctx,
-                                  const PhysicalTable& table,
-                                  std::vector<std::unique_ptr<cudf::table>>& owners)
+cudf::table_view revert_broadcast_cudf(TaskContext& ctx,
+                                       const PhysicalTable& table,
+                                       std::vector<std::unique_ptr<cudf::table>>& owners)
 {
   if (ctx.rank == 0 || table.is_partitioned()) {
     return table.table_view();
@@ -173,7 +178,6 @@ cudf::table_view revert_broadcast(TaskContext& ctx,
     return owners.back()->view();
   }
 }
-
 /**
  * @brief Help function to determine if we need to repartition the tables
  *
@@ -200,7 +204,85 @@ bool is_repartition_not_needed(const TaskContext& ctx,
   }
 }
 
+/**
+ * @brief Help function to map legate-dataframe join type to Arrow join type
+ */
+arrow::acero::JoinType legate_to_arrow_join_type(JoinType join_type)
+{
+  static const std::map<JoinType, arrow::acero::JoinType> join_type_map = {
+    {JoinType::INNER, arrow::acero::JoinType::INNER},
+    {JoinType::LEFT, arrow::acero::JoinType::LEFT_OUTER},
+    {JoinType::FULL, arrow::acero::JoinType::FULL_OUTER}};
+
+  auto it = join_type_map.find(join_type);
+  if (it == join_type_map.end()) {
+    throw std::invalid_argument("Unsupported join type for Arrow conversion");
+  }
+  return it->second;
+}
+
+std::shared_ptr<arrow::Table> revert_broadcast_arrow(TaskContext& ctx, const PhysicalTable& table)
+{
+  auto arrow_table = table.arrow_table_view();
+  if (ctx.rank == 0 || table.is_partitioned()) {
+    return arrow_table;
+  } else {
+    return ARROW_RESULT(arrow::Table::MakeEmpty(arrow_table->schema()));
+  }
+}
+
+std::vector<std::string> integer_to_string_vector(const std::vector<int32_t>& vec)
+{
+  std::vector<std::string> result;
+  result.reserve(vec.size());
+  for (const auto& v : vec) {
+    result.push_back(std::to_string(v));
+  }
+  return result;
+}
+
 }  // namespace
+
+/**
+ * @brief Help function to perform an Arrow join and gather operation.
+ *
+ * The result is written to the physical table output
+ */
+void arrow_join_and_gather(TaskContext& ctx,
+                           std::shared_ptr<arrow::Table> lhs,
+                           std::shared_ptr<arrow::Table> rhs,
+                           const std::vector<std::string> lhs_keys,
+                           const std::vector<std::string> rhs_keys,
+                           JoinType join_type,
+                           bool nulls_are_equal,
+                           const std::vector<int32_t> lhs_out_cols,
+                           const std::vector<int32_t> rhs_out_cols,
+                           PhysicalTable& output)
+{
+  std::vector<arrow::FieldRef> left_fields;
+  for (const auto& key : lhs_keys) {
+    left_fields.emplace_back(key);
+  }
+  std::vector<arrow::FieldRef> right_fields;
+  for (const auto& key : rhs_keys) {
+    right_fields.emplace_back(key);
+  }
+  arrow::acero::HashJoinNodeOptions join_opts{
+    legate_to_arrow_join_type(join_type), left_fields, right_fields};
+
+  arrow::acero::Declaration left{"table_source", arrow::acero::TableSourceNodeOptions{lhs}};
+  arrow::acero::Declaration right{"table_source", arrow::acero::TableSourceNodeOptions{rhs}};
+  arrow::acero::Declaration hashjoin{"hashjoin", {left, right}, std::move(join_opts)};
+
+  auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin)));
+  // Finally, create a vector of both the left and right results and move it into the output table
+  if (get_prefer_eager_allocations() &&
+      !output.unbound()) {  // hard to guess if bound so just inspect
+    output.copy_into(std::move(result));
+  } else {
+    output.move_into(std::move(result));
+  }
+}
 
 class JoinTask : public Task<JoinTask, OpCode::Join> {
  public:
@@ -211,6 +293,59 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
                                                 .with_concurrent(true)
                                                 .with_elide_device_ctx_sync(true);
 
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+    const auto lhs          = argument::get_next_input<PhysicalTable>(ctx);
+    const auto rhs          = argument::get_next_input<PhysicalTable>(ctx);
+    const auto lhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
+    const auto rhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
+    auto join_type          = argument::get_next_scalar<JoinType>(ctx);
+    auto null_equality      = argument::get_next_scalar<cudf::null_equality>(ctx);
+    const auto lhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
+    const auto rhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
+    auto output             = argument::get_next_output<PhysicalTable>(ctx);
+
+    /* Use "is_paritioned" to check if the table is broadcast. */
+    const bool lhs_broadcasted = !lhs.is_partitioned();
+    const bool rhs_broadcasted = !rhs.is_partitioned();
+    if (lhs_broadcasted && rhs_broadcasted && ctx.nranks != 1) {
+      throw std::runtime_error("join(): cannot have both the lhs and the rhs broadcasted");
+    }
+
+    auto arrow_lhs = lhs.arrow_table_view();
+    auto arrow_rhs = rhs.arrow_table_view();
+
+    if (is_repartition_not_needed(ctx, join_type, lhs_broadcasted, rhs_broadcasted)) {
+      arrow_join_and_gather(ctx,
+
+                            arrow_lhs,
+                            arrow_rhs,
+                            integer_to_string_vector(lhs_keys),
+                            integer_to_string_vector(rhs_keys),
+                            join_type,
+                            null_equality,
+                            lhs_out_cols,
+                            rhs_out_cols,
+                            output);
+    } else {
+      // All-to-all repartition to one hash bucket per rank. Matching rows from
+      // both tables then guaranteed to be on the same rank.
+      auto repartitioned_lhs = repartition_by_hash(ctx, revert_broadcast_arrow(ctx, lhs), lhs_keys);
+      auto repartitioned_rhs = repartition_by_hash(ctx, revert_broadcast_arrow(ctx, rhs), rhs_keys);
+
+      arrow_join_and_gather(ctx,
+                            repartitioned_lhs,
+                            repartitioned_rhs,
+                            integer_to_string_vector(lhs_keys),
+                            integer_to_string_vector(rhs_keys),
+                            join_type,
+                            null_equality == cudf::null_equality::EQUAL,
+                            lhs_out_cols,
+                            rhs_out_cols,
+                            output);
+    }
+  }
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -248,8 +383,8 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
 
       // All-to-all repartition to one hash bucket per rank. Matching rows from
       // both tables then guaranteed to be on the same rank.
-      auto cudf_lhs = repartition_by_hash(ctx, revert_broadcast(ctx, lhs, owners), lhs_keys);
-      auto cudf_rhs = repartition_by_hash(ctx, revert_broadcast(ctx, rhs, owners), rhs_keys);
+      auto cudf_lhs = repartition_by_hash(ctx, revert_broadcast_cudf(ctx, lhs, owners), lhs_keys);
+      auto cudf_rhs = repartition_by_hash(ctx, revert_broadcast_cudf(ctx, rhs, owners), rhs_keys);
 
       auto lhs_view = cudf_lhs->view();  // cudf_lhs unique pointer is moved.
       cudf_join_and_gather(ctx,

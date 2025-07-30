@@ -564,11 +564,6 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
     auto output               = argument::get_next_output<PhysicalTable>(ctx);
 
     // Sort the table
-    // Use integer indices as arrow column names
-    std::vector<std::string> tmp_column_names;
-    for (auto idx = 0; idx < tbl.num_columns(); idx++) {
-      tmp_column_names.push_back(std::to_string(idx));
-    }
     std::vector<arrow::compute::SortKey> sort_keys;
     for (size_t i = 0; i < keys_idx.size(); i++) {
       // Translate cudf parameters to arrow parameters
@@ -576,7 +571,7 @@ class SortTask : public Task<SortTask, OpCode::Sort> {
                                      : arrow::compute::SortOrder::Descending;
       sort_keys.push_back(arrow::compute::SortKey{std::to_string(keys_idx[i]), order});
     }
-    auto arrow_table = tbl.arrow_table_view(tmp_column_names);
+    auto arrow_table = tbl.arrow_table_view();
     // Arrow does not support null_order per column, so we use the first one
     auto null_order =
       nulls_at_end ? arrow::compute::NullPlacement::AtEnd : arrow::compute::NullPlacement::AtStart;
