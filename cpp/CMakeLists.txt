@@ -153,7 +153,7 @@ target_include_directories(
 
 target_link_libraries(
   LegateDataframe PUBLIC legate::legate rmm::rmm cudf::cudf Arrow::arrow_shared
-                         Parquet::parquet_shared
+                         ArrowAcero::arrow_acero_shared Parquet::parquet_shared
 )
 
 # Add Conda library, and include paths if specified
