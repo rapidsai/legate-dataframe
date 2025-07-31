@@ -103,7 +103,7 @@ outputs:
         - pynvjitlink<=0.6
     ignore_run_exports_from:
       - cupynumeric  # only a build dependency to help resolver
-      - nncl  # cargo-culted from raft (assume the pin is overly strict)
+      - nccl  # taken from raft (maybe due to being only a major version pin?)
     run_exports:
       - {{ pin_subpackage("legate-dataframe", max_pin="x.x") }}
     test:

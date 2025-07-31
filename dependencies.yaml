@@ -168,10 +168,6 @@ dependencies:
       - output_types: [conda, pyproject, requirements]
         packages:
           - numpy >=1.23,<3.0.0a0
-      - output_types: conda
-        packages:
-          - nccl
-
   test:
     common:
       - output_types: [conda, requirements, pyproject]
@@ -260,7 +256,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &nccl_unsuffixed nccl>=2.19
+          - nccl>=2.19
     specific:
       - output_types: [pyproject, requirements]
         matrices:
