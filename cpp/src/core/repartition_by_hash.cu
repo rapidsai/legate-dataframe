@@ -213,11 +213,13 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
     total_recv_size += recvcounts[i];
   }
 
-  auto recvbuffer = legate::create_buffer<uint8_t>(total_recv_size);
+  // Use an arrow buffer here instead of a legate buffer
+  // Arrow will propagate shared pointers ensuring the buffer is valid
+  std::shared_ptr<arrow::Buffer> recvbuffer = ARROW_RESULT(arrow::AllocateBuffer(total_recv_size));
   comm::coll::collAlltoallv(sendbuffer.ptr(0),
                             sendcounts.data(),
                             displacements_send.data(),
-                            recvbuffer.ptr(0),
+                            recvbuffer->mutable_data(),
                             recvcounts.data(),
                             displacements_recv.data(),
                             comm::coll::CollDataType::CollInt8,
@@ -226,14 +228,13 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
   std::vector<std::shared_ptr<arrow::Table>> result;
   offset = 0;
   for (size_t i = 0; i < recvcounts.size(); ++i) {
-    auto buffer = arrow::Buffer::Wrap(recvbuffer.ptr(offset), recvcounts[i]);
+    auto buffer = ARROW_RESULT(arrow::SliceBufferSafe(recvbuffer, offset, recvcounts[i]));
     offset += recvcounts[i];
     auto input_stream = arrow::io::BufferReader(buffer);
     auto reader       = ARROW_RESULT(arrow::ipc::RecordBatchStreamReader::Open(&input_stream));
     result.push_back(ARROW_RESULT(reader->ToTable()));
   }
 
-  recvbuffer.destroy();
   sendbuffer.destroy();
   return result;
 }
@@ -455,7 +456,24 @@ std::shared_ptr<arrow::Table> repartition_by_hash(
     partitioned_table = partition_arrow_table(ctx, table, columns_to_hash);
   }
 
+  for (const auto& tbl : partitioned_table) {
+    auto status = tbl->ValidateFull();
+    if (!status.ok()) {
+      std::stringstream ss;
+      ss << "Failed to validate table after repartitioning: " << status.ToString();
+      throw std::runtime_error(ss.str());
+    }
+  }
   auto tables = shuffle(ctx, partitioned_table);
+  // Validate the tables
+  for (const auto& tbl : tables) {
+    auto status = tbl->ValidateFull();
+    if (!status.ok()) {
+      std::stringstream ss;
+      ss << "Failed to validate table after repartitioning: " << status.ToString();
+      throw std::runtime_error(ss.str());
+    }
+  }
   return ARROW_RESULT(arrow::ConcatenateTables(tables));
 }
 

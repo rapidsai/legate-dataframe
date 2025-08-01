@@ -385,14 +385,21 @@ class PhysicalTable {
   /**
    * @brief Creates an Arrow Table view using the specified column names.
    *
-   * @param column_names
+   * @param column_names If column names is empty, string indices "0", "1", ... are used.
    * @return std::shared_ptr<arrow::Table> A shared pointer to the newly created Arrow Table.
    *
    * @throws std::runtime_error If the number of provided column names does not match the number of
    * columns.
    */
-  std::shared_ptr<arrow::Table> arrow_table_view(const std::vector<std::string>& column_names) const
+  std::shared_ptr<arrow::Table> arrow_table_view(std::vector<std::string> column_names = {}) const
   {
+    if (column_names.empty()) {
+      column_names.reserve(columns_.size());
+      for (size_t i = 0; i < columns_.size(); ++i) {
+        column_names.push_back(std::to_string(i));
+      }
+    }
+
     if (static_cast<std::size_t>(column_names.size()) != columns_.size()) {
       throw std::runtime_error("LogicalTable.arrow_table_view(): number of columns mismatch " +
                                std::to_string(columns_.size()) +

@@ -33,7 +33,6 @@ legate \
     --ignore=test_cudf.py \
     --ignore=test_cupynumeric.py \
     --ignore=test_examples.py \
-    --ignore=test_join.py \
     --ignore=test_replace.py \
     --ignore=test_timestamps.py \
     "${@}"
