@@ -243,21 +243,13 @@ std::vector<std::string> integer_to_string_vector(const std::vector<int32_t>& ve
 
 }  // namespace
 
-/**
- * @brief Help function to perform an Arrow join and gather operation.
- *
- * The result is written to the physical table output
- */
-void arrow_join_and_gather(TaskContext& ctx,
-                           std::shared_ptr<arrow::Table> lhs,
-                           std::shared_ptr<arrow::Table> rhs,
-                           const std::vector<std::string> lhs_keys,
-                           const std::vector<std::string> rhs_keys,
-                           JoinType join_type,
-                           bool nulls_are_equal,
-                           const std::vector<int32_t> lhs_out_cols,
-                           const std::vector<int32_t> rhs_out_cols,
-                           PhysicalTable& output)
+// Standard arrow join
+std::shared_ptr<arrow::Table> arrow_join_and_gather_no_null(TaskContext& ctx,
+                                                            std::shared_ptr<arrow::Table> lhs,
+                                                            std::shared_ptr<arrow::Table> rhs,
+                                                            const std::vector<std::string> lhs_keys,
+                                                            const std::vector<std::string> rhs_keys,
+                                                            JoinType join_type)
 {
   std::vector<arrow::FieldRef> left_fields;
   for (const auto& key : lhs_keys) {
@@ -267,21 +259,128 @@ void arrow_join_and_gather(TaskContext& ctx,
   for (const auto& key : rhs_keys) {
     right_fields.emplace_back(key);
   }
-  arrow::acero::HashJoinNodeOptions join_opts{
-    legate_to_arrow_join_type(join_type), left_fields, right_fields};
+  arrow::acero::HashJoinNodeOptions join_opts(legate_to_arrow_join_type(join_type),
+                                              left_fields,
+                                              right_fields,
+                                              arrow::compute::literal(true),
+                                              "_left",
+                                              "_right");
 
   arrow::acero::Declaration left{"table_source", arrow::acero::TableSourceNodeOptions{lhs}};
   arrow::acero::Declaration right{"table_source", arrow::acero::TableSourceNodeOptions{rhs}};
   arrow::acero::Declaration hashjoin{"hashjoin", {left, right}, std::move(join_opts)};
 
-  auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin)));
-  // Finally, create a vector of both the left and right results and move it into the output table
-  if (get_prefer_eager_allocations() &&
-      !output.unbound()) {  // hard to guess if bound so just inspect
-    output.copy_into(std::move(result));
-  } else {
-    output.move_into(std::move(result));
+  return ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin)));
+}
+
+// Creating some constant for each arrow type is surprisingly hard
+std::shared_ptr<arrow::Scalar> create_default_value_scalar(
+  const std::shared_ptr<arrow::DataType>& type)
+{
+  // Constructing a string/binary type with 0 is a runtime error
+  // Catch this and try constructing with a string
+  try {
+    return ARROW_RESULT(arrow::MakeScalar(type, 0));
+  } catch (const std::exception& e) {
+    return ARROW_RESULT(arrow::MakeScalar(type, std::string{}));
   }
+}
+
+// Here we have to do some hacking because arrow does not support nulls in joins
+// The general approach is to take the original key and demote it to a value
+// Then take a copy of this demoted column, replace the nulls with a sentinel value
+// Perform the join and then remove the extra columns
+std::shared_ptr<arrow::Table> arrow_join_and_gather_with_null(
+  TaskContext& ctx,
+  std::shared_ptr<arrow::Table> lhs,
+  std::shared_ptr<arrow::Table> rhs,
+  const std::vector<std::string> lhs_keys,
+  const std::vector<std::string> rhs_keys,
+  JoinType join_type)
+{
+  auto lhs_temp = lhs->Slice(0);
+  auto rhs_temp = rhs->Slice(0);
+  // Create a copy of each key column and replace nulls with a sentinel value
+  std::vector<arrow::FieldRef> left_fields;
+  for (const auto& key : lhs_keys) {
+    auto key_array = lhs->GetColumnByName(key);
+    auto scalar    = create_default_value_scalar(key_array->type());
+    auto key_replaced_nulls =
+      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {key_array, scalar})).chunked_array();
+    lhs_temp =
+      ARROW_RESULT(lhs_temp->AddColumn(lhs_temp->num_columns(),
+                                       arrow::field(key + "_replaced", key_replaced_nulls->type()),
+                                       key_replaced_nulls));
+    left_fields.emplace_back(arrow::FieldRef(key + "_replaced"));
+  }
+
+  std::vector<arrow::FieldRef> right_fields;
+  for (const auto& key : rhs_keys) {
+    auto key_array = rhs->GetColumnByName(key);
+    auto scalar    = create_default_value_scalar(key_array->type());
+    auto key_replaced_nulls =
+      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {key_array, scalar})).chunked_array();
+    rhs_temp =
+      ARROW_RESULT(rhs_temp->AddColumn(rhs_temp->num_columns(),
+                                       arrow::field(key + "_replaced", key_replaced_nulls->type()),
+                                       key_replaced_nulls));
+    right_fields.emplace_back(arrow::FieldRef(key + "_replaced"));
+  }
+
+  arrow::acero::HashJoinNodeOptions join_opts(legate_to_arrow_join_type(join_type),
+                                              left_fields,
+                                              right_fields,
+                                              arrow::compute::literal(true),
+                                              "_left",
+                                              "_right");
+
+  arrow::acero::Declaration left{"table_source", arrow::acero::TableSourceNodeOptions{lhs_temp}};
+  arrow::acero::Declaration right{"table_source", arrow::acero::TableSourceNodeOptions{rhs_temp}};
+  arrow::acero::Declaration hashjoin{"hashjoin", {left, right}, std::move(join_opts)};
+
+  auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin)));
+  // Remove the extra columns that were added for null replacement
+  auto names = result->ColumnNames();
+  for (int i = names.size() - 1; i >= 0; i--) {
+    if (names[i].find("_replaced") != std::string::npos) {
+      result = ARROW_RESULT(result->RemoveColumn(i));
+    }
+  }
+
+  return result;
+}
+
+std::shared_ptr<arrow::Table> arrow_join_and_gather(TaskContext& ctx,
+                                                    std::shared_ptr<arrow::Table> lhs,
+                                                    std::shared_ptr<arrow::Table> rhs,
+                                                    const std::vector<std::string> lhs_keys,
+                                                    const std::vector<std::string> rhs_keys,
+                                                    JoinType join_type,
+                                                    bool nulls_are_equal,
+                                                    const std::vector<int32_t> lhs_out_cols,
+                                                    const std::vector<int32_t> rhs_out_cols)
+{
+  std::shared_ptr<arrow::Table> result;
+  if (!nulls_are_equal) {
+    result = arrow_join_and_gather_no_null(ctx, lhs, rhs, lhs_keys, rhs_keys, join_type);
+  } else {
+    result = arrow_join_and_gather_with_null(ctx, lhs, rhs, lhs_keys, rhs_keys, join_type);
+  }
+
+  // Find the output columns. The above result contains column names "0_left", "1_left", "0_right",
+  // "1_right" etc.
+  auto names = result->ColumnNames();
+  std::vector<int> indices_to_keep;
+  indices_to_keep.reserve(lhs_out_cols.size() + rhs_out_cols.size());
+  for (const auto& idx : lhs_out_cols) {
+    indices_to_keep.push_back(std::distance(
+      names.begin(), std::find(names.begin(), names.end(), std::to_string(idx) + "_left")));
+  }
+  for (const auto& idx : rhs_out_cols) {
+    indices_to_keep.push_back(std::distance(
+      names.begin(), std::find(names.begin(), names.end(), std::to_string(idx) + "_right")));
+  }
+  return ARROW_RESULT(result->SelectColumns(indices_to_keep));
 }
 
 class JoinTask : public Task<JoinTask, OpCode::Join> {
@@ -316,34 +415,40 @@ class JoinTask : public Task<JoinTask, OpCode::Join> {
     auto arrow_lhs = lhs.arrow_table_view();
     auto arrow_rhs = rhs.arrow_table_view();
 
+    std::shared_ptr<arrow::Table> result;
     if (is_repartition_not_needed(ctx, join_type, lhs_broadcasted, rhs_broadcasted)) {
-      arrow_join_and_gather(ctx,
+      result = arrow_join_and_gather(ctx,
 
-                            arrow_lhs,
-                            arrow_rhs,
-                            integer_to_string_vector(lhs_keys),
-                            integer_to_string_vector(rhs_keys),
-                            join_type,
-                            null_equality,
-                            lhs_out_cols,
-                            rhs_out_cols,
-                            output);
+                                     arrow_lhs,
+                                     arrow_rhs,
+                                     integer_to_string_vector(lhs_keys),
+                                     integer_to_string_vector(rhs_keys),
+                                     join_type,
+                                     null_equality == cudf::null_equality::EQUAL,
+                                     lhs_out_cols,
+                                     rhs_out_cols);
     } else {
       // All-to-all repartition to one hash bucket per rank. Matching rows from
       // both tables then guaranteed to be on the same rank.
       auto repartitioned_lhs = repartition_by_hash(ctx, revert_broadcast_arrow(ctx, lhs), lhs_keys);
       auto repartitioned_rhs = repartition_by_hash(ctx, revert_broadcast_arrow(ctx, rhs), rhs_keys);
 
-      arrow_join_and_gather(ctx,
-                            repartitioned_lhs,
-                            repartitioned_rhs,
-                            integer_to_string_vector(lhs_keys),
-                            integer_to_string_vector(rhs_keys),
-                            join_type,
-                            null_equality == cudf::null_equality::EQUAL,
-                            lhs_out_cols,
-                            rhs_out_cols,
-                            output);
+      result = arrow_join_and_gather(ctx,
+                                     repartitioned_lhs,
+                                     repartitioned_rhs,
+                                     integer_to_string_vector(lhs_keys),
+                                     integer_to_string_vector(rhs_keys),
+                                     join_type,
+                                     null_equality == cudf::null_equality::EQUAL,
+                                     lhs_out_cols,
+                                     rhs_out_cols);
+    }
+    // Finally, create a vector of both the left and right results and move it into the output table
+    if (get_prefer_eager_allocations() &&
+        !output.unbound()) {  // hard to guess if bound so just inspect
+      output.copy_into(std::move(result));
+    } else {
+      output.move_into(std::move(result));
     }
   }
   static void gpu_variant(legate::TaskContext context)
@@ -513,7 +618,11 @@ LogicalTable join(const LogicalTable& lhs,
   }
 
   if (broadcast == BroadcastInput::AUTO) {
-    task.add_communicator("nccl");
+    if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0) {
+      task.add_communicator("cpu");
+    } else {
+      task.add_communicator("nccl");
+    }
   } else if (join_type == JoinType::FULL ||
              (broadcast == BroadcastInput::LEFT && join_type != JoinType::INNER)) {
     throw std::runtime_error(
