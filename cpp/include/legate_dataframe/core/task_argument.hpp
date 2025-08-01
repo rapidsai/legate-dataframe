@@ -37,7 +37,7 @@ namespace legate::dataframe::argument {
  * @param scalar The scalar.
  */
 template <typename T>
-inline void add_next_scalar(legate::AutoTask& task, const T& scalar)
+void add_next_scalar(legate::AutoTask& task, const T& scalar)
 {
   task.add_scalar_arg(legate::Scalar(scalar));
 }
@@ -63,10 +63,30 @@ inline void add_next_scalar<legate::Scalar>(legate::AutoTask& task, const legate
 template <typename T>
 void add_next_scalar_vector(AutoTask& task, const std::vector<T>& scalars)
 {
-  add_next_scalar(task, scalars.size());
-  for (const T& scalar : scalars) {
-    add_next_scalar(task, scalar);
+  add_next_scalar(task, legate::Scalar(scalars));
+}
+
+template <>
+inline void add_next_scalar_vector(AutoTask& task, const std::vector<legate::Rect<1>>& scalars)
+{
+  /* Ironically, legate 25.08 has issues with legate scalars. */
+  auto arr_type = legate::fixed_array_type(legate::rect_type(1), scalars.size());
+  add_next_scalar(task, legate::Scalar(arr_type, scalars.data(), /* copy */ true));
+}
+
+template <>
+inline void add_next_scalar_vector(AutoTask& task, const std::vector<std::string>& scalars)
+{
+  // String vectors don't work as scalars directly in legate as of 2025-08.
+  std::stringstream ss;
+  std::vector<size_t> lengths;
+  lengths.reserve(scalars.size());
+  for (auto& string : scalars) {
+    ss << string;
+    lengths.emplace_back(string.length());
   }
+  add_next_scalar_vector(task, lengths);
+  add_next_scalar(task, ss.str());
 }
 
 /**
@@ -95,6 +115,9 @@ T get_next_scalar(TaskContext& ctx)
  * NB: the order of "add_next_*" calls must match the order of the
  * corresponding "get_next_*" calls.
  *
+ * Note: In the future we may change this to not be a vector, but quite a few
+ * places expect a vector (of non const values).
+ *
  * @tparam T The type of the scalar values.
  * @param ctx The task context active in the calling task.
  * @return The vector of scalar values.
@@ -102,11 +125,28 @@ T get_next_scalar(TaskContext& ctx)
 template <typename T>
 std::vector<T> get_next_scalar_vector(TaskContext& ctx)
 {
-  size_t num_items = get_next_scalar<size_t>(ctx);
+  auto items = ctx.get_next_scalar_arg().values<T>();
   std::vector<T> ret;
-  ret.reserve(num_items);
-  for (size_t i = 0; i < num_items; ++i) {
-    ret.emplace_back(get_next_scalar<T>(ctx));
+  ret.reserve(items.size());
+  for (auto& item : items) {
+    ret.emplace_back(item);
+  }
+  return ret;
+}
+
+template <>
+inline std::vector<std::string> get_next_scalar_vector(TaskContext& ctx)
+{
+  std::vector<std::string> ret;
+  auto lengths = get_next_scalar_vector<std::size_t>(ctx);
+  auto strings = ctx.get_next_scalar_arg().value<std::string>();
+
+  ret.reserve(lengths.size());
+  size_t start = 0;
+  for (auto& len : lengths) {
+    std::string substr(strings, start, len);
+    ret.emplace_back(substr);
+    start += len;
   }
   return ret;
 }

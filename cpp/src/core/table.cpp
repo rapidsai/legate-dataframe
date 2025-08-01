@@ -23,6 +23,7 @@
 #include <cudf/column/column_view.hpp>
 
 #include <legate_dataframe/core/table.hpp>
+#include <type_traits>
 
 namespace legate::dataframe {
 
@@ -142,26 +143,38 @@ std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
                                              const LogicalTable& tbl,
                                              bool broadcast)
 {
+  // Send columns manually to avoid thousands of scalars for the dtypes.
   std::vector<legate::Variable> ret;
-  // First we add number of columns
-  add_next_scalar(task, tbl.num_columns());
-  // Then we add each column
-  for (const auto& col : tbl.get_columns()) {
-    ret.push_back(add_next_input(task, col, broadcast));
+  std::vector<std::underlying_type_t<cudf::type_id>> type_ids;
+  for (int i = 0; i < tbl.num_columns(); ++i) {
+    auto col = tbl.get_column(i);
+    type_ids.push_back(static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+    // Currently, tables are never scalar, so no need to add broadcast in that case.
+    auto var = task.add_input(col.get_logical_array());
+    if (broadcast) { task.add_constraint(legate::broadcast(var, {0})); }
+    ret.push_back(var);
   }
+  // Now add the column dtypes (this also gives us the number of columns).
+  // Scalars are added separately, so order shouldn't matter.
+  add_next_scalar_vector(task, type_ids);
   add_alignment_constraints(task, ret);
   return ret;
 }
 
 std::vector<legate::Variable> add_next_output(legate::AutoTask& task, const LogicalTable& tbl)
 {
+  // Send columns manually to avoid thousands of scalars for the dtypes.
   std::vector<legate::Variable> ret;
-  // First we add number of columns
-  add_next_scalar(task, tbl.num_columns());
-  // Then we add each column
+  std::vector<std::underlying_type_t<cudf::type_id>> type_ids;
   for (int i = 0; i < tbl.num_columns(); ++i) {
-    ret.push_back(add_next_output(task, tbl.get_column(i)));
+    auto col = tbl.get_column(i);
+    type_ids.push_back(static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+    // Currently, tables are never scalar, so no need to add broadcast in that case.
+    ret.push_back(task.add_output(col.get_logical_array()));
   }
+  // Now add the column dtypes (this also gives us the number of columns).
+  // Scalars are added separately, so order shouldn't matter.
+  add_next_scalar_vector(task, type_ids);
   add_alignment_constraints(task, ret);
   return ret;
 }

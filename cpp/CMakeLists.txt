@@ -81,6 +81,16 @@ rapids_cpm_cccl()
 include(cmake/thirdparty/get_rmm.cmake)
 include(cmake/thirdparty/get_cudf.cmake)
 
+rapids_find_generate_module(
+  NCCL
+  HEADER_NAMES nccl.h
+  LIBRARY_NAMES nccl
+)
+
+# Currently NCCL has no CMake build-system so we require it built and installed on the machine
+# already
+rapids_find_package(NCCL REQUIRED)
+
 rapids_find_package(
   legate REQUIRED Legion LegionRuntime
   BUILD_EXPORT_SET LegateDataframe-exports
@@ -152,8 +162,9 @@ target_include_directories(
 )
 
 target_link_libraries(
-  LegateDataframe PUBLIC legate::legate rmm::rmm cudf::cudf Arrow::arrow_shared
-                         ArrowAcero::arrow_acero_shared Parquet::parquet_shared
+  LegateDataframe
+  PUBLIC legate::legate rmm::rmm cudf::cudf Arrow::arrow_shared
+  PRIVATE ArrowAcero::arrow_acero_shared Parquet::parquet_shared NCCL::NCCL
 )
 
 # Add Conda library, and include paths if specified

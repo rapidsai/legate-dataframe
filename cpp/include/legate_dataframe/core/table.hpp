@@ -632,11 +632,13 @@ std::vector<legate::Variable> add_next_output(legate::AutoTask& task, const Logi
 template <>
 inline task::PhysicalTable get_next_input<task::PhysicalTable>(TaskContext& ctx)
 {
-  auto num_columns = get_next_scalar<int32_t>(ctx);
+  auto cudf_type_ids = get_next_scalar_vector<std::underlying_type_t<cudf::type_id>>(ctx);
+
   std::vector<task::PhysicalColumn> cols;
-  cols.reserve(num_columns);
-  for (auto i = 0; i < num_columns; ++i) {
-    cols.push_back(argument::get_next_input<task::PhysicalColumn>(ctx));
+  cols.reserve(cudf_type_ids.size());
+  for (auto& cudf_type_id : cudf_type_ids) {
+    auto cudf_type = cudf::data_type{static_cast<cudf::type_id>(cudf_type_id)};
+    cols.push_back(task::PhysicalColumn(ctx, ctx.get_next_input_arg(), cudf_type));
   }
   return task::PhysicalTable(std::move(cols));
 }
@@ -644,11 +646,15 @@ inline task::PhysicalTable get_next_input<task::PhysicalTable>(TaskContext& ctx)
 template <>
 inline task::PhysicalTable get_next_output<task::PhysicalTable>(TaskContext& ctx)
 {
-  auto num_columns = get_next_scalar<int32_t>(ctx);
+  auto cudf_type_ids = get_next_scalar_vector<std::underlying_type_t<cudf::type_id>>(ctx);
+
+  auto num_cols = cudf_type_ids.size();
   std::vector<task::PhysicalColumn> cols;
-  cols.reserve(num_columns);
-  for (auto i = 0; i < num_columns; ++i) {
-    cols.push_back(argument::get_next_output<task::PhysicalColumn>(ctx));
+  cols.reserve(cudf_type_ids.size());
+  for (size_t i = 0; i < num_cols; i++) {
+    auto cudf_type = cudf::data_type{static_cast<cudf::type_id>(cudf_type_ids.at(i))};
+    // Currently, tables are never "scalar", so omit add that information.
+    cols.push_back(task::PhysicalColumn(ctx, ctx.get_next_output_arg(), cudf_type));
   }
   return task::PhysicalTable(std::move(cols));
 }

@@ -30,6 +30,7 @@ dependencies:
 - librmm==25.04.*,>=0.0.0a0
 - make
 - myst-parser>=4.0
+- nccl>=2.19
 - ninja
 - numpy >=1.23,<3.0.0a0
 - openssh

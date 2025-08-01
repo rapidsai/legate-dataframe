@@ -21,6 +21,7 @@ from polars.polars import _ir_nodes as pl_ir
 from legate_dataframe.ldf_polars.dsl import expr, ir
 from legate_dataframe.ldf_polars.typing import Schema
 from legate_dataframe.ldf_polars.utils import config, dtypes, sorting
+from legate_dataframe.ldf_polars.utils.groupby import rewrite_groupby
 from legate_dataframe.ldf_polars.utils.versions import POLARS_VERSION_LT_131
 
 if TYPE_CHECKING:
@@ -105,6 +106,7 @@ class Translator:
                 result = _translate_ir(node, self, schema)
             except Exception as e:
                 self.errors.append(e)
+                raise e
                 return ir.ErrorNode(schema, str(e))
             if any(
                 isinstance(dtype, pl.Null)
@@ -280,7 +282,22 @@ def _(node: pl_ir.Select, translator: Translator, schema: Schema) -> ir.IR:
 
 @_translate_ir.register
 def _(node: pl_ir.GroupBy, translator: Translator, schema: Schema) -> ir.IR:
-    raise NotImplementedError("GroupBy not supported")
+    with set_node(translator.visitor, node.input):
+        inp = translator.translate_ir(n=None)
+        keys = [
+            translate_named_expr(translator, n=e, schema=inp.schema) for e in node.keys
+        ]
+        original_aggs = [
+            translate_named_expr(translator, n=e, schema=inp.schema) for e in node.aggs
+        ]
+    is_rolling = node.options.rolling is not None
+    is_dynamic = node.options.dynamic is not None
+    if is_dynamic:
+        raise NotImplementedError("group_by_dynamic")
+    elif is_rolling:
+        raise NotImplementedError("rolling aggregation")
+    else:
+        return rewrite_groupby(node, schema, keys, original_aggs, inp)
 
 
 @_translate_ir.register

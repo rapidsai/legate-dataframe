@@ -65,27 +65,40 @@ def test_basic(values, scope):
 
 
 @pytest.mark.parametrize(
-    "values",
+    "values,stable",
     [
-        np.arange(0, 1000),
-        np.arange(0, -1000, -1),
-        np.ones(1000),
-        np.ones(3),
-        np.random.randint(0, 1000, size=1000),
+        (np.arange(0, 1000), False),
+        (np.arange(0, -1000, -1), False),
+        (np.ones(1000), True),
+        (np.ones(3), True),
+        (np.random.randint(0, 1000, size=1000), True),
     ],
 )
 @pytest.mark.parametrize("scope", get_test_scoping())
-def test_basic_with_extra_column(values, scope):
+def test_basic_with_extra_column(values, stable, scope):
     df = pa.table({"a": values, "b": np.arange(len(values))})
 
     lg_df = LogicalTable.from_arrow(df)
 
     with scope:
-        lg_sorted = sort(lg_df, ["a"])
+        lg_sorted = sort(lg_df, ["a"], stable=stable)
 
-    df_sorted = df.sort_by("a")
+    df_sorted = df.sort_by("a")  # arrow appears always stable
 
     assert_arrow_table_equal(lg_sorted.to_arrow(), df_sorted)
+
+
+@pytest.mark.parametrize("scope", get_test_scoping())
+def test_limit_basic(scope):
+    df = pa.table({"a": np.arange(0, 1000)})
+
+    lg_df = LogicalTable.from_arrow(df)
+    with scope:
+        lg_sorted_head = sort(lg_df, ["a"], limit=10)
+        lg_sorted_tail = sort(lg_df, ["a"], limit=-10)
+
+    assert_arrow_table_equal(lg_sorted_head.to_arrow(), df.slice(0, 10))
+    assert_arrow_table_equal(lg_sorted_tail.to_arrow(), df.slice(1000 - 10, 10))
 
 
 @pytest.mark.parametrize("threshold", [0, 2])
@@ -152,15 +165,15 @@ def test_shifted_equal_window(reversed, scope):
 )
 @pytest.mark.parametrize("scope", get_test_scoping())
 def test_orders(by, ascending, nulls_last, stable, scope):
-
     # Note that Arrow sort_indices doesn't allow passing null_placement as a list.
     # So we'll test with simple cases for now that match the current sort API
     np.random.seed(1)
 
     if not stable:
         # If the sort is not stable, include index to have stable results...
-        by.append("idx")
-        ascending.append(True)
+        # (note: not mutating, because it would mutate the parametrization)
+        by = by + ["idx"]
+        ascending = ascending + [True]
 
     # Generate a dataset with many repeats so all columns should matter
     repeats = 100
@@ -240,6 +253,7 @@ def test_na_position_explicit(scope):
         (["bad_col"], None, None),  # Non-existent column should fail
         (["a"], [True, False], None),  # Mismatched keys and sort_ascending length
         (["a", "b"], [True], None),  # Mismatched keys and sort_ascending length
+        (["a", "a"], [True], None),  # Duplicate keys
     ],
 )
 def test_errors_incorrect_args(keys, sort_ascending, nulls_at_end):
@@ -252,7 +266,17 @@ def test_errors_incorrect_args(keys, sort_ascending, nulls_at_end):
 
 @pytest.mark.parametrize("descending", [True, False])
 @pytest.mark.parametrize("nulls_last", [True, False])
-def test_sort_polars(descending, nulls_last):
+@pytest.mark.parametrize(
+    "apply_slice",
+    [
+        lambda q: q,
+        lambda q: q.head(200),
+        lambda q: q.tail(200),
+        lambda q: q.slice(5, 200),
+        lambda q: q.slice(-205, 200),
+    ],
+)
+def test_sort_polars(descending, nulls_last, apply_slice):
     pl = pytest.importorskip("polars")
 
     # set a single value to null, so that unstable sorting is still unique
@@ -265,6 +289,7 @@ def test_sort_polars(descending, nulls_last):
         }
     )
     q = pl.DataFrame({"a": [1, 2, 3], "b": [1, 2, 3]}).lazy()
+    q = apply_slice(q)
 
     assert_matches_polars(q.sort("a", nulls_last=nulls_last, descending=descending))
     assert_matches_polars(
@@ -279,13 +304,12 @@ def test_sort_polars_stable(descending, nulls_last):
 
     # Here make sure that identical values (maybe nulls) exist
     mask = np.random.randint(2, size=10_000, dtype=bool)
-    pl.DataFrame(
+    q = pl.DataFrame(
         {
             "a": pa.array(np.random.random(10_000), mask=mask),
             "b": np.random.randint(100, size=10_000),
         }
-    )
-    q = pl.DataFrame({"a": [1, 2, 3], "b": [1, 2, 3]}).lazy()
+    ).lazy()
 
     assert_matches_polars(
         q.sort("a", nulls_last=nulls_last, descending=descending, maintain_order=True)

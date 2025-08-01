@@ -26,7 +26,7 @@ from legate_dataframe import LogicalTable
 from legate_dataframe.ldf_polars.containers import Column, DataFrame
 from legate_dataframe.ldf_polars.dsl.nodebase import Node
 from legate_dataframe.ldf_polars.utils.versions import POLARS_VERSION_LT_128
-from legate_dataframe.lib import csv, join, parquet, sort
+from legate_dataframe.lib import csv, groupby_aggregation, join, parquet, sort
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, MutableMapping, Sequence
@@ -838,6 +838,116 @@ class HStack(IR):
         return df.with_columns(columns)
 
 
+class GroupBy(IR):
+    """Perform a groupby."""
+
+    __slots__ = (
+        "agg_requests",
+        "keys",
+        "maintain_order",
+        "zlice",
+    )
+    _non_child = (
+        "schema",
+        "keys",
+        "agg_requests",
+        "maintain_order",
+        "zlice",
+    )
+    keys: tuple[expr.NamedExpr, ...]
+    """Grouping keys."""
+    agg_requests: tuple[expr.NamedExpr, ...]
+    """Aggregation expressions."""
+    maintain_order: bool
+    """Preserve order in groupby."""
+    zlice: Zlice | None
+    """Optional slice to apply after grouping."""
+
+    def __init__(
+        self,
+        schema: Schema,
+        keys: Sequence[expr.NamedExpr],
+        agg_requests: Sequence[expr.NamedExpr],
+        maintain_order: bool,  # noqa: FBT001
+        zlice: Zlice | None,
+        df: IR,
+    ):
+        self.schema = schema
+        self.keys = tuple(keys)
+        for request in agg_requests:
+            e = request.value
+            if isinstance(e, expr.UnaryFunction) and e.name == "value_counts":
+                raise NotImplementedError("value_counts is not supported in groupby")
+            if any(
+                isinstance(child, expr.UnaryFunction) and child.name == "value_counts"
+                for child in e.children
+            ):
+                raise NotImplementedError("value_counts is not supported in groupby")
+        self.agg_requests = tuple(agg_requests)
+        self.maintain_order = maintain_order
+        self.zlice = zlice
+        self.children = (df,)
+
+        self._non_child_args = (
+            schema,
+            self.keys,
+            self.agg_requests,
+            maintain_order,
+            self.zlice,
+        )
+
+    @classmethod
+    def do_evaluate(
+        cls,
+        schema: Schema,
+        keys_in: Sequence[expr.NamedExpr],
+        agg_requests: Sequence[expr.NamedExpr],
+        maintain_order: bool,  # noqa: FBT001
+        zlice: Zlice | None,
+        df: DataFrame,
+    ) -> DataFrame:
+        """Evaluate and return a dataframe."""
+        keys = broadcast(*(k.evaluate(df) for k in keys_in), target_length=df.num_rows)
+
+        if maintain_order:
+            raise NotImplementedError(
+                "maintain_order is not supported in groupby aggregations"
+            )
+
+        columns = {col.evaluate(df): col.name for i, col in enumerate(keys_in)}
+        key_names = [n for n in columns.values()]
+
+        requests = []
+        for request in agg_requests:
+            name = request.name
+            value = request.value
+            if isinstance(value, expr.Len):
+                # A count aggregation, we need a column so use a key column
+                col = keys[0]
+            elif isinstance(value, expr.Agg):
+                if value.name == "quantile":
+                    raise NotImplementedError(
+                        "quantile is not supported in groupby aggregations"
+                    )
+                (child,) = value.children
+                col = child.evaluate(df)
+            else:
+                # Anything else, we pre-evaluate
+                col = value.evaluate(df)
+
+            col_name = columns.get(col, None)
+            if col_name is None:
+                # NOTE(seberg): May need a unique name here eventually
+                columns[col] = (col_name := name)
+
+            requests.append((col_name, value.agg_request, name))
+
+        tbl = LogicalTable([c.obj for c in columns.keys()], columns.values())
+        res_tbl = groupby_aggregation.groupby_aggregation(tbl, key_names, requests)
+        # Handle order preservation of groups
+        return DataFrame.from_table(res_tbl).slice(zlice)
+
+
 class Join(IR):
     """A join of two dataframes."""
 
@@ -1027,12 +1137,24 @@ class Sort(IR):
             raise NotImplementedError("Sort keys must be named expressions currently")
         by_names = [key.name for key in by]
 
+        if zlice is None:
+            limit = None
+        elif zlice[0] < 0:
+            # Assume the best slice is slicing from the end
+            limit = zlice[0]
+        else:
+            if zlice[1] is None:
+                limit = None
+            else:
+                limit = zlice[0] + zlice[1]
+
         table = sort.sort(
             df.table,
             by_names,
             sort_ascending=list(sort_ascending),
             nulls_at_end=nulls_at_end,
             stable=stable,
+            limit=limit,
         )
 
         # TODO: should implement simple zlices into sorting probably.
@@ -1060,7 +1182,7 @@ class Slice(IR):
     @classmethod
     def do_evaluate(cls, offset: int, length: int, df: DataFrame) -> DataFrame:
         """Evaluate and return a dataframe."""
-        raise NotImplementedError("slice is not implemented")
+        return df.slice((offset, length))
 
 
 class Filter(IR):
