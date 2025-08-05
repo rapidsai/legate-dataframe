@@ -366,12 +366,12 @@ TEST(JoinTest, LeftJoinWithNulls)
 TEST(JoinTest, LeftJoinOnNulls)
 {
   // Left table data - null at index 1 in column 'a'
-  LogicalColumn a(std::vector<int32_t>{3, 1, 2}, {1, 0, 1});
+  LogicalColumn a(std::vector<int32_t>{3, 1, 0}, {1, 0, 1});
   LogicalColumn b(std::vector<std::string>{"s0", "s1", "s2"});
   LogicalColumn c(std::vector<int32_t>{0, 1, 2});
 
   // Right table data - null at index 3 in column 'd'
-  LogicalColumn d(std::vector<int32_t>{2, 5, 3, 7}, {1, 1, 1, 0});
+  LogicalColumn d(std::vector<int32_t>{0, 5, 3, 7}, {1, 1, 1, 0});
   LogicalColumn e(std::vector<std::string>{"s1", "s0", "s0", "s1"});
   LogicalColumn f(std::vector<int32_t>{1, 4, 2, 8});
 
@@ -380,7 +380,7 @@ TEST(JoinTest, LeftJoinOnNulls)
 
   // Arrow join does not join on nulls so manually create expected result
   std::vector<LogicalColumn> expected_columns;
-  expected_columns.emplace_back(LogicalColumn(std::vector<int32_t>{1, 2, 3}, {0, 1, 1}));
+  expected_columns.emplace_back(LogicalColumn(std::vector<int32_t>{1, 0, 3}, {0, 1, 1}));
   expected_columns.emplace_back(LogicalColumn(std::vector<std::string>{"s1", "s2", "s0"}));
   expected_columns.emplace_back(LogicalColumn(std::vector<int32_t>{1, 2, 0}));
   expected_columns.emplace_back(LogicalColumn(std::vector<int32_t>{8, 1, 2}, {1, 0, 1}));

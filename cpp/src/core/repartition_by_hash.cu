@@ -179,9 +179,10 @@ std::vector<std::shared_ptr<arrow::Table>> shuffle(
     auto output_stream = ARROW_RESULT(arrow::io::BufferOutputStream::Create());
     auto writer        = ARROW_RESULT(arrow::ipc::MakeStreamWriter(output_stream, tbl->schema()));
 
-    auto status = writer->WriteTable(*tbl);
-    status      = writer->Close();
-    if (!status.ok()) {
+    auto status_written = writer->WriteTable(*tbl);
+    auto status_closed  = writer->Close();
+    if (!status_written.ok() || !status_closed.ok()) {
+      auto status = status_written.ok() ? status_closed : status_written;
       std::stringstream ss;
       ss << "Failed to write table to stream: " << status.ToString();
       throw std::runtime_error(ss.str());

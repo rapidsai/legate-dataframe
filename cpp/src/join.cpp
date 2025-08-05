@@ -286,6 +286,59 @@ std::shared_ptr<arrow::Scalar> create_default_value_scalar(
   }
 }
 
+/*
+ * Helper function to convert a key column to not contain nulls and instead
+ * add another explicit column that signals where the nulls are.
+ *
+ * May mutate fields and return a new table if the key column is nullable.
+ */
+std::shared_ptr<arrow::Table> process_key_column(std::shared_ptr<arrow::Table>& table,
+                                                 const std::string& key,
+                                                 std::shared_ptr<arrow::ChunkedArray>& key_array,
+                                                 std::vector<arrow::FieldRef>& fields,
+                                                 bool has_nulls,
+                                                 bool needs_null_masks)
+{
+  if (!has_nulls) {
+    fields.emplace_back(arrow::FieldRef(key));
+  } else {
+    auto scalar = create_default_value_scalar(key_array->type());
+    auto key_replaced_nulls =
+      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {key_array, scalar})).chunked_array();
+
+    table =
+      ARROW_RESULT(table->AddColumn(table->num_columns(),
+                                    arrow::field(key + "_replaced", key_replaced_nulls->type()),
+                                    key_replaced_nulls));
+
+    fields.emplace_back(arrow::FieldRef(key + "_replaced"));
+  }
+
+  if (!needs_null_masks) { return table; }
+
+  arrow::ArrayVector null_chunks;
+  for (auto chunk : key_array->chunks()) {
+    std::shared_ptr<arrow::Array> null_chunk_array;
+    if (chunk->null_bitmap()) {
+      auto null_buffer = chunk->null_bitmap();
+      null_chunk_array = arrow::MakeArray(
+        arrow::ArrayData::Make(arrow::boolean(), chunk->length(), {nullptr, null_buffer}));
+    } else {
+      auto false_scalar = ARROW_RESULT(arrow::MakeScalar(arrow::boolean(), true));
+      null_chunk_array  = ARROW_RESULT(arrow::MakeArrayFromScalar(*false_scalar, chunk->length()));
+    }
+    null_chunks.push_back(null_chunk_array);
+  }
+
+  auto null_chunked_array = std::make_shared<arrow::ChunkedArray>(null_chunks, arrow::boolean());
+  table                   = ARROW_RESULT(table->AddColumn(
+    table->num_columns(), arrow::field(key + "_mask", arrow::boolean()), null_chunked_array));
+
+  fields.emplace_back(arrow::FieldRef(key + "_mask"));
+
+  return table;
+}
+
 // Here we have to do some hacking because arrow does not support nulls in joins
 // The general approach is to take the original key and demote it to a value
 // Then take a copy of this demoted column, replace the nulls with a sentinel value
@@ -300,31 +353,29 @@ std::shared_ptr<arrow::Table> arrow_join_and_gather_with_null(
 {
   auto lhs_temp = lhs->Slice(0);
   auto rhs_temp = rhs->Slice(0);
-  // Create a copy of each key column and replace nulls with a sentinel value
-  std::vector<arrow::FieldRef> left_fields;
-  for (const auto& key : lhs_keys) {
-    auto key_array = lhs->GetColumnByName(key);
-    auto scalar    = create_default_value_scalar(key_array->type());
-    auto key_replaced_nulls =
-      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {key_array, scalar})).chunked_array();
-    lhs_temp =
-      ARROW_RESULT(lhs_temp->AddColumn(lhs_temp->num_columns(),
-                                       arrow::field(key + "_replaced", key_replaced_nulls->type()),
-                                       key_replaced_nulls));
-    left_fields.emplace_back(arrow::FieldRef(key + "_replaced"));
-  }
 
+  std::vector<arrow::FieldRef> left_fields;
   std::vector<arrow::FieldRef> right_fields;
-  for (const auto& key : rhs_keys) {
-    auto key_array = rhs->GetColumnByName(key);
-    auto scalar    = create_default_value_scalar(key_array->type());
-    auto key_replaced_nulls =
-      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {key_array, scalar})).chunked_array();
-    rhs_temp =
-      ARROW_RESULT(rhs_temp->AddColumn(rhs_temp->num_columns(),
-                                       arrow::field(key + "_replaced", key_replaced_nulls->type()),
-                                       key_replaced_nulls));
-    right_fields.emplace_back(arrow::FieldRef(key + "_replaced"));
+
+  // Process all keys together in a single loop
+  for (size_t i = 0; i < lhs_keys.size(); ++i) {
+    // Process left key
+    const auto& lhs_key = lhs_keys[i];
+    auto lhs_key_array  = lhs->GetColumnByName(lhs_key);
+
+    // Process right key
+    const auto& rhs_key = rhs_keys[i];
+    auto rhs_key_array  = rhs->GetColumnByName(rhs_key);
+
+    auto lhs_has_nulls    = lhs_key_array->null_count();
+    auto rhs_has_nulls    = rhs_key_array->null_count();
+    bool needs_null_masks = lhs_has_nulls || rhs_has_nulls;
+
+    // Replace original key column with a non-nulled one and a mask column if needed
+    lhs_temp = process_key_column(
+      lhs_temp, lhs_key, lhs_key_array, left_fields, lhs_has_nulls, needs_null_masks);
+    rhs_temp = process_key_column(
+      rhs_temp, rhs_key, rhs_key_array, right_fields, rhs_has_nulls, needs_null_masks);
   }
 
   arrow::acero::HashJoinNodeOptions join_opts(legate_to_arrow_join_type(join_type),
@@ -343,6 +394,9 @@ std::shared_ptr<arrow::Table> arrow_join_and_gather_with_null(
   auto names = result->ColumnNames();
   for (int i = names.size() - 1; i >= 0; i--) {
     if (names[i].find("_replaced") != std::string::npos) {
+      result = ARROW_RESULT(result->RemoveColumn(i));
+    }
+    if (names[i].find("_mask") != std::string::npos) {
       result = ARROW_RESULT(result->RemoveColumn(i));
     }
   }
