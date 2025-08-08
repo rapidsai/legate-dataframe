@@ -33,9 +33,6 @@ namespace task {
 
 class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::ReplaceNullsWithScalar> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ReplaceNullsWithScalar}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -111,9 +108,9 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::ReplaceNullScalarTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace

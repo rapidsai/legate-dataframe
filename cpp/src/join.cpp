@@ -204,8 +204,6 @@ bool is_repartition_not_needed(const TaskContext& ctx,
 
 class JoinTask : public Task<JoinTask, OpCode::Join> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Join}};
-
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_concurrent(true)
@@ -458,9 +456,9 @@ LogicalTable join(const LogicalTable& lhs,
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::JoinTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace

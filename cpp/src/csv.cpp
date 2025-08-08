@@ -39,8 +39,6 @@ namespace legate::dataframe::task {
 
 class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::CSVWrite}};
-
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_elide_device_ctx_sync(true)
@@ -89,8 +87,6 @@ class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
 
 class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::CSVRead}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -257,11 +253,11 @@ class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::CSVWrite::register_variants();
   legate::dataframe::task::CSVRead::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace
 
