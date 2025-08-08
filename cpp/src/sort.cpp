@@ -574,8 +574,6 @@ static std::unique_ptr<cudf::table> apply_limit(std::unique_ptr<cudf::table> tbl
 
 class SortTask : public Task<SortTask, OpCode::Sort> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Sort}};
-
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_concurrent(true)
@@ -802,9 +800,9 @@ LogicalTable sort(const LogicalTable& tbl,
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::SortTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace

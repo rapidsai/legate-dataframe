@@ -75,9 +75,6 @@ cudf::binary_operator arrow_to_cudf_binary_op(std::string op, legate::Type outpu
 
 class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCol> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::BinaryOpColCol}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -172,10 +169,10 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::BinaryOpColColTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace
 

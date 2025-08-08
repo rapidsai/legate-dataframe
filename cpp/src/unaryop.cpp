@@ -32,8 +32,6 @@ namespace task {
 
 class CastTask : public Task<CastTask, OpCode::Cast> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Cast}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -91,8 +89,6 @@ cudf::unary_operator arrow_to_cudf_unary_op(std::string op)
 
 class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::UnaryOp}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -172,10 +168,10 @@ LogicalColumn unary_operation(const LogicalColumn& col, std::string op)
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::CastTask::register_variants();
   legate::dataframe::task::UnaryOpTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace

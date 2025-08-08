@@ -29,8 +29,6 @@ namespace task {
 
 class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Sequence}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -98,9 +96,9 @@ LogicalColumn sequence(size_t size, int64_t init)
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::SequenceTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace
