@@ -40,6 +40,7 @@ enum : int {
   BinaryOpColScalar,
   BinaryOpScalarCol,
   Join,
+  JoinConcurrent,
   ToTimestamps,
   ExtractTimestampComponent,
   ReduceLocal,
