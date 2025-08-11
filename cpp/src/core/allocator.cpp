@@ -70,6 +70,18 @@ MemAlloc TaskMemoryResource::release_buffer(cudf::column_view col)
   }
 }
 
+MemAlloc TaskMemoryResource::release_buffer(cudf::strings_column_view col,
+                                            rmm::cuda_stream_view stream)
+{
+  const void* col_ptr = col.chars_begin(stream);
+  MemAlloc* buffer    = find_buffer(col_ptr);
+  if (col_ptr == nullptr || buffer == nullptr) {
+    return MemAlloc{};
+  } else {
+    return std::move(*buffer);
+  }
+}
+
 void* GlobalMemoryResource::do_allocate(std::size_t bytes, rmm::cuda_stream_view stream)
 {
   // std::cout << "GlobalMR::do_allocate(" << this << ") - inside task: " << std::boolalpha
@@ -78,9 +90,7 @@ void* GlobalMemoryResource::do_allocate(std::size_t bytes, rmm::cuda_stream_view
 
   if (bytes == 0) { return nullptr; }
 
-  // TODO: when <https://github.com/nv-legate/legate.core.internal/pull/591>
-  //       is released, we don't need to check `get_context() != nullptr`
-  if (Legion::Runtime::get_context() != nullptr && legate::is_running_in_task()) {
+  if (legate::is_running_in_task()) {
     // Inside tasks, we can use the task RMM resource that is backed by legate buffers.
     return task_mr_.allocate(bytes, stream);
   } else {
