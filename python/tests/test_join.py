@@ -154,9 +154,10 @@ def test_column_names():
         lhs_out_columns=["data0", "key"],
         rhs_out_columns=["data1"],
     )
+    expected = pa.table({"data0": [1, 2, 3], "key": [1, 2, 3], "data1": [3, 2, 1]})
     assert_arrow_table_equal(
-        res.to_arrow(),
-        pa.table({"data0": [1, 2, 3], "key": [1, 2, 3], "data1": [3, 2, 1]}),
+        res.to_arrow().sort_by([("data0", "ascending"), ("key", "ascending")]),
+        expected.sort_by([("data0", "ascending"), ("key", "ascending")]),
     )
 
 
