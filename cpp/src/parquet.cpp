@@ -46,9 +46,6 @@ namespace legate::dataframe::task {
 
 class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetWrite}};
-
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_elide_device_ctx_sync(true)
@@ -153,9 +150,6 @@ struct create_result_store_fn {
 
 class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetRead}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -268,9 +262,6 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
 
 class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ParquetReadArray}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -423,12 +414,12 @@ namespace legate::dataframe {
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::ParquetWrite::register_variants();
   legate::dataframe::task::ParquetRead::register_variants();
   legate::dataframe::task::ParquetReadArray::register_variants();
-  return 0;
-}();
+}
 
 struct ParquetReadInfo {
   std::vector<std::string> column_names;

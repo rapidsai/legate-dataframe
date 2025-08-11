@@ -151,9 +151,6 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
 
 class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::GroupByAggregation> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::GroupByAggregation}};
-
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_concurrent(true)
@@ -377,9 +374,9 @@ LogicalTable groupby_aggregation(
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::GroupByAggregationTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace

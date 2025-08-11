@@ -64,9 +64,6 @@ std::unique_ptr<cudf::reduce_aggregation> make_cudf_reduce_aggregation(const std
 
 class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ReduceLocal}};
-
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
 
   static void cpu_variant(legate::TaskContext context)
@@ -460,9 +457,9 @@ LogicalColumn reduce(const LogicalColumn& col,
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::ReduceLocalTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace

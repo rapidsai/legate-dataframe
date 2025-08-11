@@ -32,9 +32,6 @@ namespace task {
 
 class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBooleanMask> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ApplyBooleanMask}};
-
   static void cpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -90,9 +87,9 @@ LogicalTable apply_boolean_mask(const LogicalTable& tbl, const LogicalColumn& bo
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::ApplyBooleanMaskTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace

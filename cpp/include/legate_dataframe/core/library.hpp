@@ -40,6 +40,7 @@ enum : int {
   BinaryOpColScalar,
   BinaryOpScalarCol,
   Join,
+  JoinConcurrent,
   ToTimestamps,
   ExtractTimestampComponent,
   ReduceLocal,
@@ -55,7 +56,8 @@ struct Registry {
 
 template <typename T, int ID>
 struct Task : public legate::LegateTask<T> {
-  using Registrar = Registry;
+  using Registrar                      = Registry;
+  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{ID}};
 };
 
 }  // namespace task

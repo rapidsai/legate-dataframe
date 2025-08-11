@@ -375,13 +375,13 @@ std::shared_ptr<arrow::Table> arrow_join_and_gather(TaskContext& ctx,
   return ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin)));
 }
 
-class JoinTask : public Task<JoinTask, OpCode::Join> {
+template <bool needs_communication>
+class JoinTask : public Task<JoinTask<needs_communication>,
+                             needs_communication ? OpCode::JoinConcurrent : OpCode::Join> {
  public:
-  static inline const auto TASK_CONFIG = legate::TaskConfig{legate::LocalTaskID{OpCode::Join}};
-
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
-                                                .with_concurrent(true)
+                                                .with_concurrent(needs_communication)
                                                 .with_elide_device_ctx_sync(true);
 
   static void cpu_variant(legate::TaskContext context)
@@ -580,12 +580,27 @@ LogicalTable join(const LogicalTable& lhs,
     }
   }
 
+  // Some calls broadcast inputs and thus do not need communication, in that case we
+  // can use the non-concurrent task variant and do not need to add a communicator.
+  bool needs_communication = false;
+  if (broadcast == BroadcastInput::AUTO) {
+    needs_communication = true;
+  } else if (join_type == JoinType::FULL ||
+             (broadcast == BroadcastInput::LEFT && join_type != JoinType::INNER)) {
+    throw std::runtime_error(
+      "Force broadcast was indicated, but repartitioning is required. "
+      "FULL joins do not support broadcasting and LEFT joins only for the "
+      "right hand side argument.");
+  }
+
   // Create the output table
   auto ret_names = concat(lhs_out.get_column_name_vector(), rhs_out.get_column_name_vector());
   auto ret       = LogicalTable(std::move(ret_cols), std::move(ret_names));
 
-  legate::AutoTask task =
-    runtime->create_task(get_library(), task::JoinTask::TASK_CONFIG.task_id());
+  auto task_id =
+    (needs_communication ? legate::dataframe::task::JoinTask<true>::TASK_CONFIG.task_id()
+                         : legate::dataframe::task::JoinTask<false>::TASK_CONFIG.task_id());
+  legate::AutoTask task = runtime->create_task(get_library(), task_id);
   // TODO: While legate may broadcast some arrays, it would be good to add
   //       a heuristic (e.g. based on the fact that we need to do copies
   //       anyway, so the broadcast may actually copy less).
@@ -609,18 +624,12 @@ LogicalTable join(const LogicalTable& lhs,
     }
   }
 
-  if (broadcast == BroadcastInput::AUTO) {
+  if (needs_communication) {
     if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0) {
       task.add_communicator("cpu");
     } else {
       task.add_communicator("nccl");
     }
-  } else if (join_type == JoinType::FULL ||
-             (broadcast == BroadcastInput::LEFT && join_type != JoinType::INNER)) {
-    throw std::runtime_error(
-      "Force broadcast was indicated, but repartitioning is required. "
-      "FULL joins do not support broadcasting and LEFT joins only for the "
-      "right hand side argument.");
   }
   runtime->submit(std::move(task));
   return ret;
@@ -694,9 +703,10 @@ LogicalTable join(const LogicalTable& lhs,
 
 namespace {
 
-const auto reg_id_ = []() -> char {
-  legate::dataframe::task::JoinTask::register_variants();
-  return 0;
-}();
+void __attribute__((constructor)) register_tasks()
+{
+  legate::dataframe::task::JoinTask<true>::register_variants();
+  legate::dataframe::task::JoinTask<false>::register_variants();
+}
 
 }  // namespace

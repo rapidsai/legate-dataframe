@@ -30,9 +30,6 @@ namespace task {
 
 class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ToTimestamps}};
-
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -54,9 +51,6 @@ class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
 class ExtractTimestampComponentTask
   : public Task<ExtractTimestampComponentTask, OpCode::ExtractTimestampComponent> {
  public:
-  static inline const auto TASK_CONFIG =
-    legate::TaskConfig{legate::LocalTaskID{OpCode::ExtractTimestampComponent}};
-
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -123,10 +117,10 @@ LogicalColumn extract_timestamp_component(const LogicalColumn& input,
 
 namespace {
 
-const auto reg_id_ = []() -> char {
+void __attribute__((constructor)) register_tasks()
+{
   legate::dataframe::task::ToTimestampsTask::register_variants();
   legate::dataframe::task::ExtractTimestampComponentTask::register_variants();
-  return 0;
-}();
+}
 
 }  // namespace
