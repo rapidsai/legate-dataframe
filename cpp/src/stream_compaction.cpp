@@ -40,15 +40,9 @@ class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBool
     const auto boolean_mask = argument::get_next_input<PhysicalColumn>(ctx);
     auto output             = argument::get_next_output<PhysicalTable>(ctx);
 
-    std::vector<std::string> dummy_column_names;
-    for (int i = 0; i < tbl.num_columns(); i++) {
-      dummy_column_names.push_back(std::to_string(i));
-    }
-
     auto result =
-      ARROW_RESULT(
-        arrow::compute::CallFunction(
-          "filter", {tbl.arrow_table_view(dummy_column_names), boolean_mask.arrow_array_view()}))
+      ARROW_RESULT(arrow::compute::CallFunction(
+                     "filter", {tbl.arrow_table_view(), boolean_mask.arrow_array_view()}))
         .table();
 
     output.move_into(std::move(result));
