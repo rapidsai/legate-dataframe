@@ -19,12 +19,30 @@
 #include <string>
 
 #include <cudf/types.hpp>
-
-#include <legate_dataframe/core/column.hpp>
+#include <legate.h>
+#include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 
 namespace legate::dataframe {
 
+namespace task {
+
+class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
+ public:
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
+                                                .with_has_allocations(true)
+                                                .with_elide_device_ctx_sync(true)
+                                                .with_has_side_effect(true);
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+}  // namespace task
 /**
  * @brief Write table to csv files.
  *
