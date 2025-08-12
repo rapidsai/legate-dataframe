@@ -28,8 +28,6 @@ cdef LogicalColumn cpp_scalar_col_from_python(scalar: ScalarLike):
     -------
         Scalar argument
     """
-    cdef PylibcudfScalar cudf_scalar
-
     if isinstance(scalar, LogicalColumn):
         if not scalar.is_scalar():
             raise ValueError(
@@ -47,7 +45,9 @@ cdef LogicalColumn cpp_scalar_col_from_python(scalar: ScalarLike):
     # NOTE: Converting to a cudf scalar isn't really ideal, as we copy
     #       to the device, just to copy it back again to get a legate one.
     if isinstance(scalar, PylibcudfScalar) :
-        cudf_scalar = <PylibcudfScalar>scalar
-    else:
-        cudf_scalar = <PylibcudfScalar>(cudf.Scalar(scalar).device_value)
-    return LogicalColumn.from_cudf(cudf_scalar)
+        return LogicalColumn.from_cudf(<PylibcudfScalar>scalar)
+    elif isinstance(scalar, cudf.Scalar):
+        return LogicalColumn.from_cudf(
+            <PylibcudfScalar>(cudf.Scalar(scalar).device_value))
+
+    return LogicalColumn.from_arrow(pa.scalar(scalar))

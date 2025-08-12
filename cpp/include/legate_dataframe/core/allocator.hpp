@@ -21,6 +21,7 @@
 #include <legate.h>
 
 #include <cudf/column/column_view.hpp>
+#include <cudf/strings/strings_column_view.hpp>
 #include <rmm/mr/device/device_memory_resource.hpp>
 
 namespace legate {
@@ -99,6 +100,15 @@ class TaskMemoryResource : public DeviceMemoryResource {
    * @return A valid buffer if found
    */
   MemAlloc release_buffer(cudf::column_view col);
+
+  /*
+   * @brief Return and release an allocated memory buffer of the string data.
+   *
+   * @param col cudf string column view
+   * @param stream cuda stream
+   * @return A valid buffer if found
+   */
+  MemAlloc release_buffer(cudf::strings_column_view col, rmm::cuda_stream_view stream);
 
  private:
   std::unordered_map<const void*, MemAlloc> buffers_{};

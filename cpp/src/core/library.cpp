@@ -87,6 +87,7 @@ class Mapper : public legate::mapping::Mapper {
     if (memory_kind == legate::mapping::StoreTarget::ZCMEM) {
       switch (task_id) {
         case legate::dataframe::task::OpCode::Join:
+        case legate::dataframe::task::OpCode::JoinConcurrent:
           // TODO: Join is identical to GroupBy, but we would have to look at
           // both input tables to ge the maximum column number.
           return std::nullopt;
