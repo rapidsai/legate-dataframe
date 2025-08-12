@@ -16,28 +16,16 @@
 import numpy as np
 import pyarrow as pa
 import pytest
-from legate.core import TaskTarget, get_legate_runtime
+from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.sort import sort
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
-from legate_dataframe.testing import assert_arrow_table_equal, assert_matches_polars
-
-
-def get_test_scoping():
-    # avoid TaskTarget.OMP - sort does not implement this
-    runtime = get_legate_runtime()
-    n_cpus = runtime.get_machine().count(TaskTarget.CPU)
-    n_gpus = runtime.get_machine().count(TaskTarget.GPU)
-    target = TaskTarget.GPU if n_gpus > 0 else TaskTarget.CPU
-    n_processors = n_gpus if target == TaskTarget.GPU else n_cpus
-    i = 1
-    scopes_to_test = []
-    while i < n_processors:
-        scopes_to_test.append(runtime.get_machine().only(target)[:i])
-        i *= 2
-    scopes_to_test.append(runtime.get_machine().only(target)[:n_processors])
-    return scopes_to_test
+from legate_dataframe.testing import (
+    assert_arrow_table_equal,
+    assert_matches_polars,
+    get_test_scoping,
+)
 
 
 @pytest.mark.parametrize(
