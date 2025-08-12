@@ -21,12 +21,15 @@
 #include <stdexcept>
 #include <string>
 
+#include <arrow/c/bridge.h> /* for arrow::ImportArray */
+
 #include <cuda_runtime_api.h>
 
 #include <legate/cuda/cuda.h>
 
 #include <cudf/column/column_factories.hpp>
 #include <cudf/copying.hpp>
+#include <cudf/interop.hpp>
 #include <cudf/strings/strings_column_view.hpp>
 #include <cudf/types.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
@@ -56,170 +59,6 @@ T* maybe_bind_buffer(legate::PhysicalStore store, std::size_t size)
     out = acc.ptr(store.shape<1>().lo[0]);
   }
   return out;
-}
-
-struct move_into_fn {
-  template <typename T, std::enable_if_t<cudf::is_rep_layout_compatible<T>()>* = nullptr>
-  void operator()(legate::PhysicalArray& array,
-                  const cudf::column_view& column,
-                  cudaStream_t stream,
-                  TaskMemoryResource* mr)
-  {
-    const auto num_rows = column.size();
-    if (array.nullable()) {
-      bool* null_mask_ptr = maybe_bind_buffer<bool>(array.null_mask(), num_rows);
-
-      if (column.nullable()) {
-        null_mask_bits_to_bools(num_rows, null_mask_ptr, column.null_mask(), stream);
-      } else {
-        LEGATE_CHECK_CUDA(cudaMemsetAsync(
-          null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
-      }
-    }
-
-    if (mr != nullptr) {
-      auto mem_alloc = mr->release_buffer(column);
-      if (mem_alloc.valid() && array.data().is_unbound_store()) {
-        array.data().bind_untyped_data(mem_alloc.buffer(), num_rows);
-        return;
-      }
-    }
-
-    T* data_ptr         = maybe_bind_buffer<T>(array.data(), num_rows);
-    const T* source_ptr = column.data<T>();
-    // cudaPointerAttributes attr;
-    // LEGATE_CHECK_CUDA(cudaPointerGetAttributes(&attr, data_ptr));
-    // LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
-      data_ptr, source_ptr, num_rows * sizeof(T), cudaMemcpyDeviceToDevice, stream));
-    // LEGATE_CHECK_CUDA(cudaDeviceSynchronize());
-  }
-
-  template <typename T, std::enable_if_t<std::is_same_v<T, cudf::string_view>>* = nullptr>
-  void operator()(legate::PhysicalArray& array,
-                  const cudf::column_view& column,
-                  cudaStream_t stream,
-                  TaskMemoryResource* mr)
-  {
-    // The string version currently doesn't support already bound chars outputs.  Presumably, this
-    // can't happen right now anyway, because the result size is not fixed so it should fail early?
-    const auto num_rows = column.size();
-
-    if (array.nullable()) {
-      bool* null_mask_ptr = maybe_bind_buffer<bool>(array.null_mask(), num_rows);
-
-      if (column.nullable()) {
-        null_mask_bits_to_bools(num_rows, null_mask_ptr, column.null_mask(), stream);
-      } else {
-        LEGATE_CHECK_CUDA(cudaMemsetAsync(
-          null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
-      }
-    }
-
-    cudf::strings_column_view str_col{column};
-    legate::StringPhysicalArray ary = array.as_string_array();
-
-    if (str_col.size() == 0) {
-      if (ary.ranges().data().is_unbound_store()) { ary.ranges().data().bind_empty_data(); }
-      if (ary.chars().data().is_unbound_store()) { ary.chars().data().bind_empty_data(); }
-      return;
-    }
-
-    auto ranges_size = str_col.offsets().size() - 1;
-    auto ranges_ptr  = maybe_bind_buffer<legate::Rect<1>>(ary.ranges().data(), ranges_size);
-    cudf_offsets_to_local_ranges(ranges_size, ranges_ptr, str_col.offsets(), stream);
-
-    if (str_col.offsets().offset() != 0) {
-      throw std::runtime_error("string column seems sliced, which is currently not supported.");
-    }
-    auto nbytes = str_col.chars_size(stream);
-    // NOTE: a string array can never have it's chars data already bound (size may change).
-    if (mr != nullptr) {
-      // If valid allocation, don't copy the string data.
-      auto mem_alloc = mr->release_buffer(str_col, stream);
-      if (mem_alloc.valid() && ary.chars().data().is_unbound_store()) {
-        ary.chars().data().bind_untyped_data(mem_alloc.buffer(), nbytes);
-        return;
-      }
-    }
-
-    auto chars_ptr = maybe_bind_buffer<int8_t>(ary.chars().data(), nbytes);
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
-      chars_ptr, str_col.chars_begin(stream), nbytes, cudaMemcpyDeviceToDevice, stream));
-  }
-
-  template <typename T,
-            std::enable_if_t<!(cudf::is_rep_layout_compatible<T>() ||
-                               std::is_same_v<T, cudf::string_view>)>* = nullptr>
-  void operator()(legate::PhysicalArray& array,
-                  const cudf::column_view& column,
-                  cudaStream_t stream,
-                  TaskMemoryResource* mr)
-  {
-    // TODO: support lists
-    throw std::invalid_argument("move_into(): type not supported");
-  }
-};
-
-/*
- * Helper to either bind or copy cudf data into PhysicalArray.
- * Context may be `nullptr` when run outside of a trask.
- * This function may take possession of the column data (and bind it to the array).
- */
-void from_cudf(legate::PhysicalArray array,
-               const cudf::column_view& column,
-               cudaStream_t stream,
-               TaskMemoryResource* mr = nullptr,
-               bool scalar            = false)
-{
-  // Expect the types to match
-  if (array.type() != to_legate_type(column.type().id())) {
-    throw std::invalid_argument("from_cudf(): type mismatch.");
-  }
-  // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
-  //     seem to get a nullable column.  So also check `has_nulls()`.
-  if (column.nullable() && !array.nullable() && column.has_nulls()) {
-    throw std::invalid_argument(
-      "from_cudf(): the cudf column is nullable while the PhysicalArray isn't");
-  }
-
-  if (scalar && column.size() != 1) {
-    throw std::invalid_argument("from_cudf(): scalar column must have size one.");
-  }
-  cudf::type_dispatcher(column.type(), move_into_fn{}, array, column, stream, mr);
-}
-
-legate::LogicalArray from_cudf(const cudf::column_view& col, rmm::cuda_stream_view stream)
-{
-  auto runtime = legate::Runtime::get_runtime();
-
-  auto cudf_nullable = col.nullable();  // could also count nulls
-  if (cudf::type_id::STRING == col.type().id()) {
-    cudf::strings_column_view str_col{col};
-    auto nbytes = str_col.chars_size(stream);
-    auto array  = runtime->create_string_array(
-      runtime->create_array({std::uint64_t(col.size())}, legate::rect_type(1), cudf_nullable),
-      runtime->create_array({std::uint64_t(nbytes)}, legate::int8()));
-    from_cudf(array.get_physical_array(legate::mapping::StoreTarget::FBMEM), col, stream);
-    return array;
-  }
-  if (col.num_children() > 0) {
-    throw std::invalid_argument("non-string column with children isn't supported");
-  }
-  auto array = runtime->create_array({std::uint64_t(col.size())},
-                                     to_legate_type(col.type().id()),
-                                     cudf_nullable,
-                                     false /* scalar */);
-  from_cudf(array.get_physical_array(legate::mapping::StoreTarget::FBMEM), col, stream);
-  return array;
-}
-
-legate::LogicalArray from_cudf(const cudf::scalar& scalar, rmm::cuda_stream_view stream)
-{
-  // NOTE: this goes via a column-view.  Moving data more directly may be
-  // preferable (although libcudf could also grow a way to get a column view).
-  auto col = cudf::make_column_from_scalar(scalar, 1, stream);
-  return from_cudf(col->view(), stream);
 }
 
 struct ArrowToPhysicalArrayVisitor {
@@ -344,6 +183,180 @@ legate::LogicalArray from_arrow(std::shared_ptr<arrow::Scalar> scalar)
   auto array = ARROW_RESULT(arrow::MakeArrayFromScalar(*scalar, 1));
   return from_arrow(array);
 }
+
+struct move_into_fn {
+  template <typename T, std::enable_if_t<cudf::is_rep_layout_compatible<T>()>* = nullptr>
+  void operator()(legate::PhysicalArray& array,
+                  const cudf::column_view& column,
+                  cudaStream_t stream,
+                  TaskMemoryResource* mr)
+  {
+    const auto num_rows = column.size();
+    if (array.nullable()) {
+      bool* null_mask_ptr = maybe_bind_buffer<bool>(array.null_mask(), num_rows);
+
+      if (column.nullable()) {
+        null_mask_bits_to_bools(num_rows, null_mask_ptr, column.null_mask(), stream);
+      } else {
+        LEGATE_CHECK_CUDA(cudaMemsetAsync(
+          null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
+      }
+    }
+
+    if (mr != nullptr) {
+      auto mem_alloc = mr->release_buffer(column);
+      if (mem_alloc.valid() && array.data().is_unbound_store()) {
+        array.data().bind_untyped_data(mem_alloc.buffer(), num_rows);
+        return;
+      }
+    }
+
+    T* data_ptr         = maybe_bind_buffer<T>(array.data(), num_rows);
+    const T* source_ptr = column.data<T>();
+    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
+      data_ptr, source_ptr, num_rows * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+  }
+
+  template <typename T, std::enable_if_t<std::is_same_v<T, cudf::string_view>>* = nullptr>
+  void operator()(legate::PhysicalArray& array,
+                  const cudf::column_view& column,
+                  cudaStream_t stream,
+                  TaskMemoryResource* mr)
+  {
+    // The string version currently doesn't support already bound chars outputs.  Presumably, this
+    // can't happen right now anyway, because the result size is not fixed so it should fail early?
+    const auto num_rows = column.size();
+
+    if (array.nullable()) {
+      bool* null_mask_ptr = maybe_bind_buffer<bool>(array.null_mask(), num_rows);
+
+      if (column.nullable()) {
+        null_mask_bits_to_bools(num_rows, null_mask_ptr, column.null_mask(), stream);
+      } else {
+        LEGATE_CHECK_CUDA(cudaMemsetAsync(
+          null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
+      }
+    }
+
+    cudf::strings_column_view str_col{column};
+    legate::StringPhysicalArray ary = array.as_string_array();
+
+    if (str_col.size() == 0) {
+      if (ary.ranges().data().is_unbound_store()) { ary.ranges().data().bind_empty_data(); }
+      if (ary.chars().data().is_unbound_store()) { ary.chars().data().bind_empty_data(); }
+      return;
+    }
+
+    auto ranges_size = str_col.offsets().size() - 1;
+    auto ranges_ptr  = maybe_bind_buffer<legate::Rect<1>>(ary.ranges().data(), ranges_size);
+    cudf_offsets_to_local_ranges(ranges_size, ranges_ptr, str_col.offsets(), stream);
+
+    if (str_col.offsets().offset() != 0) {
+      throw std::runtime_error("string column seems sliced, which is currently not supported.");
+    }
+    auto nbytes = str_col.chars_size(stream);
+    // NOTE: a string array can never have it's chars data already bound (size may change).
+    if (mr != nullptr) {
+      // If valid allocation, don't copy the string data.
+      auto mem_alloc = mr->release_buffer(str_col, stream);
+      if (mem_alloc.valid() && ary.chars().data().is_unbound_store()) {
+        ary.chars().data().bind_untyped_data(mem_alloc.buffer(), nbytes);
+        return;
+      }
+    }
+
+    auto chars_ptr = maybe_bind_buffer<int8_t>(ary.chars().data(), nbytes);
+    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
+      chars_ptr, str_col.chars_begin(stream), nbytes, cudaMemcpyDeviceToDevice, stream));
+  }
+
+  template <typename T,
+            std::enable_if_t<!(cudf::is_rep_layout_compatible<T>() ||
+                               std::is_same_v<T, cudf::string_view>)>* = nullptr>
+  void operator()(legate::PhysicalArray& array,
+                  const cudf::column_view& column,
+                  cudaStream_t stream,
+                  TaskMemoryResource* mr)
+  {
+    // TODO: support lists
+    throw std::invalid_argument("move_into(): type not supported");
+  }
+};
+
+/*
+ * Helper to either bind or copy cudf data into PhysicalArray.
+ * Context may be `nullptr` when run outside of a trask.
+ * This function may take possession of the column data (and bind it to the array).
+ */
+void from_cudf(legate::PhysicalArray array,
+               const cudf::column_view& column,
+               cudaStream_t stream,
+               TaskMemoryResource* mr = nullptr,
+               bool scalar            = false)
+{
+  // Expect the types to match
+  if (array.type() != to_legate_type(column.type().id())) {
+    throw std::invalid_argument("from_cudf(): type mismatch.");
+  }
+  // NOTE(seberg): In some cases (replace nulls) we expect no nulls, but
+  //     seem to get a nullable column.  So also check `has_nulls()`.
+  if (column.nullable() && !array.nullable() && column.has_nulls()) {
+    throw std::invalid_argument(
+      "from_cudf(): the cudf column is nullable while the PhysicalArray isn't");
+  }
+
+  if (scalar && column.size() != 1) {
+    throw std::invalid_argument("from_cudf(): scalar column must have size one.");
+  }
+  cudf::type_dispatcher(column.type(), move_into_fn{}, array, column, stream, mr);
+}
+
+legate::LogicalArray from_cudf(const cudf::column_view& col, rmm::cuda_stream_view stream)
+{
+  auto runtime = legate::Runtime::get_runtime();
+
+  if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0) {
+    /*
+     * NOTE: We can probably remove this eventually, it exists currently
+     * mainly because a lot of tests are still written using cudf types and
+     * run for CPU only as well.
+     * I.e. if we can't copy to GPU, copy to CPU via arrow.
+     */
+    auto device_array = cudf::to_arrow_host(col, stream);
+    auto arrow_type   = to_arrow_type(col.type().id());
+    auto arrow_array  = ARROW_RESULT(arrow::ImportArray(&device_array->array, arrow_type));
+    return from_arrow(arrow_array);
+  }
+
+  auto cudf_nullable = col.nullable();  // could also count nulls
+  if (cudf::type_id::STRING == col.type().id()) {
+    cudf::strings_column_view str_col{col};
+    auto nbytes = str_col.chars_size(stream);
+    auto array  = runtime->create_string_array(
+      runtime->create_array({std::uint64_t(col.size())}, legate::rect_type(1), cudf_nullable),
+      runtime->create_array({std::uint64_t(nbytes)}, legate::int8()));
+    from_cudf(array.get_physical_array(legate::mapping::StoreTarget::FBMEM), col, stream);
+    return array;
+  }
+  if (col.num_children() > 0) {
+    throw std::invalid_argument("non-string column with children isn't supported");
+  }
+  auto array = runtime->create_array({std::uint64_t(col.size())},
+                                     to_legate_type(col.type().id()),
+                                     cudf_nullable,
+                                     false /* scalar */);
+  from_cudf(array.get_physical_array(legate::mapping::StoreTarget::FBMEM), col, stream);
+  return array;
+}
+
+legate::LogicalArray from_cudf(const cudf::scalar& scalar, rmm::cuda_stream_view stream)
+{
+  // NOTE: this goes via a column-view.  Moving data more directly may be
+  // preferable (although libcudf could also grow a way to get a column view).
+  auto col = cudf::make_column_from_scalar(scalar, 1, stream);
+  return from_cudf(col->view(), stream);
+}
+
 }  // namespace
 
 LogicalColumn::LogicalColumn(cudf::column_view cudf_col, rmm::cuda_stream_view stream)
