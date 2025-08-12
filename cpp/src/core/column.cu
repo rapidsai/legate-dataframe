@@ -132,12 +132,10 @@ struct move_into_fn {
     if (str_col.offsets().offset() != 0) {
       throw std::runtime_error("string column seems sliced, which is currently not supported.");
     }
-    // TODO: maybe attach the chars data instead of copying.
     auto nbytes = str_col.chars_size(stream);
     // NOTE: a string array can never have it's chars data already bound (size may change).
     if (mr != nullptr) {
       // If valid allocation, don't copy the string data.
-      // TODO: unclear that this actually works!
       auto mem_alloc = mr->release_buffer(str_col, stream);
       if (mem_alloc.valid() && ary.chars().data().is_unbound_store()) {
         ary.chars().data().bind_untyped_data(mem_alloc.buffer(), nbytes);
@@ -167,7 +165,6 @@ struct move_into_fn {
  * Helper to either bind or copy cudf data into PhysicalArray.
  * Context may be `nullptr` when run outside of a trask.
  * This function may take possession of the column data (and bind it to the array).
- * TODO(seberg): Maybe this should pass the memory resource instead.
  */
 void from_cudf(legate::PhysicalArray array,
                const cudf::column_view& column,
