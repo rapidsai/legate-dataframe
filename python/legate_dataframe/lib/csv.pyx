@@ -6,11 +6,14 @@
 
 
 from libcpp cimport bool as cpp_bool
+from libcpp.memory cimport shared_ptr
 from libcpp.optional cimport optional
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
-from legate_dataframe.lib.core.data_type cimport as_data_type, cpp_cudf_type
+from pyarrow.lib cimport CDataType
+
+from legate_dataframe.lib.core.data_type cimport as_arrow_data_type
 from legate_dataframe.lib.core.table cimport LogicalTable, cpp_LogicalTable
 
 import glob
@@ -25,7 +28,7 @@ cdef extern from "<legate_dataframe/csv.hpp>" nogil:
     ) except +
     cpp_LogicalTable cpp_csv_read "legate::dataframe::csv_read"(
         const vector[string]& files,
-        const vector[cpp_cudf_type]& out,
+        const vector[shared_ptr[CDataType]]& out,
         cpp_bool na_filter,
         char delimiter,
         optional[vector[string]]& names,
@@ -79,8 +82,8 @@ def csv_read(
     files : str, Path, or iterable of paths
         If a string, ``glob.glob`` is used to conveniently load multiple files,
         otherwise must be a path or an iterable of paths (or strings).
-    dtypes : iterable of cudf dtype-likes
-        The cudf dtypes to extract for each column (or a single one for all).
+    dtypes : iterable of arrow dtype-likes
+        The arrow dypes to extract for each column (or a single one for all).
     na_filter: bool, optional
         Whether to detect missing values, set to ``False`` to improve performance.
     delimiter : str, optional
@@ -103,7 +106,7 @@ def csv_read(
     lib.parquet.parquet_write: Write parquet data
     """
     cdef vector[string] cpp_files
-    cdef vector[cpp_cudf_type] cpp_dtypes
+    cdef vector[shared_ptr[CDataType]] cpp_dtypes
     cdef vector[string] cpp_names
     cdef vector[int] cpp_usecols
     cdef optional[vector[string]] cpp_names_opt
@@ -118,7 +121,7 @@ def csv_read(
         cpp_files.push_back(str(file).encode("UTF-8"))
 
     for dtype in dtypes:
-        cpp_dtypes.push_back(as_data_type(dtype))
+        cpp_dtypes.push_back(as_arrow_data_type(dtype))
 
     # Slightly awkward.  C++ uses `names` as string `usecols`.
     if names is None:

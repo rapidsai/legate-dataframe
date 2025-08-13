@@ -162,7 +162,7 @@ void csv_write(LogicalTable& tbl, const std::string& dirpath, char delimiter)
 }
 
 LogicalTable csv_read(const std::vector<std::string>& files,
-                      const std::vector<cudf::data_type>& dtypes,
+                      const std::vector<std::shared_ptr<arrow::DataType>>& dtypes,
                       bool na_filter,
                       char delimiter,
                       const std::optional<std::vector<std::string>>& names,

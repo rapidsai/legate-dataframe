@@ -96,7 +96,7 @@ namespace legate::dataframe {
 LogicalColumn binary_operation(const LogicalColumn& lhs,
                                const LogicalColumn& rhs,
                                std::string op,
-                               cudf::data_type output_type)
+                               std::shared_ptr<arrow::DataType> output_type)
 {
   auto runtime = legate::Runtime::get_runtime();
 
@@ -117,7 +117,7 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
   auto scalar_result = lhs.is_scalar() && rhs.is_scalar();
   std::optional<size_t> size{};
   if (get_prefer_eager_allocations()) { size = lhs.is_scalar() ? rhs.num_rows() : lhs.num_rows(); }
-  auto ret = LogicalColumn::empty_like(std::move(output_type), nullable, scalar_result, size);
+  auto ret = LogicalColumn::empty_like(output_type, nullable, scalar_result, size);
   legate::AutoTask task =
     runtime->create_task(get_library(), task::BinaryOpColColTask::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, op);

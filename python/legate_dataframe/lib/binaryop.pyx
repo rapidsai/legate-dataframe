@@ -4,12 +4,13 @@
 # distutils: language = c++
 # cython: language_level=3
 
+from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string
 
-from pylibcudf.types cimport data_type
+from pyarrow.lib cimport CDataType
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
-from legate_dataframe.lib.core.data_type cimport as_data_type
+from legate_dataframe.lib.core.data_type cimport as_arrow_data_type
 from legate_dataframe.lib.core.scalar cimport cpp_scalar_col_from_python
 
 from numpy.typing import DTypeLike
@@ -22,7 +23,7 @@ cdef extern from "<legate_dataframe/binaryop.hpp>" nogil:
         const cpp_LogicalColumn& lhs,
         const cpp_LogicalColumn& rhs,
         string op,
-        data_type output_type
+        shared_ptr[CDataType] output_type
     )
 
 
@@ -89,6 +90,6 @@ def binary_operation(
     return LogicalColumn.from_handle(
         cpp_binary_operation(
             lhs_col._handle, rhs_col._handle, op.encode('utf-8'),
-            as_data_type(output_type)
+            as_arrow_data_type(output_type)
         )
     )

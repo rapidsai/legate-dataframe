@@ -83,6 +83,6 @@ class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCo
 LogicalColumn binary_operation(const LogicalColumn& lhs,
                                const LogicalColumn& rhs,
                                std::string op,
-                               cudf::data_type output_type);
+                               std::shared_ptr<arrow::DataType> output_type);
 
 }  // namespace legate::dataframe

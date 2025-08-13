@@ -418,7 +418,8 @@ class AggregationHelper final {
       auto sum        = get_result("sum", output_type, std::nullopt);
       auto cudf_int64 = cudf::data_type{cudf::type_id::INT64};
       auto counts     = get_result("count_valid", cudf_int64, std::nullopt);
-      return legate::dataframe::binary_operation(sum, counts, "divide", output_type);
+      return legate::dataframe::binary_operation(
+        sum, counts, "divide", to_arrow_type(output_type.id()));
     } else {
       auto first_pass_res = get_first_pass_result(op, output_type);
       return perform_simple_reduce(first_pass_res, op, /* finalize */ true, output_type, initial);

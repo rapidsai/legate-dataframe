@@ -82,6 +82,31 @@ class LogicalColumn {
     }
   }
 
+  /**
+   * @brief Create a column with a legate array as the data
+   *
+   * @param array The logical array (zero copy)
+   * @param data_type The arrow data type of the column. If nullptr, the arrow data type is
+   * derived from the data type of `array`.
+   * @param scalar Whether to consider this column scalar.  WARNING: currently
+   * it is the callers responsibility to ensure the array is length 1 as this
+   * check could be blocking.
+   */
+  LogicalColumn(legate::LogicalArray array,
+                std::shared_ptr<arrow::DataType> data_type,
+                bool scalar = false)
+    : array_{std::move(array)}, scalar_{scalar}
+  {
+    if (array_->dim() != 1) { throw std::invalid_argument("array must be 1-D"); }
+    // Note: Checking the volume could be blocking, so assume that this is fine.
+    assert(!scalar || array_->unbound() || array_->volume() == 1);
+
+    if (!data_type) {
+      cudf_type_ = cudf::data_type{to_cudf_type_id(array_->type().code())};
+    } else {
+      cudf_type_ = to_cudf_type(*data_type);
+    }
+  }
   /*
    * Convenience constructor for tests
    */
@@ -254,6 +279,32 @@ class LogicalColumn {
     } else {
       return LogicalColumn(legate::Runtime::get_runtime()->create_array(
                              Shape{size.value()}, to_legate_type(dtype.id()), nullable),
+                           dtype,
+                           scalar);
+    }
+  }
+
+  /**
+   * @brief Create a new unbounded column from dtype and nullable
+   *
+   * @param dtype The data type of the new column
+   * @param nullable The nullable of the new column
+   * @param scalar Whether the result is a scalar column.
+   * @return The new unbounded column
+   */
+  static LogicalColumn empty_like(std::shared_ptr<arrow::DataType> dtype,
+                                  bool nullable,
+                                  bool scalar                = false,
+                                  std::optional<size_t> size = std::nullopt)
+  {
+    if (!size.has_value()) {
+      return LogicalColumn(
+        legate::Runtime::get_runtime()->create_array(to_legate_type(*dtype), 1, nullable),
+        dtype,
+        scalar);
+    } else {
+      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
+                             Shape{size.value()}, to_legate_type(*dtype), nullable),
                            dtype,
                            scalar);
     }

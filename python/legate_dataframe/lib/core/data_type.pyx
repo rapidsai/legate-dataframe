@@ -7,6 +7,12 @@
 from pylibcudf.libcudf.types cimport type_id
 from pylibcudf.types cimport data_type as cpp_cudf_type
 
+from pylibcudf.interop import to_arrow
+
+from libcpp.memory cimport shared_ptr
+
+from pyarrow.lib cimport CDataType, pyarrow_unwrap_data_type
+
 import cudf
 import pyarrow as pa
 from cudf.utils.dtypes import (
@@ -14,6 +20,35 @@ from cudf.utils.dtypes import (
     dtype_to_pylibcudf_type,
 )
 from pylibcudf.interop import from_arrow
+
+
+cdef shared_ptr[CDataType] as_arrow_data_type(data_type_like):
+    """Get data type from object
+
+    Parameters
+    ----------
+    data_type_like
+        A Python object that is convertible to an arrow datatype.
+
+    Returns
+    -------
+        Coerced C++ arrow type.
+    """
+    cdef shared_ptr[CDataType] d_type
+
+    if isinstance(data_type_like, pa.DataType):
+        d_type = pyarrow_unwrap_data_type(data_type_like)
+        return d_type
+    if isinstance(data_type_like, DataType):
+        data_type_like = to_arrow(data_type_like)
+        d_type = pyarrow_unwrap_data_type(data_type_like)
+        return d_type
+
+    # try numpy dtype
+    d_type = pyarrow_unwrap_data_type(
+        pa.from_numpy_dtype(data_type_like)
+    )
+    return d_type
 
 
 cdef cpp_cudf_type as_data_type(data_type_like):
