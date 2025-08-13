@@ -96,7 +96,7 @@ struct TaskArgumentMix : public legate::LegateTask<TaskArgumentMix> {
   }
 };
 
-legate::Library get_library()
+legate::Library get_test_library()
 {
   static bool prepared = false;
   auto runtime         = legate::Runtime::get_runtime();
@@ -175,7 +175,7 @@ TEST(TaskTest, GlobalRowOffsetEmpty)
 TEST(TaskTest, TaskArgumentMix)
 {
   auto runtime = legate::Runtime::get_runtime();
-  auto task    = runtime->create_task(get_library(), TaskArgumentMix::TASK_CONFIG.task_id());
+  auto task    = runtime->create_task(get_test_library(), TaskArgumentMix::TASK_CONFIG.task_id());
 
   auto input     = sequence(100, 0);
   auto output    = LogicalColumn::empty_like(input);

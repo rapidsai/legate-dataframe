@@ -38,6 +38,8 @@ class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
                                                 .with_has_allocations(true)
                                                 .with_elide_device_ctx_sync(true)
                                                 .with_has_side_effect(true);
+  static constexpr auto CPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_has_side_effect(true);
   static void cpu_variant(legate::TaskContext context);
   static void gpu_variant(legate::TaskContext context);
 };

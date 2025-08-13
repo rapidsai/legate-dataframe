@@ -16,21 +16,22 @@
 
 #include <legate.h>
 
-#include <legate_dataframe/core/library.hpp>
+#include <cudf/filling.hpp>
+#include <cudf/scalar/scalar.hpp>
+
 #include <legate_dataframe/core/task_argument.hpp>
 #include <legate_dataframe/core/task_context.hpp>
 #include <legate_dataframe/filling.hpp>
 
-namespace legate::dataframe {
-namespace task {
-
-/*static*/ void SequenceTask::cpu_variant(legate::TaskContext context)
+namespace legate::dataframe::task {
+/*static*/ void SequenceTask::gpu_variant(legate::TaskContext context)
 {
   TaskContext ctx{context};
   auto global_size = argument::get_next_scalar<size_t>(ctx);
   auto global_init = argument::get_next_scalar<int64_t>(ctx);
   auto output      = argument::get_next_output<PhysicalColumn>(ctx);
   argument::get_parallel_launch_task(ctx);
+
   auto [local_start, local_size] = evenly_partition_work(global_size, ctx.rank, ctx.nranks);
   auto local_init                = global_init + local_start;
 
@@ -39,37 +40,9 @@ namespace task {
     return;
   }
 
-  arrow::Int64Builder long_builder = arrow::Int64Builder();
-  auto status                      = long_builder.Reserve(local_size);
-  for (size_t i = 0; i < local_size; i++) {
-    long_builder.UnsafeAppend(local_init + i);
-  }
-  auto local_array = ARROW_RESULT(long_builder.Finish());
-  output.move_into(std::move(local_array));
+  cudf::numeric_scalar<int64_t> cudf_init(local_init, true, ctx.stream(), ctx.mr());
+  auto res = cudf::sequence(local_size, cudf_init, ctx.stream(), ctx.mr());
+
+  output.move_into(std::move(res));
 }
-}  // namespace task
-
-LogicalColumn sequence(size_t size, int64_t init)
-{
-  auto runtime = legate::Runtime::get_runtime();
-  auto ret     = LogicalColumn::empty_like(cudf::data_type{cudf::type_id::INT64}, false);
-  legate::AutoTask task =
-    runtime->create_task(get_library(), task::SequenceTask::TASK_CONFIG.task_id());
-  argument::add_next_scalar(task, size);
-  argument::add_next_scalar(task, init);
-  argument::add_next_output(task, ret);
-  argument::add_parallel_launch_task(task);
-  runtime->submit(std::move(task));
-  return ret;
-}
-
-}  // namespace legate::dataframe
-
-namespace {
-
-void __attribute__((constructor)) register_tasks()
-{
-  legate::dataframe::task::SequenceTask::register_variants();
-}
-
-}  // namespace
+}  // namespace legate::dataframe::task
