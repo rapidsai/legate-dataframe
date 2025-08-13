@@ -104,7 +104,7 @@ LogicalColumn binary_operation(const LogicalColumn& lhs,
   // This allows us to to throw nicely
   if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) > 0) {
     if (task::cudf_supported_binary_ops.count(op) == 0) {
-      throw std::invalid_argument("Unsupported binary operation: " + op);
+      throw std::invalid_argument("Unsupported binary operator: " + op);
     }
   } else {
     auto result = arrow::compute::GetFunctionRegistry()->GetFunction(op);

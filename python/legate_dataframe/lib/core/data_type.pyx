@@ -45,10 +45,15 @@ cdef shared_ptr[CDataType] as_arrow_data_type(data_type_like):
         return d_type
 
     # try numpy dtype
-    d_type = pyarrow_unwrap_data_type(
-        pa.from_numpy_dtype(data_type_like)
-    )
-    return d_type
+    try:
+        d_type = pyarrow_unwrap_data_type(
+            pa.from_numpy_dtype(data_type_like)
+        )
+        return d_type
+    except Exception as e:
+        raise TypeError(
+            f"Cannot convert {data_type_like} to an arrow data type."
+        ) from e
 
 
 cdef cpp_cudf_type as_data_type(data_type_like):
