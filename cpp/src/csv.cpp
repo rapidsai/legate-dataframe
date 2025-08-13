@@ -19,10 +19,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include <cudf/concatenate.hpp>
-#include <cudf/io/csv.hpp>
 #include <legate.h>
-#include <rmm/device_buffer.hpp>
 
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/library.hpp>
@@ -37,217 +34,101 @@
 
 namespace legate::dataframe::task {
 
-class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
- public:
-  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
-                                                .with_has_allocations(true)
-                                                .with_elide_device_ctx_sync(true)
-                                                .with_has_side_effect(true);
+/*static*/ void CSVWrite::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
+  const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
+  const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".csv";
+  const auto delimiter       = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
 
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-    const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
-    const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
-    const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".csv";
-    const auto delimiter       = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
+  auto arrow_table        = tbl.arrow_table_view(column_names);
+  auto outfile            = arrow::io::FileOutputStream::Open(filepath).ValueOrDie();
+  auto write_options      = arrow::csv::WriteOptions::Defaults();
+  write_options.delimiter = delimiter;
 
-    auto arrow_table        = tbl.arrow_table_view(column_names);
-    auto outfile            = arrow::io::FileOutputStream::Open(filepath).ValueOrDie();
-    auto write_options      = arrow::csv::WriteOptions::Defaults();
-    write_options.delimiter = delimiter;
+  auto csv_writer =
+    arrow::csv::MakeCSVWriter(outfile, arrow_table->schema(), write_options).ValueOrDie();
+  auto status = csv_writer->WriteTable(*arrow_table);
+  status      = csv_writer->Close();
+  if (!status.ok()) { throw std::runtime_error("Failed to write CSV file: " + status.ToString()); }
+}
 
-    auto csv_writer =
-      arrow::csv::MakeCSVWriter(outfile, arrow_table->schema(), write_options).ValueOrDie();
-    auto status = csv_writer->WriteTable(*arrow_table);
-    status      = csv_writer->Close();
-    if (!status.ok()) {
-      throw std::runtime_error("Failed to write CSV file: " + status.ToString());
-    }
+/*static*/ void CSVRead::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const auto launch_domain    = context.get_launch_domain();
+  const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto all_column_names = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
+  const auto na_filter        = argument::get_next_scalar<bool>(ctx);
+  const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
+  const auto nbytes           = argument::get_next_scalar_vector<size_t>(ctx);
+  const auto nbytes_total     = argument::get_next_scalar<size_t>(ctx);
+  const auto read_header      = argument::get_next_scalar<bool>(ctx);
+  PhysicalTable tbl_arg       = argument::get_next_output<PhysicalTable>(ctx);
+  argument::get_parallel_launch_task(ctx);
+
+  if (file_paths.size() != nbytes.size()) {
+    throw std::runtime_error("internal error: file path and nbytes size mismatch");
   }
 
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-    const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
-    const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto tbl             = argument::get_next_input<PhysicalTable>(ctx);
-    const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".csv";
-    const auto delimiter       = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
+  auto dtypes = tbl_arg.arrow_types();
 
-    auto dest    = cudf::io::sink_info(filepath);
-    auto options = cudf::io::csv_writer_options::builder(dest, tbl.table_view());
-    options.names(column_names);
-    options.inter_column_delimiter(delimiter);
-
-    cudf::io::write_csv(options, ctx.stream());
+  std::vector<std::string> include_columns;
+  for (auto index : use_cols_indexes) {
+    include_columns.push_back("f" + std::to_string(index));
   }
-};
-
-class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
- public:
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-    const auto launch_domain    = context.get_launch_domain();
-    const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto all_column_names = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
-    const auto na_filter        = argument::get_next_scalar<bool>(ctx);
-    const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
-    const auto nbytes           = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto nbytes_total     = argument::get_next_scalar<size_t>(ctx);
-    const auto read_header      = argument::get_next_scalar<bool>(ctx);
-    PhysicalTable tbl_arg       = argument::get_next_output<PhysicalTable>(ctx);
-    argument::get_parallel_launch_task(ctx);
-
-    if (file_paths.size() != nbytes.size()) {
-      throw std::runtime_error("internal error: file path and nbytes size mismatch");
-    }
-
-    auto dtypes = tbl_arg.arrow_types();
-
-    std::vector<std::string> include_columns;
-    for (auto index : use_cols_indexes) {
-      include_columns.push_back("f" + std::to_string(index));
-    }
-    std::unordered_map<std::string, std::shared_ptr<arrow::DataType>> dtypes_map;
-    for (size_t i = 0; i < dtypes.size(); i++) {
-      dtypes_map[include_columns[i]] = dtypes[i];
-    }
-
-    // Assign one file to each rank for now
-    auto [file_offset, num_files] = evenly_partition_work(file_paths.size(), ctx.rank, ctx.nranks);
-    std::vector<std::shared_ptr<arrow::Table>> tables;
-    for (size_t i = file_offset; i < file_offset + num_files; i++) {
-      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths[i]));
-
-      auto read_options        = arrow::csv::ReadOptions::Defaults();
-      read_options.use_threads = false;
-      // Column names will be f0, f1 ...
-      read_options.autogenerate_column_names = true;
-      read_options.skip_rows                 = read_header ? 1 : 0;
-
-      auto parse_options              = arrow::csv::ParseOptions::Defaults();
-      parse_options.delimiter         = delimiter;
-      auto convert_options            = arrow::csv::ConvertOptions::Defaults();
-      convert_options.column_types    = dtypes_map;
-      convert_options.include_columns = include_columns;
-
-      // Instantiate TableReader from input stream and options
-      arrow::io::IOContext io_context                 = arrow::io::default_io_context();
-      std::shared_ptr<arrow::csv::TableReader> reader = ARROW_RESULT(arrow::csv::TableReader::Make(
-        io_context, input, read_options, parse_options, convert_options));
-
-      // Read table from CSV file
-      auto result = reader->Read();
-      if (!result.ok()) {
-        // Empty file
-        if (result.status().ToString().find("Empty CSV file") != std::string::npos) {
-          continue;
-        } else {
-          throw std::runtime_error("Failed to read CSV file: " + result.status().ToString());
-        }
-      }
-      tables.push_back(*result);
-    }
-
-    // Concatenate tables
-    if (tables.size() == 0) {
-      tbl_arg.bind_empty_data();
-    } else {
-      auto table = ARROW_RESULT(arrow::ConcatenateTables(tables));
-      tbl_arg.move_into(table);
-    }
+  std::unordered_map<std::string, std::shared_ptr<arrow::DataType>> dtypes_map;
+  for (size_t i = 0; i < dtypes.size(); i++) {
+    dtypes_map[include_columns[i]] = dtypes[i];
   }
 
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-    const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto column_names     = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto use_cols_indexes = argument::get_next_scalar_vector<int>(ctx);
-    const auto na_filter        = argument::get_next_scalar<bool>(ctx);
-    const auto delimiter        = static_cast<char>(argument::get_next_scalar<int32_t>(ctx));
-    const auto nbytes           = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto nbytes_total     = argument::get_next_scalar<size_t>(ctx);
-    const auto read_header      = argument::get_next_scalar<bool>(ctx);
-    PhysicalTable tbl_arg       = argument::get_next_output<PhysicalTable>(ctx);
-    argument::get_parallel_launch_task(ctx);
+  // Assign one file to each rank for now
+  auto [file_offset, num_files] = evenly_partition_work(file_paths.size(), ctx.rank, ctx.nranks);
+  std::vector<std::shared_ptr<arrow::Table>> tables;
+  for (size_t i = file_offset; i < file_offset + num_files; i++) {
+    auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(file_paths[i]));
 
-    if (file_paths.size() != nbytes.size()) {
-      throw std::runtime_error("internal error: file path and nbytes size mismatch");
-    }
+    auto read_options        = arrow::csv::ReadOptions::Defaults();
+    read_options.use_threads = false;
+    // Column names will be f0, f1 ...
+    read_options.autogenerate_column_names = true;
+    read_options.skip_rows                 = read_header ? 1 : 0;
 
-    auto [my_bytes_offset, my_num_bytes] =
-      evenly_partition_work(nbytes_total, ctx.rank, ctx.nranks);
+    auto parse_options              = arrow::csv::ParseOptions::Defaults();
+    parse_options.delimiter         = delimiter;
+    auto convert_options            = arrow::csv::ConvertOptions::Defaults();
+    convert_options.column_types    = dtypes_map;
+    convert_options.include_columns = include_columns;
 
-    auto dtypes = tbl_arg.cudf_types();
+    // Instantiate TableReader from input stream and options
+    arrow::io::IOContext io_context                 = arrow::io::default_io_context();
+    std::shared_ptr<arrow::csv::TableReader> reader = ARROW_RESULT(arrow::csv::TableReader::Make(
+      io_context, input, read_options, parse_options, convert_options));
 
-    std::map<std::string, cudf::data_type> dtypes_map;
-    for (size_t i = 0; i < dtypes.size(); i++) {
-      dtypes_map[column_names[i]] = dtypes[i];
-    }
-
-    // Iterate through the file and nrow list and read as many rows from the
-    // files as this rank should read while skipping those of the other tasks.
-    std::vector<std::unique_ptr<cudf::table>> tables;
-    size_t total_bytes_seen = 0;
-    for (size_t i = 0; i < file_paths.size() && my_num_bytes > 0; i++) {
-      auto file_bytes = nbytes[i];
-
-      if (total_bytes_seen + file_bytes <= my_bytes_offset) {
-        // All of this files bytes belong to earlier ranks.
-        total_bytes_seen += file_bytes;
+    // Read table from CSV file
+    auto result = reader->Read();
+    if (!result.ok()) {
+      // Empty file
+      if (result.status().ToString().find("Empty CSV file") != std::string::npos) {
         continue;
+      } else {
+        throw std::runtime_error("Failed to read CSV file: " + result.status().ToString());
       }
-      // Calculate offset and bytes to read from this file.
-      auto file_bytes_offset  = my_bytes_offset - total_bytes_seen;
-      auto file_bytes_to_read = std::min(file_bytes - file_bytes_offset, my_num_bytes);
-
-      auto src = cudf::io::source_info(file_paths[i]);
-      auto opt = cudf::io::csv_reader_options::builder(src);
-      if (file_bytes_offset != 0 || !read_header) {
-        // Reading the header makes only sense at the start of a file
-        // TODO: If the header is read, could sanity check columns for multiple files.
-        opt.header(-1);
-      }
-      opt.delimiter(delimiter);
-      opt.na_filter(na_filter);
-      opt.dtypes(dtypes_map);
-      opt.byte_range_offset(file_bytes_offset);
-      opt.byte_range_size(file_bytes_to_read);
-      opt.use_cols_indexes(use_cols_indexes);
-      opt.names(column_names);
-
-      auto read_table = cudf::io::read_csv(opt, ctx.stream(), ctx.mr()).tbl;
-
-      // Only add if we read something (otherwise number of cols may be off)
-      if (read_table->num_rows() != 0) { tables.emplace_back(std::move(read_table)); }
-
-      // Reading may read additional bytes at the end and less at the start
-      // However, there is no need to worry about the actual bytes read,
-      // we only worry how much we try to read from the next file.
-      my_num_bytes -= file_bytes_to_read;
-      my_bytes_offset += file_bytes_to_read;
-      total_bytes_seen += file_bytes;
     }
-
-    // Concatenate tables and move the result to the output table
-    if (tables.size() == 0) {
-      tbl_arg.bind_empty_data();
-    } else if (tables.size() == 1) {
-      tbl_arg.move_into(std::move(tables.back()));
-    } else {
-      std::vector<cudf::table_view> table_views;
-      for (const auto& table : tables) {
-        table_views.push_back(table->view());
-      }
-      tbl_arg.move_into(cudf::concatenate(table_views, ctx.stream(), ctx.mr()));
-    }
+    tables.push_back(*result);
   }
-};
+
+  // Concatenate tables
+  if (tables.size() == 0) {
+    tbl_arg.bind_empty_data();
+  } else {
+    auto table = ARROW_RESULT(arrow::ConcatenateTables(tables));
+    tbl_arg.move_into(table);
+  }
+}
 
 }  // namespace legate::dataframe::task
 
@@ -281,7 +162,7 @@ void csv_write(LogicalTable& tbl, const std::string& dirpath, char delimiter)
 }
 
 LogicalTable csv_read(const std::vector<std::string>& files,
-                      const std::vector<cudf::data_type>& dtypes,
+                      const std::vector<std::shared_ptr<arrow::DataType>>& dtypes,
                       bool na_filter,
                       char delimiter,
                       const std::optional<std::vector<std::string>>& names,

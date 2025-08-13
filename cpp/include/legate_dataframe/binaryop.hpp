@@ -17,13 +17,43 @@
 #pragma once
 
 #include <legate.h>
-
-#include <cudf/binaryop.hpp>
-
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
 
+namespace task {
+const std::set<std::string> cudf_supported_binary_ops = {"add",
+                                                         "divide",
+                                                         "multiply",
+                                                         "power",
+                                                         "subtract",
+                                                         "bit_wise_and",
+                                                         "bit_wise_or",
+                                                         "bit_wise_xor",
+                                                         "shift_left",
+                                                         "shift_right",
+                                                         "logb",
+                                                         "atan2",
+                                                         "equal",
+                                                         "greater",
+                                                         "greater_equal",
+                                                         "less",
+                                                         "less_equal",
+                                                         "not_equal",
+                                                         // logical operators:
+                                                         "and",
+                                                         "or",
+                                                         "and_kleene",
+                                                         "or_kleene"};
+
+class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCol> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+}  // namespace task
 /**
  * @brief Performs a binary operation between two columns.
  *
@@ -43,15 +73,11 @@ namespace legate::dataframe {
  * @param output_type The desired data type of the output column
  * @return            Output column of `output_type` type containing the result of
  *                    the binary operation
- * @throw cudf::logic_error if @p lhs and @p rhs are different sizes
- * @throw cudf::logic_error if @p output_type dtype isn't boolean for comparison and logical
- * operations.
- * @throw cudf::logic_error if @p output_type dtype isn't fixed-width
- * @throw cudf::data_type_error if the operation is not supported for the types of @p lhs and @p rhs
+ * @throw std::invalid_argument if operator not supported
  */
 LogicalColumn binary_operation(const LogicalColumn& lhs,
                                const LogicalColumn& rhs,
                                std::string op,
-                               cudf::data_type output_type);
+                               std::shared_ptr<arrow::DataType> output_type);
 
 }  // namespace legate::dataframe

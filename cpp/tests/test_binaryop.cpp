@@ -17,7 +17,6 @@
 #include "gmock/gmock-matchers.h"
 #include <arrow/api.h>
 #include <arrow/compute/api.h>
-#include <cudf/binaryop.hpp>
 #include <gtest/gtest.h>
 #include <legate.h>
 
@@ -95,13 +94,12 @@ void CompareArrow(const LogicalColumn& lhs,
     // Specify bool output for equality comparisons
     std::set<std::string> equality_ops = {
       "equal", "greater", "greater_equal", "less", "less_equal", "not_equal"};
-    auto output_type = lhs.cudf_type();
-    if (equality_ops.count(op)) { output_type = cudf::data_type{cudf::type_id::BOOL8}; }
+    auto output_type = lhs.arrow_type();
+    if (equality_ops.count(op)) { output_type = arrow::boolean(); }
 
     auto expected = (*arrow::compute::CallFunction(op, args)).make_array();
-    expected      = ARROW_RESULT(arrow::compute::Cast(expected,
-                                                 to_arrow_type(output_type.id()),
-                                                 arrow::compute::CastOptions::Unsafe()))
+    expected      = ARROW_RESULT(
+                 arrow::compute::Cast(expected, output_type, arrow::compute::CastOptions::Unsafe()))
                  .make_array();
     auto result = binary_operation(lhs, rhs, op, output_type).get_arrow();
 
@@ -196,6 +194,6 @@ TEST(BinaryOpsTest, BadOp)
 {
   LogicalColumn lhs(narrow<int32_t>({1, 2, 3, 4}));
   LogicalColumn rhs(narrow<int32_t>({5, 6, 7, 8}));
-  EXPECT_THAT([=]() { binary_operation(lhs, rhs, "bad_op", lhs.cudf_type()); },
+  EXPECT_THAT([=]() { binary_operation(lhs, rhs, "bad_op", lhs.arrow_type()); },
               testing::ThrowsMessage<std::invalid_argument>(testing::HasSubstr("operator")));
 }

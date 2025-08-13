@@ -46,7 +46,7 @@ TYPED_TEST(NumericCSVTest, ReadWrite)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
+  auto dtype = a.arrow_type();
   auto files = parse_glob(tmp_dir.path() / "*.csv");
   auto tbl_b = csv_read(files, {dtype, dtype}, false);
 
@@ -68,7 +68,7 @@ TYPED_TEST(NumericCSVTest, ReadWriteSingleItem)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
+  auto dtype = a.arrow_type();
   auto files = parse_glob(tmp_dir.path() / "*.csv");
   auto tbl_b = csv_read(files, {dtype}, false);
 
@@ -90,7 +90,7 @@ TEST(StringsCSVTest, ReadWrite)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  auto dtype = tbl_a.get_column(0).cudf_type();
+  auto dtype = tbl_a.get_column(0).arrow_type();
   auto files = parse_glob(tmp_dir.path() / "*.csv");
   auto tbl_b = csv_read(files, {dtype}, false);
 
@@ -111,7 +111,7 @@ TYPED_TEST(NumericCSVTest, ReadNulls)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
+  auto dtype = a.arrow_type();
   auto files = parse_glob(tmp_dir.path() / "*.csv");
   auto tbl_b = csv_read(files, {dtype, dtype}, true);
 
@@ -132,7 +132,7 @@ TYPED_TEST(NumericCSVTest, ReadUseCols)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
+  auto dtype = a.arrow_type();
   std::vector<std::string> usecols1({"a", "b"});
   auto files = parse_glob(tmp_dir.path() / "*.csv");
   auto tbl_b = csv_read(files, {dtype, dtype}, true, ',', usecols1);
@@ -161,7 +161,7 @@ TYPED_TEST(NumericCSVTest, ReadWriteWithDelimiter)
   //     in order to wait until all files has been written to disk.
   legate::Runtime::get_runtime()->issue_execution_fence(true);
 
-  auto dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
+  auto dtype = a.arrow_type();
   auto files = parse_glob(tmp_dir.path() / "*.csv");
   auto tbl_b = csv_read(files, {dtype, dtype}, false, '|');
 

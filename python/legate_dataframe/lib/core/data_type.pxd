@@ -4,11 +4,16 @@
 # distutils: language = c++
 # cython: language_level=3
 
+from libcpp.memory cimport shared_ptr
+
+from pyarrow.lib cimport CDataType
 from pylibcudf.types cimport DataType
 from pylibcudf.types cimport data_type as cpp_cudf_type
 
 
 cdef cpp_cudf_type as_data_type(data_type_like)
+
+cdef shared_ptr[CDataType] as_arrow_data_type(data_type_like)
 
 cdef cpp_cudf_type_to_cudf_dtype(cpp_cudf_type libcudf_type)
 
