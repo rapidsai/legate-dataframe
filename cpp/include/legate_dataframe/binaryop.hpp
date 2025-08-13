@@ -19,11 +19,6 @@
 #include <legate.h>
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/library.hpp>
-#include <legate_dataframe/core/table.hpp>
-#include <legate_dataframe/core/task_argument.hpp>
-#include <legate_dataframe/core/task_context.hpp>
-
-#include <legate_dataframe/core/column.hpp>
 
 namespace legate::dataframe {
 
