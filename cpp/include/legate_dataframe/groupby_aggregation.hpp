@@ -19,11 +19,23 @@
 #include <string>
 #include <vector>
 
-#include <cudf/aggregation.hpp>
-
+#include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 
 namespace legate::dataframe {
+namespace task {
+class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::GroupByAggregation> {
+ public:
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
+                                                .with_has_allocations(true)
+                                                .with_concurrent(true)
+                                                .with_elide_device_ctx_sync(true);
+  static constexpr auto CPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+}  // namespace task
 
 /**
  * @brief Perform a groupby and aggregation in a single operation.
