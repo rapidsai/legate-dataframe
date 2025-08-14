@@ -107,7 +107,20 @@ def test_scalar_input(array, op, scalar):
     assert result.is_scalar()  # if both inputs are scalar, the result is also
 
 
-operators = ["add", "sub", "mul", "and_", "or_", "eq", "ne", "lt", "le", "gt", "ge"]
+operators = [
+    "add",
+    "sub",
+    "mul",
+    "truediv",
+    "and_",
+    "or_",
+    "eq",
+    "ne",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+]
 
 
 @pytest.mark.parametrize("op", operators)
@@ -129,6 +142,24 @@ def test_binary_operation_polars(op):
         a_b=getattr(operator, op)(pl.col("a"), pl.col("b"))
     )
     assert_matches_polars(q)
+
+
+def test_true_div_polars():
+    # Basic check that true division does the right promotion to float.
+    pl = pytest.importorskip("polars")
+
+    df = pl.DataFrame(
+        {
+            "a": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            "b": [1, -2, 3, -4, 5, -6, 7, -8, 9, -10],
+        }
+    )
+    q = df.lazy().with_columns(
+        res1=pl.col("a") / pl.col("b"),
+        res2=pl.col("a") / 3,
+        res3=3 / pl.col("a"),
+    )
+    assert_matches_polars(q, approx=True)
 
 
 @pytest.mark.parametrize("mode", ["none", "left", "right", "both"])

@@ -27,7 +27,7 @@ from legate_dataframe.ldf_polars.dsl.expressions.base import (
 from legate_dataframe.ldf_polars.dsl.expressions.binaryop import BinOp
 
 # from legate_dataframe.ldf_polars.dsl.expressions.boolean import BooleanFunction
-# from legate_dataframe.ldf_polars.dsl.expressions.datetime import TemporalFunction
+from legate_dataframe.ldf_polars.dsl.expressions.datetime import TemporalFunction
 from legate_dataframe.ldf_polars.dsl.expressions.literal import Literal, LiteralColumn
 
 # from legate_dataframe.ldf_polars.dsl.expressions.rolling import GroupedRollingWindow, RollingWindow
@@ -61,7 +61,7 @@ __all__ = [
     # "Sort",
     # "SortBy",
     # "StringFunction",
-    # "TemporalFunction",
+    "TemporalFunction",
     # "Ternary",
     "UnaryFunction",
 ]
