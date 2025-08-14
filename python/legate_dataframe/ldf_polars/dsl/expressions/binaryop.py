@@ -70,8 +70,8 @@ class BinOp(Expr):
         pl_expr.Operator.Plus: "add",
         pl_expr.Operator.Minus: "subtract",
         pl_expr.Operator.Multiply: "multiply",
-        pl_expr.Operator.Divide: "divide",
-        # pl_expr.Operator.TrueDivide: "true_divide",
+        # pl_expr.Operator.Divide: "divide",
+        pl_expr.Operator.TrueDivide: "true_divide",
         # pl_expr.Operator.FloorDivide: plc.binaryop.BinaryOperator.FLOOR_DIV,
         # pl_expr.Operator.Modulus: plc.binaryop.BinaryOperator.PYMOD,
         pl_expr.Operator.And: "bit_wise_and",
@@ -89,6 +89,17 @@ class BinOp(Expr):
     ) -> Column:
         """Evaluate this expression given a dataframe for context."""
         left, right = (child.evaluate(df, context=context) for child in self.children)
-        lop = left.obj
-        rop = right.obj
-        return Column(binary_operation(lop, rop, self.op, self.dtype))
+
+        if self.op != "true_divide":
+            return Column(binary_operation(left.obj, right.obj, self.op, self.dtype))
+
+        # Use divide, but cast one of the inputs to the output dtype
+        # to ensure the right type is used (with some logic to prefer
+        # casting a scalar).
+        if left.obj.type() != self.dtype and right.obj.type() != self.dtype:
+            if left.is_scalar:
+                left = left.astype(self.dtype)
+            else:
+                right = right.astype(self.dtype)
+
+        return Column(binary_operation(left.obj, right.obj, "divide", self.dtype))

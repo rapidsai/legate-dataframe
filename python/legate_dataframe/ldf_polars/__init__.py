@@ -45,7 +45,7 @@ def lazy_from_legate_df(df):
 
     # Last False (within polars) changes the predicate to be passed for arrow.
     plf = PyLazyFrame.scan_from_python_function_pl_schema(
-        schema, partial(_create_df, df), False
+        schema, partial(_create_df, df), False, validate_schema=True
     )
 
     return pl.LazyFrame._from_pyldf(plf)

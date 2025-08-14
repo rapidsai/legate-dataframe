@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION
+# Copyright (c) 2023-2025, NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from legate_dataframe.lib.timestamps import (
     extract_timestamp_component,
     to_timestamps,
 )
-from legate_dataframe.testing import assert_frame_equal
+from legate_dataframe.testing import assert_frame_equal, assert_matches_polars
 
 
 @pytest.mark.parametrize(
@@ -97,3 +97,46 @@ def test_extract_timestamp_component(timestamp_type, field):
     res = extract_timestamp_component(lg_col, field)
 
     assert_frame_equal(res, expected)
+
+
+@pytest.mark.parametrize(
+    "get_dtype",
+    [
+        # lambda pl: pl.Date(),  complicated with arrow due to 32bit
+        lambda pl: pl.Datetime(time_unit="ms"),
+        lambda pl: pl.Datetime(time_unit="us"),
+        lambda pl: pl.Datetime(time_unit="ns"),
+    ],
+)
+@pytest.mark.parametrize(
+    "field",
+    [
+        "microsecond",
+        "nanosecond",
+        "year",
+        "month",
+        "day",
+        "weekday",
+        "hour",
+        "minute",
+        "second",
+        "millisecond",
+    ],
+)
+def test_extract_timestamp_component_polars(get_dtype, field):
+    pl = pytest.importorskip("polars")
+
+    df = pl.DataFrame(
+        [
+            pl.Series(
+                "a",
+                ["2010-06-19T13:15:12.1232634", "2011-06-20T13:25:11.2789543"],
+            )
+            .str.to_datetime()
+            .cast(get_dtype(pl))
+        ]
+    )
+
+    q = df.lazy().with_columns(getattr(pl.col("a").dt, field)())
+
+    assert_matches_polars(q, allow_exceptions=pl.exceptions.InvalidOperationError)

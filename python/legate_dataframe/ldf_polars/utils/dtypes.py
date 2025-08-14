@@ -263,6 +263,18 @@ def to_polars(dtype) -> pl.DataType:
         return pl.Float64
     elif type_id == plc.TypeId.TIMESTAMP_DAYS:
         return pl.Date
+    elif type_id == plc.TypeId.TIMESTAMP_MILLISECONDS:
+        return pl.Datetime(time_unit="ms")
+    elif type_id == plc.TypeId.TIMESTAMP_MICROSECONDS:
+        return pl.Datetime(time_unit="us")
+    elif type_id == plc.TypeId.TIMESTAMP_NANOSECONDS:
+        return pl.Datetime(time_unit="ns")
+    elif type_id == plc.TypeId.DURATION_MILLISECONDS:
+        return pl.Duration(time_unit="ms")
+    elif type_id == plc.TypeId.DURATION_MICROSECONDS:
+        return pl.Duration(time_unit="us")
+    elif type_id == plc.TypeId.DURATION_NANOSECONDS:
+        return pl.Duration(time_unit="ns")
     elif type_id == plc.TypeId.STRING:
         return pl.String
 
