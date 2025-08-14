@@ -112,7 +112,7 @@ legate::Library get_test_library()
 void check_global_row_offset(LogicalTable& input)
 {
   auto runtime = legate::Runtime::get_runtime();
-  auto task    = runtime->create_task(get_library(), GlobalRowOffsetTask::TASK_CONFIG.task_id());
+  auto task = runtime->create_task(get_test_library(), GlobalRowOffsetTask::TASK_CONFIG.task_id());
 
   // Launch task
   LogicalColumn res =
