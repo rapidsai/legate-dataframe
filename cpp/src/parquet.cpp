@@ -26,16 +26,9 @@
 #include <parquet/arrow/writer.h>
 #include <parquet/file_reader.h>
 
-#include <cudf/concatenate.hpp>
-#include <cudf/io/parquet.hpp>
-#include <cudf/unary.hpp>
-
 #include <legate.h>
 #include <legate/cuda/cuda.h>
 
-#include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/library.hpp>
-#include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/core/task_context.hpp>
 #include <legate_dataframe/core/transposed_copy.cuh>
 #include <legate_dataframe/utils.hpp>
@@ -44,58 +37,26 @@
 
 namespace legate::dataframe::task {
 
-class ParquetWrite : public Task<ParquetWrite, OpCode::ParquetWrite> {
- public:
-  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
-                                                .with_has_allocations(true)
-                                                .with_elide_device_ctx_sync(true)
-                                                .with_has_side_effect(true);
+/*static*/ void ParquetWrite::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
 
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
+  const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
+  const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto table           = argument::get_next_input<PhysicalTable>(ctx);
+  const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".parquet";
+  auto outfile               = ARROW_RESULT(arrow::io::FileOutputStream::Open(filepath));
+  auto props                 = parquet::WriterProperties::Builder().build();
+  auto arrow_props           = parquet::ArrowWriterProperties::Builder().build();
 
-    const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
-    const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto table           = argument::get_next_input<PhysicalTable>(ctx);
-    const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".parquet";
-    auto outfile               = ARROW_RESULT(arrow::io::FileOutputStream::Open(filepath));
-    auto props                 = parquet::WriterProperties::Builder().build();
-    auto arrow_props           = parquet::ArrowWriterProperties::Builder().build();
-
-    // TODO: memory pool should come from legate
-    auto status = parquet::arrow::WriteTable(*table.arrow_table_view(column_names),
-                                             arrow::default_memory_pool(),
-                                             outfile,
-                                             parquet::DEFAULT_MAX_ROW_GROUP_LENGTH,
-                                             props,
-                                             arrow_props);
-  }
-
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-
-    const std::string dirpath  = argument::get_next_scalar<std::string>(ctx);
-    const auto column_names    = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto table           = argument::get_next_input<PhysicalTable>(ctx);
-    const std::string filepath = dirpath + "/part." + std::to_string(ctx.rank) + ".parquet";
-    const auto tbl             = table.table_view();
-
-    auto dest    = cudf::io::sink_info(filepath);
-    auto options = cudf::io::parquet_writer_options::builder(dest, tbl);
-    cudf::io::table_input_metadata metadata(tbl);
-
-    // Set column names
-    for (size_t i = 0; i < metadata.column_metadata.size(); i++) {
-      metadata.column_metadata.at(i).set_name(column_names.at(i));
-    }
-    options.metadata(metadata);
-    cudf::io::write_parquet(options, ctx.stream());
-  }
-};
-
-namespace {
+  // TODO: memory pool should come from legate
+  auto status = parquet::arrow::WriteTable(*table.arrow_table_view(column_names),
+                                           arrow::default_memory_pool(),
+                                           outfile,
+                                           parquet::DEFAULT_MAX_ROW_GROUP_LENGTH,
+                                           props,
+                                           arrow_props);
+}
 
 std::pair<std::vector<std::string>, std::vector<std::vector<int>>> find_files_and_row_groups(
   const std::vector<std::string>& file_paths,
@@ -132,281 +93,130 @@ std::pair<std::vector<std::string>, std::vector<std::vector<int>>> find_files_an
   return {std::move(files), std::move(row_groups)};
 }
 
-/*
- * Helper since create_output_buffer needs to be typed, but we dispatch again later
- * so a `void *` return is OK.
- */
-struct create_result_store_fn {
-  template <legate::Type::Code CODE>
-  void* operator()(const legate::PhysicalStore& store, const legate::Point<2>& shape)
-  {
-    using VAL = legate::type_of<CODE>;
-    auto buf  = store.create_output_buffer<VAL, 2>(shape, true);
-    return buf.ptr({0, 0});
-  }
-};
+/* static */ void ParquetRead::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
+  const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
+  const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
+  PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
 
-}  // namespace
+  size_t my_groups_offset{};
+  size_t my_num_groups{};
 
-class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
- public:
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
-    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
-    PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
-
-    size_t my_groups_offset{};
-    size_t my_num_groups{};
-
-    if (!get_prefer_eager_allocations()) {
-      /* Infer ranges from number of ranks */
-      argument::get_parallel_launch_task(ctx);
-      std::tie(my_groups_offset, my_num_groups) =
-        evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
-    } else {
-      /* Infer ranges from constraint array assigned to us */
-      auto row_group_ranges = ctx.get_next_input_arg();
-      my_groups_offset      = row_group_ranges.shape<1>().lo[0];
-      my_num_groups         = row_group_ranges.shape<1>().hi[0] - my_groups_offset + 1;
-    }
-
-    if (file_paths.size() != ngroups_per_file.size()) {
-      throw std::runtime_error("internal error: file path and nrows size mismatch");
-    }
-
-    if (my_num_groups == 0) {
-      if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
-      return;
-    }
-
-    // Iterate over files
-    auto [files, row_groups] =
-      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
-    std::vector<std::shared_ptr<arrow::Table>> tables;
-    for (int i = 0; i < files.size(); i++) {
-      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
-      auto arrow_reader =
-        ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
-      auto batch_reader =
-        ARROW_RESULT(arrow_reader->GetRecordBatchReader(row_groups[i], column_indices));
-      tables.push_back(ARROW_RESULT(batch_reader->ToTable()));
-    }
-    // Concatenate the tables
-    if (tables.size() == 0) {
-      if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
-    } else {
-      if (get_prefer_eager_allocations()) {
-        tbl_arg.copy_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
-      } else {
-        tbl_arg.move_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
-      }
-    }
+  if (!get_prefer_eager_allocations()) {
+    /* Infer ranges from number of ranks */
+    argument::get_parallel_launch_task(ctx);
+    std::tie(my_groups_offset, my_num_groups) =
+      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+  } else {
+    /* Infer ranges from constraint array assigned to us */
+    auto row_group_ranges = ctx.get_next_input_arg();
+    my_groups_offset      = row_group_ranges.shape<1>().lo[0];
+    my_num_groups         = row_group_ranges.shape<1>().hi[0] - my_groups_offset + 1;
   }
 
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
+  if (file_paths.size() != ngroups_per_file.size()) {
+    throw std::runtime_error("internal error: file path and nrows size mismatch");
+  }
 
-    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
-    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
-    PhysicalTable tbl_arg        = argument::get_next_output<PhysicalTable>(ctx);
+  if (my_num_groups == 0) {
+    if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
+    return;
+  }
 
-    size_t my_groups_offset{};
-    size_t my_num_groups{};
-
-    if (!get_prefer_eager_allocations()) {
-      /* Infer ranges from number of ranks */
-      argument::get_parallel_launch_task(ctx);
-      std::tie(my_groups_offset, my_num_groups) =
-        evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
-    } else {
-      /* Infer ranges from constraint array assigned to us */
-      auto row_group_ranges = ctx.get_next_input_arg();
-      my_groups_offset      = row_group_ranges.shape<1>().lo[0];
-      my_num_groups         = row_group_ranges.shape<1>().hi[0] - my_groups_offset + 1;
-    }
-
-    if (file_paths.size() != ngroups_per_file.size()) {
-      throw std::runtime_error("internal error: file path and nrows size mismatch");
-    }
-
-    if (my_num_groups == 0) {
-      if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
-      return;
-    }
-
-    auto [files, row_groups] =
-      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
-
-    auto src = cudf::io::source_info(files);
-    auto opt = cudf::io::parquet_reader_options::builder(src);
-    opt.columns(columns);
-    opt.row_groups(row_groups);
-    auto res = cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl;
-
+  // Iterate over files
+  auto [files, row_groups] =
+    find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
+  std::vector<std::shared_ptr<arrow::Table>> tables;
+  for (int i = 0; i < files.size(); i++) {
+    auto input        = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
+    auto arrow_reader = ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
+    auto batch_reader =
+      ARROW_RESULT(arrow_reader->GetRecordBatchReader(row_groups[i], column_indices));
+    tables.push_back(ARROW_RESULT(batch_reader->ToTable()));
+  }
+  // Concatenate the tables
+  if (tables.size() == 0) {
+    if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
+  } else {
     if (get_prefer_eager_allocations()) {
-      tbl_arg.copy_into(std::move(res));
+      tbl_arg.copy_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
     } else {
-      tbl_arg.move_into(std::move(res));
+      tbl_arg.move_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
     }
   }
-};
+}
 
-class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray> {
- public:
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
-    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<1>>(ctx);
-    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
-    auto null_value              = ctx.get_next_scalar_arg();
-    auto out                     = ctx.get_next_output_arg();
-    argument::get_parallel_launch_task(ctx);
+/* static */ void ParquetReadArray::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);
+  const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
+  const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<1>>(ctx);
+  const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
+  auto null_value              = ctx.get_next_scalar_arg();
+  auto out                     = ctx.get_next_output_arg();
+  argument::get_parallel_launch_task(ctx);
 
-    auto [my_groups_offset, my_num_groups] =
-      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
+  auto [my_groups_offset, my_num_groups] =
+    evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
 
-    if (file_paths.size() != ngroups_per_file.size()) {
-      throw std::runtime_error("internal error: file path and nrows size mismatch");
-    }
-    if (my_num_groups == 0) {
-      out.data().bind_empty_data();
-      if (out.nullable()) { out.null_mask().bind_empty_data(); }
-      return;
-    }
-
-    const size_t ncols = columns.size();
-
-    legate::Rect<1> start = row_group_ranges.at(my_groups_offset);
-    legate::Rect<1> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
-
-    auto num_output_rows = end.hi[0] - start.lo[0] + 1;
-    void* data_ptr       = legate::type_dispatch(out.data().code(),
-                                           create_result_store_fn{},
-                                           out.data(),
-                                           legate::Point<2>({num_output_rows, ncols}));
-    std::optional<bool*> null_ptr;
-    if (out.nullable()) {
-      auto null_buf = out.null_mask().create_output_buffer<bool, 2>(
-        legate::Point<2>({num_output_rows, ncols}), true);
-      auto ptr = null_buf.ptr({0, 0});
-      null_ptr = ptr;
-    }
-
-    // Iterate over files
-    auto [files, row_groups] =
-      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
-    size_t rows_already_written = 0;
-    std::vector<std::shared_ptr<arrow::Table>> tables;
-    for (int i = 0; i < files.size(); i++) {
-      auto input = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
-      auto arrow_reader =
-        ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
-      auto batch_reader =
-        ARROW_RESULT(arrow_reader->GetRecordBatchReader(row_groups[i], column_indices));
-      auto table = ARROW_RESULT(batch_reader->ToTable());
-
-      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + table->num_rows()) {
-        throw std::runtime_error("internal error: output smaller than expected.");
-      }
-
-      // Write to output array, this is a transposed copy.
-      copy_into_tranposed(ctx, data_ptr, null_ptr, table, null_value, out.data().type());
-
-      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + table->num_rows() * ncols; }
-      data_ptr =
-        static_cast<char*>(data_ptr) + table->num_rows() * ncols * out.data().type().size();
-      rows_already_written += table->num_rows();
-    }
+  if (file_paths.size() != ngroups_per_file.size()) {
+    throw std::runtime_error("internal error: file path and nrows size mismatch");
   }
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-
-    const auto file_paths        = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto columns           = argument::get_next_scalar_vector<std::string>(ctx);
-    const auto column_indices    = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
-    const auto ngroups_per_file  = argument::get_next_scalar_vector<size_t>(ctx);
-    const auto row_group_ranges  = argument::get_next_scalar_vector<legate::Rect<1>>(ctx);
-    const auto nrow_groups_total = argument::get_next_scalar<size_t>(ctx);
-    auto null_value              = ctx.get_next_scalar_arg();
-    auto out                     = ctx.get_next_output_arg();
-    argument::get_parallel_launch_task(ctx);
-
-    auto [my_groups_offset, my_num_groups] =
-      evenly_partition_work(nrow_groups_total, ctx.rank, ctx.nranks);
-
-    if (file_paths.size() != ngroups_per_file.size()) {
-      throw std::runtime_error("internal error: file path and nrows size mismatch");
-    }
-    if (my_num_groups == 0) {
-      out.data().bind_empty_data();
-      if (out.nullable()) { out.null_mask().bind_empty_data(); }
-      return;
-    }
-
-    const size_t ncols = columns.size();
-
-    // TODO: This is hack (including the partitioning above).  We should be passing in a bound
-    // output with image constraints on row_group_ranges at which point we would just need to know
-    // the row groups assigned to us (the number of rows will be correct in the output array shape).
-    legate::Rect<1> start = row_group_ranges.at(my_groups_offset);
-    legate::Rect<1> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
-
-    void* data_ptr = legate::type_dispatch(out.data().code(),
-                                           create_result_store_fn{},
-                                           out.data(),
-                                           legate::Point<2>({end.hi[0] - start.lo[0] + 1, ncols}));
-    std::optional<bool*> null_ptr;
-    if (out.nullable()) {
-      auto null_buf = out.null_mask().create_output_buffer<bool, 2>(
-        legate::Point<2>({end.hi[0] - start.lo[0] + 1, ncols}), true);
-      auto ptr = null_buf.ptr({0, 0});
-      null_ptr = ptr;
-    }
-
-    auto [files, row_groups] =
-      find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
-
-    // Read a few hundred MiB at a time (actual limit is a multiple due to decompression
-    // and that may also just need more memory as well, there may be other components).
-    auto chunksize = 500 * 1024 * 1024;
-
-    auto src = cudf::io::source_info(files);
-    auto opt = cudf::io::parquet_reader_options::builder(src);
-    opt.columns(columns);
-    opt.row_groups(row_groups);
-
-    auto reader =
-      cudf::io::chunked_parquet_reader(chunksize, chunksize, opt, ctx.stream(), ctx.mr());
-    size_t rows_already_written = 0;
-    while (reader.has_next()) {
-      auto tbl = reader.read_chunk().tbl;
-
-      if (end.hi[0] - start.lo[0] + 1 < rows_already_written + tbl->num_rows()) {
-        throw std::runtime_error("internal error: output smaller than expected.");
-      }
-      // Write to output array, this is a transposed copy.
-      copy_into_tranposed(ctx, data_ptr, null_ptr, tbl->release(), null_value, out.data().type());
-
-      if (null_ptr.has_value()) { null_ptr = null_ptr.value() + tbl->num_rows() * ncols; }
-      data_ptr = static_cast<char*>(data_ptr) + tbl->num_rows() * ncols * out.data().type().size();
-      rows_already_written += tbl->num_rows();
-    }
+  if (my_num_groups == 0) {
+    out.data().bind_empty_data();
+    if (out.nullable()) { out.null_mask().bind_empty_data(); }
+    return;
   }
-};
+
+  const size_t ncols = columns.size();
+
+  legate::Rect<1> start = row_group_ranges.at(my_groups_offset);
+  legate::Rect<1> end   = row_group_ranges.at(my_groups_offset + my_num_groups - 1);
+
+  auto num_output_rows = end.hi[0] - start.lo[0] + 1;
+  void* data_ptr       = legate::type_dispatch(out.data().code(),
+                                         create_result_store_fn{},
+                                         out.data(),
+                                         legate::Point<2>({num_output_rows, ncols}));
+  std::optional<bool*> null_ptr;
+  if (out.nullable()) {
+    auto null_buf = out.null_mask().create_output_buffer<bool, 2>(
+      legate::Point<2>({num_output_rows, ncols}), true);
+    auto ptr = null_buf.ptr({0, 0});
+    null_ptr = ptr;
+  }
+
+  // Iterate over files
+  auto [files, row_groups] =
+    find_files_and_row_groups(file_paths, ngroups_per_file, my_groups_offset, my_num_groups);
+  size_t rows_already_written = 0;
+  std::vector<std::shared_ptr<arrow::Table>> tables;
+  for (int i = 0; i < files.size(); i++) {
+    auto input        = ARROW_RESULT(arrow::io::ReadableFile::Open(files[i]));
+    auto arrow_reader = ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
+    auto batch_reader =
+      ARROW_RESULT(arrow_reader->GetRecordBatchReader(row_groups[i], column_indices));
+    auto table = ARROW_RESULT(batch_reader->ToTable());
+
+    if (end.hi[0] - start.lo[0] + 1 < rows_already_written + table->num_rows()) {
+      throw std::runtime_error("internal error: output smaller than expected.");
+    }
+
+    // Write to output array, this is a transposed copy.
+    copy_into_tranposed(ctx, data_ptr, null_ptr, table, null_value, out.data().type());
+
+    if (null_ptr.has_value()) { null_ptr = null_ptr.value() + table->num_rows() * ncols; }
+    data_ptr = static_cast<char*>(data_ptr) + table->num_rows() * ncols * out.data().type().size();
+    rows_already_written += table->num_rows();
+  }
+}
 
 }  // namespace legate::dataframe::task
 
@@ -424,7 +234,7 @@ void __attribute__((constructor)) register_tasks()
 struct ParquetReadInfo {
   std::vector<std::string> column_names;
   std::vector<int> column_indices;
-  std::vector<cudf::data_type> column_types;
+  std::vector<std::shared_ptr<arrow::DataType>> column_types;
   std::vector<bool> column_nullable;
   std::vector<size_t> nrow_groups;
   std::vector<legate::Rect<1>> row_group_ranges_vec;
@@ -450,7 +260,7 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
 
   // Get the column metadata from the schema (depends on whether columns are specified)
   std::vector<std::string> column_names;
-  std::vector<cudf::data_type> column_types;
+  std::vector<std::shared_ptr<arrow::DataType>> column_types;
   std::vector<bool> column_nullable;
   if (!columns.has_value()) {
     column_names.reserve(schema->num_fields());
@@ -459,8 +269,7 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
     for (int i = 0; i < schema->num_fields(); i++) {
       auto name = schema->field(i)->name();
       column_names.emplace_back(name);
-      auto arrow_type = schema->field(i)->type();
-      column_types.emplace_back(to_cudf_type(*arrow_type.get()));
+      column_types.emplace_back(schema->field(i)->type());
       column_nullable.emplace_back(schema->field(i)->nullable());
     }
   } else {
@@ -478,8 +287,7 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
       }
       auto i = name_to_index.at(name);
       column_names.emplace_back(name);
-      auto arrow_type = schema->field(i)->type();
-      column_types.emplace_back(to_cudf_type(*arrow_type.get()));
+      column_types.emplace_back(schema->field(i)->type());
       column_nullable.emplace_back(schema->field(i)->nullable());
     }
   }
@@ -617,26 +425,19 @@ legate::LogicalArray parquet_read_array(const std::vector<std::string>& files,
   legate::Type legate_type = legate::null_type();
 
   if (!type.has_value()) {
-    auto cudf_type = info.column_types.at(0);
-    if (!cudf::is_numeric(cudf_type)) {
+    auto first_arrow_type = info.column_types.at(0);
+    if (!arrow::is_primitive(first_arrow_type->id())) {
       throw std::invalid_argument("only numeric columns are supported for parquet_read_array");
     }
-    for (auto& type : info.column_types) {
-      if (type.id() != type.id()) {
+    for (auto& arrow_type : info.column_types) {
+      if (*first_arrow_type == *arrow_type) {
         throw std::invalid_argument("all columns must have the same type");
       }
     }
 
-    legate_type = to_legate_type(cudf_type.id());
+    legate_type = to_legate_type(*first_arrow_type);
   } else {
     legate_type = type.value();
-
-    auto cudf_type = cudf::data_type{to_cudf_type_id(legate_type.code())};
-    for (auto& type : info.column_types) {
-      if (!cudf::is_supported_cast(type, cudf_type)) {
-        throw std::invalid_argument("Cannot cast all columns to specified type");
-      }
-    }
   }
 
   // If all columns are not nullable, we don't have to worry about null values

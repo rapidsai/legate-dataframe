@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <arrow/api.h>
 #include <legate.h>
 #include <optional>
 
