@@ -18,9 +18,6 @@
 #include <arrow/compute/api.h>
 #include <legate.h>
 
-#include <cudf/detail/aggregation/aggregation.hpp>  // cudf::detail::target_type
-#include <cudf/reduction.hpp>
-
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/reduction.hpp>
@@ -34,11 +31,8 @@ TYPED_TEST_SUITE(ReductionTest, NumericTypes);
 
 TYPED_TEST(ReductionTest, Max)
 {
-  auto agg = cudf::make_max_aggregation<cudf::reduce_aggregation>();
   LogicalColumn col(narrow<TypeParam>({5, 6, 7, 8, 9}), {1, 0, 1, 0, 1});
-
-  auto res_dtype = cudf::detail::target_type(col.cudf_type(), agg->kind);
-  auto res       = reduce(col, "max", res_dtype);
+  auto res = reduce(col, "max", col.arrow_type());
 
   auto expected = ARROW_RESULT(arrow::compute::CallFunction("max", {col.get_arrow()})).scalar();
   auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
@@ -50,9 +44,7 @@ TYPED_TEST(ReductionTest, Max)
 TYPED_TEST(ReductionTest, Mean)
 {
   LogicalColumn col(narrow<TypeParam>({5, 6, 7, 8, 9}), {1, 0, 1, 0, 1});
-  auto agg            = cudf::make_mean_aggregation<cudf::reduce_aggregation>();
-  auto res_dtype      = cudf::detail::target_type(col.cudf_type(), agg->kind);
-  auto res            = reduce(col, "mean", res_dtype);
+  auto res            = reduce(col, "mean", col.arrow_type());
   auto expected       = ARROW_RESULT(arrow::compute::Mean(col.get_arrow())).scalar();
   auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
 
@@ -63,10 +55,8 @@ TYPED_TEST(ReductionTest, Mean)
 TYPED_TEST(ReductionTest, EmptyMax)
 {
   LogicalColumn col(std::vector<TypeParam>{}, std::vector<bool>{});
-  auto agg       = cudf::make_max_aggregation<cudf::reduce_aggregation>();
-  auto res_dtype = cudf::detail::target_type(col.cudf_type(), agg->kind);
-  auto res       = reduce(col, "max", res_dtype);
-  auto expected  = ARROW_RESULT(arrow::compute::CallFunction("max", {col.get_arrow()})).scalar();
+  auto res      = reduce(col, "max", col.arrow_type());
+  auto expected = ARROW_RESULT(arrow::compute::CallFunction("max", {col.get_arrow()})).scalar();
   auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
   EXPECT_TRUE(res.get_arrow()->Equals(expected_array))
     << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
@@ -75,10 +65,8 @@ TYPED_TEST(ReductionTest, EmptyMax)
 TYPED_TEST(ReductionTest, AllNullSum)
 {
   LogicalColumn col(narrow<TypeParam>({1, 2, 3, 4}), {1, 1, 1, 1});
-  auto agg       = cudf::make_sum_aggregation<cudf::reduce_aggregation>();
-  auto res_dtype = cudf::detail::target_type(col.cudf_type(), agg->kind);
-  auto res       = reduce(col, "sum", res_dtype);
-  auto expected  = ARROW_RESULT(arrow::compute::CallFunction("sum", {col.get_arrow()})).scalar();
+  auto res      = reduce(col, "sum", col.arrow_type());
+  auto expected = ARROW_RESULT(arrow::compute::CallFunction("sum", {col.get_arrow()})).scalar();
   auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
   // Cast expected type
   expected_array =
