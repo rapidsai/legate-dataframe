@@ -199,9 +199,6 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
       output_columns.at(out_col_idx) = cudf::cast(
         output_columns.at(out_col_idx)->view(), out_types.at(out_col_idx), ctx.stream(), ctx.mr());
     }
-
-    std::shared_ptr<arrow::DataType> arrow_type =
-      to_arrow_type(output_columns.at(out_col_idx)->type().id());
   }
 
   output.move_into(std::move(output_columns));
