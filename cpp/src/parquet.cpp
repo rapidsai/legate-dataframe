@@ -250,6 +250,9 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
     auto opt = cudf::io::parquet_reader_options::builder(src);
     opt.columns(columns);
     opt.row_groups(row_groups);
+    // If pandas metadata is read, libcudf may read index columns without this.
+    opt.use_pandas_metadata(false);
+
     auto res = cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl;
 
     if (get_prefer_eager_allocations()) {

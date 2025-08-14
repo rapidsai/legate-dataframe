@@ -24,12 +24,12 @@ cdef extern from "<legate_dataframe/timestamps.hpp>" namespace "legate::datafram
         const cpp_LogicalColumn& input,
         data_type timestamp_type,
         string format,
-    )
+    ) except +
 
     cpp_LogicalColumn cpp_extract_timestamp_component "extract_timestamp_component"(
         const cpp_LogicalColumn& input,
         datetime_component component,
-    )
+    ) except +
 
 
 @_track_provenance

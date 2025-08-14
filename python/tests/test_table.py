@@ -172,3 +172,26 @@ def test_to_array_nullable():
     lg_table = LogicalTable.from_arrow(table)
     with pytest.raises(ValueError, match=".*contains NULLs to cupynumeric"):
         lg_table.to_array()
+
+
+def test_polars_lazy_roundtrip_basic():
+    # Mainly test that the `.lazy()` method works as expected when collecting
+    # with `.legate.collect()`.
+    pl = pytest.importorskip("polars")
+    from legate_dataframe import ldf_polars  # noqa: F401
+
+    polars_df = (
+        pl.DataFrame(
+            {
+                "a": pa.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                "b": pa.array([2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mask=[False, True] * 5),
+            }
+        )
+        .lazy()
+        .legate.collect()
+    )
+
+    legate_df = polars_df.lazy().legate.collect()
+    round_trip = legate_df.lazy().legate.collect()
+
+    assert_arrow_table_equal(round_trip.to_arrow(), legate_df.to_arrow())

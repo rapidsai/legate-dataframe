@@ -37,6 +37,7 @@ cudf::binary_operator arrow_to_cudf_binary_op(std::string op, legate::Type outpu
   // https://docs.rapids.ai/api/libcudf/stable/group__transformation__binaryops
   std::unordered_map<std::string, cudf::binary_operator> arrow_to_cudf_ops = {
     {"add", cudf::binary_operator::ADD},
+    // NOTE: if we enable true divide here, should improve polars side.
     {"divide", cudf::binary_operator::DIV},
     {"multiply", cudf::binary_operator::MUL},
     {"power", cudf::binary_operator::POW},
