@@ -78,8 +78,7 @@ void assert_arrow_tables_equal(const std::vector<std::string>& keys,
 
 TYPED_TEST(GroupByAggregationTest, single_sum_with_nulls)
 {
-  using V  = TypeParam;
-  auto SUM = cudf::aggregation::Kind::SUM;
+  using V = TypeParam;
 
   auto keys_column = LogicalColumn(narrow<K>({1, 2, 3, 1, 2, 2, 1, 3, 3, 2}));
   auto values_column =
@@ -104,9 +103,7 @@ TYPED_TEST(GroupByAggregationTest, single_sum_with_nulls)
 
 TYPED_TEST(GroupByAggregationTest, nunique_and_max)
 {
-  using V      = TypeParam;
-  auto NUNIQUE = cudf::aggregation::Kind::NUNIQUE;
-  auto MAX     = cudf::aggregation::Kind::MAX;
+  using V = TypeParam;
 
   auto keys_column  = LogicalColumn(narrow<K>({1, 2, 3, 1, 2, 2, 1, 3, 3, 2}));
   auto vals1_column = LogicalColumn(narrow<V>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));

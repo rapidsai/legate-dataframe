@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,19 @@
 #pragma once
 
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
+
+namespace task {
+
+class SequenceTask : public Task<SequenceTask, OpCode::Sequence> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+}  // namespace task
 
 /**
  * @brief Fills a column with a sequence of int64 values
@@ -35,9 +46,6 @@ namespace legate::dataframe {
  *
  * Notice, this is primarily for C++ testing and examples for now. TODO: implement
  * all of the cudf features <https://github.com/rapidsai/legate-dataframe/issues/74>
- *
- * @throws cudf::logic_error if @p init is not numeric.
- * @throws cudf::logic_error if @p size is < 0.
  *
  * @param size Size of the output column
  * @param init First value in the sequence

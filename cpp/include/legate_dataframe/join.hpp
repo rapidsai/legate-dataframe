@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,39 @@
 
 #include <cudf/types.hpp>  // cudf::null_equality
 
+#include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 
 namespace legate::dataframe {
-
 enum class JoinType : int32_t { INNER = 0, LEFT, FULL };
 enum class BroadcastInput : int32_t { AUTO = 0, LEFT, RIGHT };
 
+namespace task {
+template <bool needs_communication>
+class JoinTask : public Task<JoinTask<needs_communication>,
+                             needs_communication ? OpCode::JoinConcurrent : OpCode::Join> {
+ public:
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
+                                                .with_has_allocations(true)
+                                                .with_concurrent(needs_communication)
+                                                .with_elide_device_ctx_sync(true);
+  static constexpr auto CPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_concurrent(needs_communication);
+
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+/**
+ * @brief Help function to determine if we need to repartition the tables
+ *
+ * If legate broadcast the left- or right-hand side table, we might not need to
+ * repartition them. This depends on the join type and which table is broadcasted.
+ */
+bool is_repartition_not_needed(const TaskContext& ctx,
+                               JoinType join_type,
+                               bool lhs_broadcasted,
+                               bool rhs_broadcasted);
+}  // namespace task
 /**
  * @brief Perform a join between the specified tables.
  *
