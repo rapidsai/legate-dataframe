@@ -59,7 +59,7 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
   if (get_prefer_eager_allocations()) { size = col.num_rows(); }
   auto ret =
     LogicalColumn::empty_like(col.arrow_type(), col.nullable() && scalar.nullable(), false, size);
-  if (col.arrow_type() != scalar.arrow_type()) {
+  if (!col.arrow_type()->Equals(scalar.arrow_type())) {
     throw std::invalid_argument("Scalar type does not match column type.");
   }
   if (!scalar.is_scalar()) {
