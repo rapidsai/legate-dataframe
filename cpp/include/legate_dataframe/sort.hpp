@@ -19,9 +19,37 @@
 #include <string>
 #include <vector>
 
+#include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 
 namespace legate::dataframe {
+namespace task {
+
+/**
+ * @brief Return points at which to split a dataset.
+ *
+ * @param nvalues The total number of values to split.
+ * @param nsplits the number of splits (and split values as last is included)
+ * @param include_start Whether to include the starting 0.
+ * @returns column selecting containing nsplits indices.
+ */
+std::vector<std::size_t> get_split_ind(TaskContext& ctx,
+                                       std::size_t nvalues,
+                                       int nsplits,
+                                       bool include_start);
+class SortTask : public Task<SortTask, OpCode::Sort> {
+ public:
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
+                                                .with_has_allocations(true)
+                                                .with_concurrent(true)
+                                                .with_elide_device_ctx_sync(true);
+  static constexpr auto CPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
+
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+}  // namespace task
 
 /**
  * @brief Sort a logical table.
