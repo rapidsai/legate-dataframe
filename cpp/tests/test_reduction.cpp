@@ -44,9 +44,13 @@ TYPED_TEST(ReductionTest, Max)
 TYPED_TEST(ReductionTest, Mean)
 {
   LogicalColumn col(narrow<TypeParam>({5, 6, 7, 8, 9}), {1, 0, 1, 0, 1});
-  auto res            = reduce(col, "mean", col.arrow_type());
+  auto output_type = col.arrow_type();
+  if (output_type == arrow::boolean()) { output_type = arrow::int64(); }
+  auto res            = reduce(col, "mean", output_type);
   auto expected       = ARROW_RESULT(arrow::compute::Mean(col.get_arrow())).scalar();
   auto expected_array = ARROW_RESULT(arrow::MakeArrayFromScalar(*expected, 1));
+  expected_array =
+    ARROW_RESULT(arrow::compute::Cast(expected_array, res.get_arrow()->type())).make_array();
 
   EXPECT_TRUE(res.get_arrow()->ApproxEquals(expected_array))
     << "Expected: " << expected_array->ToString() << ", got: " << res.get_arrow()->ToString();
