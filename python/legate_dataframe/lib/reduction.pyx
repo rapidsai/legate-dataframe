@@ -6,21 +6,23 @@
 
 from libcpp.string cimport string
 
-from pylibcudf.types cimport data_type
-
-from legate_dataframe.lib.core.data_type cimport as_data_type
+from legate_dataframe.lib.core.data_type cimport as_arrow_data_type
 from legate_dataframe.lib.core.scalar cimport cpp_scalar_col_from_python
 from legate_dataframe.lib.core.table cimport LogicalColumn, cpp_LogicalColumn
 
 from legate_dataframe.utils import _track_provenance
 
+from libcpp.memory cimport shared_ptr
+
+from pyarrow.lib cimport CDataType
+
 
 cdef extern from "<legate_dataframe/reduction.hpp>" nogil:
     cpp_LogicalColumn cpp_reduce "legate::dataframe::reduce"(
-        cpp_LogicalColumn& col, string op, data_type output_type,
+        cpp_LogicalColumn& col, string op, shared_ptr[CDataType] output_type,
     ) except +
     cpp_LogicalColumn cpp_reduce "legate::dataframe::reduce"(
-        cpp_LogicalColumn& col, string op, data_type output_type,
+        cpp_LogicalColumn& col, string op, shared_ptr[CDataType] output_type,
         cpp_LogicalColumn& scalar  # actually an optional[reference_type(LogicalColumn)]
     ) except +
 
@@ -43,7 +45,7 @@ def reduce(
     initial
         Scalar column containing an initial value for the reduction.
     """
-    cdef data_type otype = as_data_type(output_type)
+    cdef shared_ptr[CDataType] otype = as_arrow_data_type(output_type)
     cdef LogicalColumn initial_col
 
     if initial is None:

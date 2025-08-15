@@ -18,25 +18,37 @@
 
 #include <legate.h>
 
-#include <cudf/aggregation.hpp>
-
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
+
+namespace task {
+
+class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
+ public:
+  static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
+  static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
+
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+}  // namespace task
 
 /**
  * @brief Reduce a column given a libcudf reduction.
  *
  * @param col Logical column to reduce
  * @param op The reduction type
- * @param output_dtype The output cudf dtype.
+ * @param output_dtype The output arrow dtype.
  * @param initial Optional initial scalar (column) only supported for numeric types.
  * @returns A LogicalColumn marked as scalar.
  */
 LogicalColumn reduce(
   const LogicalColumn& col,
   std::string op,
-  cudf::data_type output_dtype,
+  std::shared_ptr<arrow::DataType> output_dtype,
   std::optional<std::reference_wrapper<const LogicalColumn>> initial = std::nullopt);
 
 }  // namespace legate::dataframe
