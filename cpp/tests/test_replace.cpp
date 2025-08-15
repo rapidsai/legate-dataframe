@@ -17,12 +17,7 @@
 #include <legate.h>
 
 #include "test_utils.hpp"
-#include <cudf/replace.hpp>
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_utilities.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/type_lists.hpp>
-
+#include <arrow/compute/api.h>
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/replace.hpp>
@@ -36,32 +31,32 @@ TYPED_TEST_SUITE(NullOpsTest, NumericTypes);
 
 TYPED_TEST(NullOpsTest, FillWithScalar)
 {
-  using ScalarType = cudf::scalar_type_t<TypeParam>;
-  TypeParam value  = cudf::test::make_type_param_scalar<TypeParam>(5);
-  auto scalar      = ScalarType(value);
-  auto lg_scalar   = LogicalColumn(scalar);
+  auto scalar = LogicalColumn(narrow<TypeParam>({5}), {}, true);
+  auto col    = LogicalColumn(narrow<TypeParam>({5, 6, 7, 8, 9}), {1, 0, 1, 0, 1});
 
-  cudf::test::fixed_width_column_wrapper<TypeParam> col({5, 6, 7, 8, 9}, {1, 0, 1, 0, 1});
-  auto lg_col = LogicalColumn(col);
+  auto arrow_scalar = ARROW_RESULT(scalar.get_arrow()->GetScalar(0));
+  auto expected =
+    ARROW_RESULT(arrow::compute::CallFunction("coalesce", {col.get_arrow(), arrow_scalar}))
+      .make_array();
+  auto res = replace_nulls(col, scalar).get_arrow();
 
-  auto expected = cudf::replace_nulls(col, scalar);
-  auto res      = replace_nulls(lg_col, lg_scalar);
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expected->view());
+  EXPECT_TRUE(res->IsValid(1));
+  EXPECT_TRUE(res->IsValid(3));
+  EXPECT_TRUE(expected->Equals(*res));
 }
 
 TYPED_TEST(NullOpsTest, FillWithNullScalar)
 {
-  using ScalarType = cudf::scalar_type_t<TypeParam>;
-  TypeParam value  = cudf::test::make_type_param_scalar<TypeParam>(5);
-  auto scalar      = ScalarType(value, false);  // null scalar
-  auto lg_scalar   = LogicalColumn(scalar);
+  auto scalar = LogicalColumn(narrow<TypeParam>({5}), {0}, true);
+  auto col    = LogicalColumn(narrow<TypeParam>({5, 6, 7, 8, 9}), {1, 0, 1, 0, 1});
 
-  cudf::test::fixed_width_column_wrapper<TypeParam> col({5, 6, 7, 8, 9}, {1, 0, 1, 0, 1});
-  auto lg_col = LogicalColumn(col);
+  auto arrow_scalar = ARROW_RESULT(scalar.get_arrow()->GetScalar(0));
+  auto expected =
+    ARROW_RESULT(arrow::compute::CallFunction("coalesce", {col.get_arrow(), arrow_scalar}))
+      .make_array();
+  auto res = replace_nulls(col, scalar).get_arrow();
 
-  auto expected = cudf::replace_nulls(col, scalar);
-  auto res      = replace_nulls(lg_col, lg_scalar);
-
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(res.get_cudf()->view(), expected->view());
+  EXPECT_TRUE(res->IsNull(1));
+  EXPECT_TRUE(res->IsNull(3));
+  EXPECT_TRUE(expected->Equals(*res));
 }
