@@ -26,7 +26,7 @@
 #include <cudf/types.hpp>
 
 namespace legate::dataframe {
-
+// TODO: macros to go here, disabling cudf related utilities for CPU only builds
 [[nodiscard]] cudf::type_id to_cudf_type_id(legate::Type::Code code);
 [[nodiscard]] std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code);
 [[nodiscard]] cudf::data_type to_cudf_type(const arrow::DataType& arrow_type);
@@ -37,11 +37,6 @@ namespace legate::dataframe {
 }
 [[nodiscard]] legate::Type to_legate_type(cudf::type_id dtype);
 [[nodiscard]] legate::Type to_legate_type(const arrow::DataType& arrow_type);
-
-std::string pprint_1d(cudf::column_view col,
-                      cudf::size_type index,
-                      rmm::cuda_stream_view stream,
-                      rmm::mr::device_memory_resource* mr);
 
 const void* read_accessor_as_1d_bytes(const legate::PhysicalStore& store);
 
