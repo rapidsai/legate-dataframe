@@ -5,13 +5,14 @@
 # cython: language_level=3
 
 
+from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string
 
+from pyarrow.lib cimport CDataType
 from pylibcudf.libcudf.datetime cimport datetime_component
-from pylibcudf.types cimport data_type
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
-from legate_dataframe.lib.core.data_type cimport as_data_type
+from legate_dataframe.lib.core.data_type cimport as_arrow_data_type
 
 from numpy.typing import DTypeLike
 from pylibcudf.datetime import DatetimeComponent  # no-cython-lint
@@ -22,7 +23,7 @@ from legate_dataframe.utils import _track_provenance
 cdef extern from "<legate_dataframe/timestamps.hpp>" namespace "legate::dataframe":
     cpp_LogicalColumn cpp_to_timestamps "to_timestamps"(
         const cpp_LogicalColumn& input,
-        data_type timestamp_type,
+        shared_ptr[CDataType] timestamp_type,
         string format,
     ) except +
 
@@ -71,7 +72,7 @@ def to_timestamps(
     return LogicalColumn.from_handle(
         cpp_to_timestamps(
             col._handle,
-            as_data_type(timestamp_type),
+            as_arrow_data_type(timestamp_type),
             str(format_pattern).encode('UTF-8')
         )
     )

@@ -77,7 +77,7 @@ namespace legate::dataframe {
  * @return New datetime column
  */
 LogicalColumn to_timestamps(const LogicalColumn& input,
-                            cudf::data_type timestamp_type,
+                            std::shared_ptr<arrow::DataType> timestamp_type,
                             std::string format);
 
 /**

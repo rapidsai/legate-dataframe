@@ -16,6 +16,8 @@
 
 #include <string>
 
+#include <arrow/api.h>
+#include <arrow/compute/api.h>
 #include <cudf/datetime.hpp>
 #include <cudf/strings/convert/convert_datetime.hpp>
 
@@ -30,6 +32,26 @@ namespace task {
 
 class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
  public:
+  static void cpu_variant(legate::TaskContext context)
+  {
+    TaskContext ctx{context};
+
+    const auto format   = argument::get_next_scalar<std::string>(ctx);
+    const auto input    = argument::get_next_input<PhysicalColumn>(ctx);
+    auto output         = argument::get_next_output<PhysicalColumn>(ctx);
+    auto timestamp_type = std::dynamic_pointer_cast<arrow::TimestampType>(output.arrow_type());
+    if (!timestamp_type) { throw std::invalid_argument("Output type must be a timestamp type"); }
+    arrow::compute::StrptimeOptions options(format, timestamp_type->unit());
+    auto result =
+      ARROW_RESULT(arrow::compute::CallFunction("strptime", {input.arrow_array_view()}, &options))
+        .make_array();
+    if (get_prefer_eager_allocations()) {
+      output.copy_into(std::move(result));
+    } else {
+      output.move_into(std::move(result));
+    }
+  }
+
   static void gpu_variant(legate::TaskContext context)
   {
     TaskContext ctx{context};
@@ -74,7 +96,7 @@ class ExtractTimestampComponentTask
 }  // namespace task
 
 LogicalColumn to_timestamps(const LogicalColumn& input,
-                            cudf::data_type timestamp_type,
+                            std::shared_ptr<arrow::DataType> timestamp_type,
                             std::string format)
 {
   auto runtime = legate::Runtime::get_runtime();

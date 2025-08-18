@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,37 +16,32 @@
 
 #include <legate.h>
 
-#include <cudf/strings/convert/convert_datetime.hpp>
-
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/cudf_gtest.hpp>
-#include <cudf_test/table_utilities.hpp>
-#include <cudf_test/type_lists.hpp>
-
+#include <arrow/api.h>
+#include <arrow/compute/api.h>
+#include <gtest/gtest.h>
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/timestamps.hpp>
 
 using namespace legate::dataframe;
 
-template <typename T>
-struct TimestampsTest : public cudf::test::BaseFixture {};
-
-TYPED_TEST_SUITE(TimestampsTest, cudf::test::TimestampTypes);
-
-TYPED_TEST(TimestampsTest, ToTimestamps)
+TEST(TimestampsTest, ToTimestamps)
 {
-  cudf::test::strings_column_wrapper strings(
-    {"2010-06-19T13:55", "2011-06-19T13:55", "", "2010-07-19T13:55"}, {1, 1, 0, 0});
-  cudf::data_type timestamp_type{cudf::type_to_id<TypeParam>()};
-  std::string format{"%Y-%m-%dT%H:%M:%SZ"};
+  std::vector<arrow::TimeUnit::type> time_units = {
+    arrow::TimeUnit::SECOND, arrow::TimeUnit::MILLI, arrow::TimeUnit::MICRO, arrow::TimeUnit::NANO};
 
-  auto expect =
-    cudf::strings::to_timestamps(cudf::strings_column_view(strings), timestamp_type, format);
+  LogicalColumn input({"2010-06-19T13:55", "2011-06-19T13:55", "", "2010-07-19T13:55"},
+                      {1, 1, 0, 0});
 
-  LogicalColumn input(strings);
-  auto result = to_timestamps(input, timestamp_type, format);
+  std::string format{"%Y-%m-%dT%H:%M"};
 
-  CUDF_TEST_EXPECT_COLUMNS_EQUAL(result.get_cudf()->view(), expect->view());
+  for (auto& unit : time_units) {
+    auto timestamp_type = arrow::timestamp(unit);
+    auto result         = to_timestamps(input, timestamp_type, format);
+    arrow::compute::StrptimeOptions options(format, unit);
+    auto expected =
+      ARROW_RESULT(arrow::compute::CallFunction("strptime", {input.get_arrow()}, &options))
+        .make_array();
+    EXPECT_TRUE(expected->Equals(result.get_arrow()));
+  }
 }
