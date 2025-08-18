@@ -59,7 +59,8 @@ std::vector<std::size_t> get_split_ind(TaskContext& ctx,
 
   if (include_start && nvalues > 0) { split_values.push_back(0); }
 
-  for (std::size_t i = 0; i < nsplits - 1; i++) {
+  // nsplits could be 0
+  for (std::int64_t i = 0; i < nsplits - 1; i++) {
     split_offset += nvalues_per_split;
     if (i < nvalues_left) { split_offset += 1; }
 
