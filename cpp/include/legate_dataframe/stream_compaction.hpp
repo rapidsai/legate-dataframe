@@ -17,9 +17,18 @@
 #pragma once
 
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 
 namespace legate::dataframe {
+namespace task {
+class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBooleanMask> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+}  // namespace task
 
 /**
  * @brief Filter a table busing a boolean mask.
