@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from numpy.typing import DTypeLike
-from pylibcudf.datetime import DatetimeComponent
 
 from legate_dataframe.lib.core.column import LogicalColumn
 
-__all__ = ["to_timestamps", "extract_timestamp_component", "DatetimeComponent"]
+__all__ = ["to_timestamps", "extract_timestamp_component"]
 
 def to_timestamps(
     col: LogicalColumn,
@@ -15,5 +14,5 @@ def to_timestamps(
 ) -> LogicalColumn: ...
 def extract_timestamp_component(
     col: LogicalColumn,
-    component: DatetimeComponent,
+    component: str,
 ) -> LogicalColumn: ...

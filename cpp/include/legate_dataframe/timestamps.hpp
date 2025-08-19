@@ -84,10 +84,10 @@ LogicalColumn to_timestamps(const LogicalColumn& input,
  * @brief Extracts part of a timestamp as a int16.
  *
  * @param input Timestamp column
- * @param component The component which to extract.
+ * @param component The component which to extract. A string like "year", "month", "day",
+ * "millisecond" etc. See arrow documentation for "Temporal component extraction" for a full list.
  * @return New int16 column.
  */
-LogicalColumn extract_timestamp_component(const LogicalColumn& input,
-                                          cudf::datetime::datetime_component component);
+LogicalColumn extract_timestamp_component(const LogicalColumn& input, std::string component);
 
 }  // namespace legate::dataframe
