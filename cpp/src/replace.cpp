@@ -18,11 +18,7 @@
 
 #include <legate.h>
 
-#include <cudf/replace.hpp>
-
 #include <arrow/compute/api.h>
-#include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/core/task_argument.hpp>
 #include <legate_dataframe/core/task_context.hpp>
@@ -31,48 +27,25 @@
 namespace legate::dataframe {
 namespace task {
 
-class ReplaceNullScalarTask : public Task<ReplaceNullScalarTask, OpCode::ReplaceNullsWithScalar> {
- public:
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
+/*static*/ void ReplaceNullScalarTask::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
 
-    const auto input = argument::get_next_input<PhysicalColumn>(ctx);
-    auto scalar_col  = argument::get_next_input<PhysicalColumn>(ctx);
+  const auto input = argument::get_next_input<PhysicalColumn>(ctx);
+  auto scalar_col  = argument::get_next_input<PhysicalColumn>(ctx);
 
-    auto arrow_input = input.arrow_array_view();
+  auto arrow_input = input.arrow_array_view();
 
-    auto scalar = ARROW_RESULT(scalar_col.arrow_array_view()->GetScalar(0));
-    auto output = argument::get_next_output<PhysicalColumn>(ctx);
+  auto scalar = ARROW_RESULT(scalar_col.arrow_array_view()->GetScalar(0));
+  auto output = argument::get_next_output<PhysicalColumn>(ctx);
 
-    auto datum_result =
-      ARROW_RESULT(arrow::compute::CallFunction("coalesce", {arrow_input, scalar}));
-    if (get_prefer_eager_allocations()) {
-      output.copy_into(std::move(datum_result.make_array()));
-    } else {
-      output.move_into(std::move(datum_result.make_array()));
-    }
+  auto datum_result = ARROW_RESULT(arrow::compute::CallFunction("coalesce", {arrow_input, scalar}));
+  if (get_prefer_eager_allocations()) {
+    output.copy_into(std::move(datum_result.make_array()));
+  } else {
+    output.move_into(std::move(datum_result.make_array()));
   }
-
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-
-    const auto input = argument::get_next_input<PhysicalColumn>(ctx);
-    auto scalar_col  = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output      = argument::get_next_output<PhysicalColumn>(ctx);
-
-    auto cudf_scalar = scalar_col.cudf_scalar();
-
-    auto ret = cudf::replace_nulls(input.column_view(), *cudf_scalar, ctx.stream(), ctx.mr());
-
-    if (get_prefer_eager_allocations()) {
-      output.copy_into(std::move(ret));
-    } else {
-      output.move_into(std::move(ret));
-    }
-  }
-};
+}
 
 }  // namespace task
 
@@ -85,8 +58,8 @@ LogicalColumn replace_nulls(const LogicalColumn& col, const LogicalColumn& scala
   std::optional<size_t> size{};
   if (get_prefer_eager_allocations()) { size = col.num_rows(); }
   auto ret =
-    LogicalColumn::empty_like(col.cudf_type(), col.nullable() && scalar.nullable(), false, size);
-  if (col.cudf_type() != scalar.cudf_type()) {
+    LogicalColumn::empty_like(col.arrow_type(), col.nullable() && scalar.nullable(), false, size);
+  if (!col.arrow_type()->Equals(scalar.arrow_type())) {
     throw std::invalid_argument("Scalar type does not match column type.");
   }
   if (!scalar.is_scalar()) {
