@@ -18,12 +18,6 @@
 
 #include <arrow/api.h>
 #include <arrow/compute/api.h>
-#include <cudf/datetime.hpp>
-#include <cudf/strings/convert/convert_datetime.hpp>
-#include <cudf/unary.hpp>
-
-#include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/task_argument.hpp>
 #include <legate_dataframe/core/task_context.hpp>
 #include <legate_dataframe/timestamps.hpp>
@@ -31,116 +25,51 @@
 namespace legate::dataframe {
 namespace task {
 
-class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
- public:
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-
-    const auto format   = argument::get_next_scalar<std::string>(ctx);
-    const auto input    = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output         = argument::get_next_output<PhysicalColumn>(ctx);
-    auto timestamp_type = std::dynamic_pointer_cast<arrow::TimestampType>(output.arrow_type());
-    if (!timestamp_type) { throw std::invalid_argument("Output type must be a timestamp type"); }
-    arrow::compute::StrptimeOptions options(format, timestamp_type->unit());
-    auto result =
-      ARROW_RESULT(arrow::compute::CallFunction("strptime", {input.arrow_array_view()}, &options))
-        .make_array();
-    if (get_prefer_eager_allocations()) {
-      output.copy_into(std::move(result));
-    } else {
-      output.move_into(std::move(result));
-    }
-  }
-
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-
-    const auto format = argument::get_next_scalar<std::string>(ctx);
-    const auto input  = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output       = argument::get_next_output<PhysicalColumn>(ctx);
-
-    std::unique_ptr<cudf::column> ret = cudf::strings::to_timestamps(
-      input.column_view(), output.cudf_type(), format, ctx.stream(), ctx.mr());
-    if (get_prefer_eager_allocations()) {
-      output.copy_into(std::move(ret));
-    } else {
-      output.move_into(std::move(ret));
-    }
-  }
-};
-
-cudf::datetime::datetime_component to_cudf_component(std::string component)
+/*static*/ void ToTimestampsTask::cpu_variant(legate::TaskContext context)
 {
-  std::map<std::string, cudf::datetime::datetime_component> components = {
-    {"year", cudf::datetime::datetime_component::YEAR},
-    {"month", cudf::datetime::datetime_component::MONTH},
-    {"day", cudf::datetime::datetime_component::DAY},
-    {"day_of_week", cudf::datetime::datetime_component::WEEKDAY},
-    {"hour", cudf::datetime::datetime_component::HOUR},
-    {"minute", cudf::datetime::datetime_component::MINUTE},
-    {"second", cudf::datetime::datetime_component::SECOND},
-    {"millisecond", cudf::datetime::datetime_component::MILLISECOND},
-    {"microsecond", cudf::datetime::datetime_component::MICROSECOND},
-    {"nanosecond", cudf::datetime::datetime_component::NANOSECOND}};
-  auto it = components.find(component);
-  if (it == components.end()) {
-    throw std::invalid_argument("Cudf does not support datetime component: " + component);
+  TaskContext ctx{context};
+
+  const auto format   = argument::get_next_scalar<std::string>(ctx);
+  const auto input    = argument::get_next_input<PhysicalColumn>(ctx);
+  auto output         = argument::get_next_output<PhysicalColumn>(ctx);
+  auto timestamp_type = std::dynamic_pointer_cast<arrow::TimestampType>(output.arrow_type());
+  if (!timestamp_type) { throw std::invalid_argument("Output type must be a timestamp type"); }
+  arrow::compute::StrptimeOptions options(format, timestamp_type->unit());
+  auto result =
+    ARROW_RESULT(arrow::compute::CallFunction("strptime", {input.arrow_array_view()}, &options))
+      .make_array();
+  if (get_prefer_eager_allocations()) {
+    output.copy_into(std::move(result));
+  } else {
+    output.move_into(std::move(result));
   }
-  return it->second;
 }
 
-class ExtractTimestampComponentTask
-  : public Task<ExtractTimestampComponentTask, OpCode::ExtractTimestampComponent> {
- public:
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
+/*static*/ void ExtractTimestampComponentTask::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
 
-    const auto component = argument::get_next_scalar<std::string>(ctx);
-    const auto input     = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output          = argument::get_next_output<PhysicalColumn>(ctx);
+  const auto component = argument::get_next_scalar<std::string>(ctx);
+  const auto input     = argument::get_next_input<PhysicalColumn>(ctx);
+  auto output          = argument::get_next_output<PhysicalColumn>(ctx);
 
-    std::shared_ptr<arrow::Array> result;
-    if (component == "day_of_week") {
-      arrow::compute::DayOfWeekOptions options(false);  // Count from zero false to match cudf
-      result = ARROW_RESULT(
-                 arrow::compute::CallFunction("day_of_week", {input.arrow_array_view()}, &options))
-                 .make_array();
-    } else {
-      result = ARROW_RESULT(arrow::compute::CallFunction(component, {input.arrow_array_view()}))
-                 .make_array();
-    }
-
-    if (get_prefer_eager_allocations()) {
-      output.copy_into(std::move(result));
-    } else {
-      output.move_into(std::move(result));
-    }
+  std::shared_ptr<arrow::Array> result;
+  if (component == "day_of_week") {
+    arrow::compute::DayOfWeekOptions options(false);  // Count from zero false to match cudf
+    result = ARROW_RESULT(
+               arrow::compute::CallFunction("day_of_week", {input.arrow_array_view()}, &options))
+               .make_array();
+  } else {
+    result = ARROW_RESULT(arrow::compute::CallFunction(component, {input.arrow_array_view()}))
+               .make_array();
   }
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
 
-    const auto component = argument::get_next_scalar<std::string>(ctx);
-    const auto input     = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output          = argument::get_next_output<PhysicalColumn>(ctx);
-
-    std::unique_ptr<cudf::column> ret;
-    ret = cudf::datetime::extract_datetime_component(
-      input.column_view(), to_cudf_component(component), ctx.stream(), ctx.mr());
-
-    // Cast to int64
-    ret = cudf::cast(ret->view(), cudf::data_type(cudf::type_id::INT64), ctx.stream(), ctx.mr());
-
-    if (get_prefer_eager_allocations()) {
-      output.copy_into(std::move(ret));
-    } else {
-      output.move_into(std::move(ret));
-    }
+  if (get_prefer_eager_allocations()) {
+    output.copy_into(std::move(result));
+  } else {
+    output.move_into(std::move(result));
   }
-};
+}
 
 }  // namespace task
 

@@ -22,8 +22,23 @@
 #include <cudf/types.hpp>
 
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
+namespace task {
+class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+class ExtractTimestampComponentTask
+  : public Task<ExtractTimestampComponentTask, OpCode::ExtractTimestampComponent> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+}  // namespace task
 
 /**
  * @brief Returns a new timestamp column converting a strings column into
