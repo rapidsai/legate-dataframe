@@ -101,7 +101,7 @@ LogicalColumn to_timestamps(const LogicalColumn& input,
  * @param input Timestamp column
  * @param component The component which to extract. A string like "year", "month", "day",
  * "millisecond" etc. See arrow documentation for "Temporal component extraction" for a full list.
- * @return New int16 column.
+ * @return New int64 column.
  */
 LogicalColumn extract_timestamp_component(const LogicalColumn& input, std::string component);
 

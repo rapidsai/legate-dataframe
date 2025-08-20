@@ -43,9 +43,9 @@ namespace legate::dataframe::task {
   }
 }
 
-cudf::datetime::datetime_component to_cudf_component(std::string component)
+cudf::datetime::datetime_component to_cudf_component(const std::string& component)
 {
-  std::map<std::string, cudf::datetime::datetime_component> components = {
+  static const std::map<std::string, cudf::datetime::datetime_component> components = {
     {"year", cudf::datetime::datetime_component::YEAR},
     {"month", cudf::datetime::datetime_component::MONTH},
     {"day", cudf::datetime::datetime_component::DAY},
