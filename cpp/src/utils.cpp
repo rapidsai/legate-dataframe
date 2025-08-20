@@ -406,6 +406,98 @@ std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
         std::to_string(static_cast<std::underlying_type_t<cudf::type_id>>(code)));
   }
 }
+std::shared_ptr<arrow::DataType> to_arrow_type(legate::Type::Code code)
+{
+  switch (code) {
+    case legate::Type::Code::BOOL: {
+      return arrow::boolean();
+    }
+    case legate::Type::Code::INT8: {
+      return arrow::int8();
+    }
+    case legate::Type::Code::INT16: {
+      return arrow::int16();
+    }
+    case legate::Type::Code::INT32: {
+      return arrow::int32();
+    }
+    case legate::Type::Code::INT64: {
+      return arrow::int64();
+    }
+    case legate::Type::Code::UINT8: {
+      return arrow::uint8();
+    }
+    case legate::Type::Code::UINT16: {
+      return arrow::uint16();
+    }
+    case legate::Type::Code::UINT32: {
+      return arrow::uint32();
+    }
+    case legate::Type::Code::UINT64: {
+      return arrow::uint64();
+    }
+    case legate::Type::Code::FLOAT32: {
+      return arrow::float32();
+    }
+    case legate::Type::Code::FLOAT64: {
+      return arrow::float64();
+    }
+    case legate::Type::Code::STRING: {
+      return arrow::utf8();
+    }
+    default:
+      throw std::invalid_argument("Unsupported Legate datatype: " +
+                                  legate::primitive_type(code).to_string());
+  }
+}
+
+// From this unmerged pr: https://github.com/apache/arrow/pull/46567
+// Notes:
+// This enables us to specify the arrow DataType as an int scalar to a legate task
+// then turn it back into a a DataType inside the task. This will not work if the DataType
+// requires parameters to initialize.
+// A better method would be to serialize the DataType into a buffer to pass it to legate
+// tasks, however arrow gives us no means to do this
+std::shared_ptr<arrow::DataType> arrow_type_from_id(arrow::Type::type id)
+{
+  switch (id) {
+    case arrow::Type::NA: return arrow::TypeTraits<arrow::NullType>::type_singleton();
+    case arrow::Type::BOOL: return arrow::TypeTraits<arrow::BooleanType>::type_singleton();
+    case arrow::Type::INT8: return arrow::TypeTraits<arrow::Int8Type>::type_singleton();
+    case arrow::Type::INT16: return arrow::TypeTraits<arrow::Int16Type>::type_singleton();
+    case arrow::Type::INT32: return arrow::TypeTraits<arrow::Int32Type>::type_singleton();
+    case arrow::Type::INT64: return arrow::TypeTraits<arrow::Int64Type>::type_singleton();
+    case arrow::Type::UINT8: return arrow::TypeTraits<arrow::UInt8Type>::type_singleton();
+    case arrow::Type::UINT16: return arrow::TypeTraits<arrow::UInt16Type>::type_singleton();
+    case arrow::Type::UINT32: return arrow::TypeTraits<arrow::UInt32Type>::type_singleton();
+    case arrow::Type::UINT64: return arrow::TypeTraits<arrow::UInt64Type>::type_singleton();
+    case arrow::Type::HALF_FLOAT: return arrow::TypeTraits<arrow::HalfFloatType>::type_singleton();
+    case arrow::Type::FLOAT: return arrow::TypeTraits<arrow::FloatType>::type_singleton();
+    case arrow::Type::DOUBLE: return arrow::TypeTraits<arrow::DoubleType>::type_singleton();
+    case arrow::Type::STRING: return arrow::TypeTraits<arrow::StringType>::type_singleton();
+    case arrow::Type::BINARY: return arrow::TypeTraits<arrow::BinaryType>::type_singleton();
+    case arrow::Type::LARGE_STRING:
+      return arrow::TypeTraits<arrow::LargeStringType>::type_singleton();
+    case arrow::Type::LARGE_BINARY:
+      return arrow::TypeTraits<arrow::LargeBinaryType>::type_singleton();
+    case arrow::Type::DATE32: return arrow::TypeTraits<arrow::Date32Type>::type_singleton();
+    case arrow::Type::DATE64: return arrow::TypeTraits<arrow::Date64Type>::type_singleton();
+    case arrow::Type::INTERVAL_DAY_TIME:
+      return arrow::TypeTraits<arrow::DayTimeIntervalType>::type_singleton();
+    case arrow::Type::INTERVAL_MONTHS:
+      return arrow::TypeTraits<arrow::MonthIntervalType>::type_singleton();
+    case arrow::Type::INTERVAL_MONTH_DAY_NANO:
+      return arrow::TypeTraits<arrow::MonthDayNanoIntervalType>::type_singleton();
+    case arrow::Type::BINARY_VIEW:
+      return arrow::TypeTraits<arrow::BinaryViewType>::type_singleton();
+    case arrow::Type::STRING_VIEW:
+      return arrow::TypeTraits<arrow::StringViewType>::type_singleton();
+    default:
+      throw std::invalid_argument("Unsupported Arrow datatype: " + std::to_string(id) +
+                                  ". This type requires parameters or is not supported by Legate.");
+      return nullptr;
+  }
+}
 
 namespace {
 

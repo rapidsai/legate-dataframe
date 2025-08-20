@@ -454,7 +454,7 @@ std::unique_ptr<cudf::column> LogicalColumn::get_cudf(rmm::cuda_stream_view stre
       cudf::null_count(static_cast<const cudf::bitmask_type*>(null_mask.data()), 0, num_rows());
   }
   return std::make_unique<cudf::column>(
-    cudf_type_,
+    this->cudf_type(),
     num_rows(),
     copy_physical_array_to_device(array_->get_physical_array(), stream),
     std::move(null_mask),
@@ -502,8 +502,7 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
     }
     std::shared_ptr<arrow::Buffer> null_bitmask;
     if (array_->nullable()) { null_bitmask = null_mask_bools_to_bits(physical_array.null_mask()); }
-    auto array_data =
-      arrow::ArrayData::Make(to_arrow_type(cudf_type_.id()), num_rows(), {null_bitmask, data});
+    auto array_data = arrow::ArrayData::Make(arrow_type_, num_rows(), {null_bitmask, data});
     return arrow::MakeArray(array_data);
   }
 }
@@ -521,7 +520,7 @@ std::unique_ptr<cudf::scalar> LogicalColumn::get_cudf_scalar(
 
 LogicalColumn LogicalColumn::slice(const legate::Slice& slice) const
 {
-  return LogicalColumn(array_->slice(0, slice), cudf_type_);
+  return LogicalColumn(array_->slice(0, slice), arrow_type_);
 }
 
 std::string LogicalColumn::repr(size_t max_num_items) const
@@ -598,7 +597,8 @@ cudf::column_view PhysicalColumn::column_view() const
     null_mask  = static_cast<const cudf::bitmask_type*>(tmp_null_masks_.back().data());
     null_count = cudf::null_count(null_mask, 0, num_rows(), ctx_->stream());
   }
-  return cudf::column_view(cudf_type_, num_rows(), data, null_mask, null_count, offset, children);
+  return cudf::column_view(
+    this->cudf_type(), num_rows(), data, null_mask, null_count, offset, children);
 }
 
 std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
@@ -649,8 +649,7 @@ std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
     std::shared_ptr<arrow::Buffer> null_bitmask;
     if (array_.nullable()) { null_bitmask = null_mask_bools_to_bits(array_.null_mask()); }
     // 3. Create ArrayData from buffer
-    auto array_data =
-      arrow::ArrayData::Make(to_arrow_type(cudf_type_.id()), num_rows(), {null_bitmask, buffer});
+    auto array_data = arrow::ArrayData::Make(arrow_type_, num_rows(), {null_bitmask, buffer});
     return arrow::MakeArray(array_data);
   }
 }
@@ -747,7 +746,8 @@ legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col
 
 legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& col)
 {
-  add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+  add_next_scalar(task,
+                  static_cast<std::underlying_type_t<arrow::Type::type>>(col.arrow_type()->id()));
   // While we don't care much for reading from a scalar column, pass scalar information
   // for outputs to enforce the result having the right size.
   add_next_scalar(task, col.is_scalar());
