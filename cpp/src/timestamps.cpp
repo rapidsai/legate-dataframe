@@ -91,7 +91,7 @@ LogicalColumn to_timestamps(const LogicalColumn& input,
   return ret;
 }
 
-LogicalColumn extract_timestamp_component(const LogicalColumn& input, const std::string& component)
+LogicalColumn extract_timestamp_component(const LogicalColumn& input, std::string component)
 {
   auto timestamp_type = std::dynamic_pointer_cast<arrow::TimestampType>(input.arrow_type());
   if (!timestamp_type) {
