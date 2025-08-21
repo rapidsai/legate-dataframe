@@ -737,7 +737,8 @@ namespace argument {
 
 legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col, bool broadcast)
 {
-  add_next_scalar(task, static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+  add_next_scalar(task,
+                  static_cast<std::underlying_type_t<arrow::Type::type>>(col.arrow_type()->id()));
   auto arr      = col.get_logical_array();
   auto variable = task.add_input(arr);
   if (broadcast) { task.add_constraint(legate::broadcast(variable, {0})); }

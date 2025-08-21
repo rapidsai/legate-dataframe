@@ -101,6 +101,13 @@ void CompareArrow(const LogicalColumn& lhs,
     expected      = ARROW_RESULT(
                  arrow::compute::Cast(expected, output_type, arrow::compute::CastOptions::Unsafe()))
                  .make_array();
+    /*
+std::cout << op << std::endl;
+std::cout << "LHS type: " << lhs.arrow_type()->ToString() << std::endl;
+std::cout << "LHS type after arrow conversion " << lhs.get_arrow()->type()->ToString() << std::endl;
+std::cout << "RHS type: " << rhs.arrow_type()->ToString() << std::endl;
+*/
+
     auto result = binary_operation(lhs, rhs, op, output_type).get_arrow();
 
     // For integers check exact equality, for floats check approximate equality

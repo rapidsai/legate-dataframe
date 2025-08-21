@@ -145,10 +145,11 @@ std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
 {
   // Send columns manually to avoid thousands of scalars for the dtypes.
   std::vector<legate::Variable> ret;
-  std::vector<std::underlying_type_t<cudf::type_id>> type_ids;
+  std::vector<std::underlying_type_t<arrow::Type::type>> type_ids;
   for (int i = 0; i < tbl.num_columns(); ++i) {
     auto col = tbl.get_column(i);
-    type_ids.push_back(static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+    type_ids.push_back(
+      static_cast<std::underlying_type_t<arrow::Type::type>>(col.arrow_type()->id()));
     // Currently, tables are never scalar, so no need to add broadcast in that case.
     auto var = task.add_input(col.get_logical_array());
     if (broadcast) { task.add_constraint(legate::broadcast(var, {0})); }
@@ -165,10 +166,11 @@ std::vector<legate::Variable> add_next_output(legate::AutoTask& task, const Logi
 {
   // Send columns manually to avoid thousands of scalars for the dtypes.
   std::vector<legate::Variable> ret;
-  std::vector<std::underlying_type_t<cudf::type_id>> type_ids;
+  std::vector<std::underlying_type_t<arrow::Type::type>> type_ids;
   for (int i = 0; i < tbl.num_columns(); ++i) {
     auto col = tbl.get_column(i);
-    type_ids.push_back(static_cast<std::underlying_type_t<cudf::type_id>>(col.cudf_type().id()));
+    type_ids.push_back(
+      static_cast<std::underlying_type_t<arrow::Type::type>>(col.arrow_type()->id()));
     // Currently, tables are never scalar, so no need to add broadcast in that case.
     ret.push_back(task.add_output(col.get_logical_array()));
   }

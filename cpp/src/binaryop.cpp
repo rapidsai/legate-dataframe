@@ -46,22 +46,28 @@ namespace legate::dataframe::task {
     args[1] = rhs.arrow_array_view();
   }
 
-  if (output.cudf_type().id() == cudf::type_id::BOOL8 &&
+  if (output.arrow_type() == arrow::boolean() &&
       (op == "and" || op == "or" || op == "and_kleene" || op == "or_kleene")) {
     // arrow doesn't seem to cast for the user for logical ops.
     args[0] = ARROW_RESULT(arrow::compute::Cast(args[0], arrow::boolean()));
     args[1] = ARROW_RESULT(arrow::compute::Cast(args[1], arrow::boolean()));
   }
 
+  /*
+  std::cout << lhs.arrow_array_view()->type()->ToString() << std::endl;
+  std::cout << rhs.arrow_array_view()->type()->ToString() << std::endl;
+  std::cout << lhs.arrow_array_view()->ToString() << std::endl;
+  std::cout << rhs.arrow_array_view()->ToString() << std::endl;
+  */
+
   // Result may be scalar or array
   auto datum_result = ARROW_RESULT(arrow::compute::CallFunction(op, args));
 
   // Coerce the output type if necessary
-  auto arrow_result_type = to_arrow_type(output.cudf_type().id());
-  if (datum_result.type() != arrow_result_type) {
-    auto coerced_result = ARROW_RESULT(
-      arrow::compute::Cast(datum_result, arrow_result_type, arrow::compute::CastOptions::Unsafe()));
-    datum_result = std::move(coerced_result);
+  if (datum_result.type() != output.arrow_type()) {
+    auto coerced_result = ARROW_RESULT(arrow::compute::Cast(
+      datum_result, output.arrow_type(), arrow::compute::CastOptions::Unsafe()));
+    datum_result        = std::move(coerced_result);
   }
 
   if (datum_result.is_scalar()) {
