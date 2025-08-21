@@ -23,6 +23,8 @@
 
 #include <cudf/copying.hpp>
 
+#include "arrow/io/api.h"
+#include <arrow/ipc/api.h>
 #include <legate.h>
 #include <legate/cuda/stream_pool.h>
 #include <legate_dataframe/utils.hpp>
@@ -451,54 +453,6 @@ std::shared_ptr<arrow::DataType> to_arrow_type(legate::Type::Code code)
   }
 }
 
-// From this unmerged pr: https://github.com/apache/arrow/pull/46567
-// Notes:
-// This enables us to specify the arrow DataType as an int scalar to a legate task
-// then turn it back into a a DataType inside the task. This will not work if the DataType
-// requires parameters to initialize.
-// A better method would be to serialize the DataType into a buffer to pass it to legate
-// tasks, however arrow gives us no means to do this
-std::shared_ptr<arrow::DataType> arrow_type_from_id(arrow::Type::type id)
-{
-  switch (id) {
-    case arrow::Type::NA: return arrow::TypeTraits<arrow::NullType>::type_singleton();
-    case arrow::Type::BOOL: return arrow::TypeTraits<arrow::BooleanType>::type_singleton();
-    case arrow::Type::INT8: return arrow::TypeTraits<arrow::Int8Type>::type_singleton();
-    case arrow::Type::INT16: return arrow::TypeTraits<arrow::Int16Type>::type_singleton();
-    case arrow::Type::INT32: return arrow::TypeTraits<arrow::Int32Type>::type_singleton();
-    case arrow::Type::INT64: return arrow::TypeTraits<arrow::Int64Type>::type_singleton();
-    case arrow::Type::UINT8: return arrow::TypeTraits<arrow::UInt8Type>::type_singleton();
-    case arrow::Type::UINT16: return arrow::TypeTraits<arrow::UInt16Type>::type_singleton();
-    case arrow::Type::UINT32: return arrow::TypeTraits<arrow::UInt32Type>::type_singleton();
-    case arrow::Type::UINT64: return arrow::TypeTraits<arrow::UInt64Type>::type_singleton();
-    case arrow::Type::HALF_FLOAT: return arrow::TypeTraits<arrow::HalfFloatType>::type_singleton();
-    case arrow::Type::FLOAT: return arrow::TypeTraits<arrow::FloatType>::type_singleton();
-    case arrow::Type::DOUBLE: return arrow::TypeTraits<arrow::DoubleType>::type_singleton();
-    case arrow::Type::STRING: return arrow::TypeTraits<arrow::StringType>::type_singleton();
-    case arrow::Type::BINARY: return arrow::TypeTraits<arrow::BinaryType>::type_singleton();
-    case arrow::Type::LARGE_STRING:
-      return arrow::TypeTraits<arrow::LargeStringType>::type_singleton();
-    case arrow::Type::LARGE_BINARY:
-      return arrow::TypeTraits<arrow::LargeBinaryType>::type_singleton();
-    case arrow::Type::DATE32: return arrow::TypeTraits<arrow::Date32Type>::type_singleton();
-    case arrow::Type::DATE64: return arrow::TypeTraits<arrow::Date64Type>::type_singleton();
-    case arrow::Type::INTERVAL_DAY_TIME:
-      return arrow::TypeTraits<arrow::DayTimeIntervalType>::type_singleton();
-    case arrow::Type::INTERVAL_MONTHS:
-      return arrow::TypeTraits<arrow::MonthIntervalType>::type_singleton();
-    case arrow::Type::INTERVAL_MONTH_DAY_NANO:
-      return arrow::TypeTraits<arrow::MonthDayNanoIntervalType>::type_singleton();
-    case arrow::Type::BINARY_VIEW:
-      return arrow::TypeTraits<arrow::BinaryViewType>::type_singleton();
-    case arrow::Type::STRING_VIEW:
-      return arrow::TypeTraits<arrow::StringViewType>::type_singleton();
-    default:
-      throw std::invalid_argument("Unsupported Arrow datatype: " + std::to_string(id) +
-                                  ". This type requires parameters or is not supported by Legate.");
-      return nullptr;
-  }
-}
-
 namespace {
 
 struct read_accessor_as_1d_bytes_fn {
@@ -637,4 +591,42 @@ size_t linearize(const legate::DomainPoint& lo,
   return legate::dim_dispatch(point.dim, linearize_fn{}, lo, hi, point);
 }
 
+std::vector<uint8_t> serialize_arrow_type(std::shared_ptr<arrow::DataType> type)
+{
+  auto schema = arrow::schema({arrow::field("type", type)});
+  auto buffer = ARROW_RESULT(arrow::ipc::SerializeSchema(*schema));
+  return std::vector<uint8_t>(buffer->data(), buffer->data() + buffer->size());
+}
+
+std::vector<uint8_t> serialize_arrow_types(std::vector<std::shared_ptr<arrow::DataType>> types)
+{
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+  for (const auto& type : types) {
+    fields.push_back(arrow::field(std::to_string(fields.size()), type));
+  }
+  auto schema = arrow::schema(fields);
+  auto buffer = ARROW_RESULT(arrow::ipc::SerializeSchema(*schema));
+  return std::vector<uint8_t>(buffer->data(), buffer->data() + buffer->size());
+}
+
+std::shared_ptr<arrow::DataType> deserialize_arrow_type(const std::vector<uint8_t>& data)
+{
+  auto buffer       = arrow::Buffer::Wrap(data.data(), data.size());
+  auto input_stream = arrow::io::BufferReader(buffer);
+  auto schema       = ARROW_RESULT(arrow::ipc::ReadSchema(&input_stream, nullptr));
+  return schema->fields().at(0)->type();
+}
+
+std::vector<std::shared_ptr<arrow::DataType>> deserialize_arrow_types(
+  const std::vector<uint8_t>& data)
+{
+  auto buffer       = arrow::Buffer::Wrap(data.data(), data.size());
+  auto input_stream = arrow::io::BufferReader(buffer);
+  auto schema       = ARROW_RESULT(arrow::ipc::ReadSchema(&input_stream, nullptr));
+  std::vector<std::shared_ptr<arrow::DataType>> types;
+  for (const auto& field : schema->fields()) {
+    types.push_back(field->type());
+  }
+  return types;
+}
 }  // namespace legate::dataframe

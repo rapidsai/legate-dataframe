@@ -53,13 +53,6 @@ namespace legate::dataframe::task {
     args[1] = ARROW_RESULT(arrow::compute::Cast(args[1], arrow::boolean()));
   }
 
-  /*
-  std::cout << lhs.arrow_array_view()->type()->ToString() << std::endl;
-  std::cout << rhs.arrow_array_view()->type()->ToString() << std::endl;
-  std::cout << lhs.arrow_array_view()->ToString() << std::endl;
-  std::cout << rhs.arrow_array_view()->ToString() << std::endl;
-  */
-
   // Result may be scalar or array
   auto datum_result = ARROW_RESULT(arrow::compute::CallFunction(op, args));
 

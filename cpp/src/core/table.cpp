@@ -145,11 +145,10 @@ std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
 {
   // Send columns manually to avoid thousands of scalars for the dtypes.
   std::vector<legate::Variable> ret;
-  std::vector<std::underlying_type_t<arrow::Type::type>> type_ids;
+  std::vector<std::shared_ptr<arrow::DataType>> types;
   for (int i = 0; i < tbl.num_columns(); ++i) {
     auto col = tbl.get_column(i);
-    type_ids.push_back(
-      static_cast<std::underlying_type_t<arrow::Type::type>>(col.arrow_type()->id()));
+    types.push_back(col.arrow_type());
     // Currently, tables are never scalar, so no need to add broadcast in that case.
     auto var = task.add_input(col.get_logical_array());
     if (broadcast) { task.add_constraint(legate::broadcast(var, {0})); }
@@ -157,7 +156,7 @@ std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
   }
   // Now add the column dtypes (this also gives us the number of columns).
   // Scalars are added separately, so order shouldn't matter.
-  add_next_scalar_vector(task, type_ids);
+  add_next_scalar_vector(task, serialize_arrow_types(types));
   add_alignment_constraints(task, ret);
   return ret;
 }
@@ -166,17 +165,16 @@ std::vector<legate::Variable> add_next_output(legate::AutoTask& task, const Logi
 {
   // Send columns manually to avoid thousands of scalars for the dtypes.
   std::vector<legate::Variable> ret;
-  std::vector<std::underlying_type_t<arrow::Type::type>> type_ids;
+  std::vector<std::shared_ptr<arrow::DataType>> types;
   for (int i = 0; i < tbl.num_columns(); ++i) {
     auto col = tbl.get_column(i);
-    type_ids.push_back(
-      static_cast<std::underlying_type_t<arrow::Type::type>>(col.arrow_type()->id()));
+    types.push_back(col.arrow_type());
     // Currently, tables are never scalar, so no need to add broadcast in that case.
     ret.push_back(task.add_output(col.get_logical_array()));
   }
   // Now add the column dtypes (this also gives us the number of columns).
   // Scalars are added separately, so order shouldn't matter.
-  add_next_scalar_vector(task, type_ids);
+  add_next_scalar_vector(task, serialize_arrow_types(types));
   add_alignment_constraints(task, ret);
   return ret;
 }

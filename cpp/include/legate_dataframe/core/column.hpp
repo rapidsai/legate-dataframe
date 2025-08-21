@@ -735,23 +735,16 @@ legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& co
 template <>
 inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(TaskContext& ctx)
 {
-  auto arrow_type_id = static_cast<arrow::Type::type>(
-    argument::get_next_scalar<std::underlying_type_t<arrow::Type::type>>(ctx));
-  return task::PhysicalColumn(ctx,
-                              ctx.get_next_input_arg(),
-                              arrow_type_from_id(static_cast<arrow::Type::type>(arrow_type_id)));
+  auto arrow_type = deserialize_arrow_type(argument::get_next_scalar_vector<uint8_t>(ctx));
+  return task::PhysicalColumn(ctx, ctx.get_next_input_arg(), arrow_type);
 }
 
 template <>
 inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(TaskContext& ctx)
 {
-  auto arrow_type_id = static_cast<arrow::Type::type>(
-    argument::get_next_scalar<std::underlying_type_t<arrow::Type::type>>(ctx));
-  auto scalar = argument::get_next_scalar<bool>(ctx);
-  return task::PhysicalColumn(ctx,
-                              ctx.get_next_output_arg(),
-                              arrow_type_from_id(static_cast<arrow::Type::type>(arrow_type_id)),
-                              scalar);
+  auto arrow_type = deserialize_arrow_type(argument::get_next_scalar_vector<uint8_t>(ctx));
+  auto scalar     = argument::get_next_scalar<bool>(ctx);
+  return task::PhysicalColumn(ctx, ctx.get_next_output_arg(), arrow_type, scalar);
 }
 
 }  // namespace argument

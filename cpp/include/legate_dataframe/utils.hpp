@@ -38,7 +38,6 @@ namespace legate::dataframe {
 }
 [[nodiscard]] legate::Type to_legate_type(cudf::type_id dtype);
 [[nodiscard]] legate::Type to_legate_type(const arrow::DataType& arrow_type);
-std::shared_ptr<arrow::DataType> arrow_type_from_id(arrow::Type::type id);
 
 std::string pprint_1d(cudf::column_view col,
                       cudf::size_type index,
@@ -163,4 +162,36 @@ size_t linearize(const legate::DomainPoint& lo,
                  const legate::DomainPoint& hi,
                  const legate::DomainPoint& point);
 
+/**
+ * @brief Serialize an Arrow data type to a byte vector
+ *
+ * @param type The Arrow data type to serialize
+ * @return A byte vector containing the serialized data
+ */
+std::vector<uint8_t> serialize_arrow_type(std::shared_ptr<arrow::DataType> type);
+
+/*
+ * @brief Serialize a vector of Arrow data types to a byte vector
+ *
+ * @param types The vector of Arrow data types to serialize
+ * @return A byte vector containing the serialized data
+ */
+std::vector<uint8_t> serialize_arrow_types(std::vector<std::shared_ptr<arrow::DataType>> types);
+
+/**
+ * @brief Deserialize a byte vector into an Arrow data type
+ *
+ * @param data The byte vector containing the serialized data
+ * @return The deserialized Arrow data type
+ */
+std::shared_ptr<arrow::DataType> deserialize_arrow_type(const std::vector<uint8_t>& data);
+
+/*
+ * @brief Deserialize a byte vector into a vector of Arrow data types
+ *
+ * @param data The byte vector containing the serialized data
+ * @return The deserialized vector of Arrow data types
+ */
+std::vector<std::shared_ptr<arrow::DataType>> deserialize_arrow_types(
+  const std::vector<uint8_t>& data);
 }  // namespace legate::dataframe

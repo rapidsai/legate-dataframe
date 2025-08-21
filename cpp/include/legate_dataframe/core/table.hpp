@@ -632,14 +632,12 @@ std::vector<legate::Variable> add_next_output(legate::AutoTask& task, const Logi
 template <>
 inline task::PhysicalTable get_next_input<task::PhysicalTable>(TaskContext& ctx)
 {
-  auto arrow_type_ids =
-    argument::get_next_scalar_vector<std::underlying_type_t<arrow::Type::type>>(ctx);
+  auto arrow_types = deserialize_arrow_types(argument::get_next_scalar_vector<uint8_t>(ctx));
 
   std::vector<task::PhysicalColumn> cols;
-  cols.reserve(arrow_type_ids.size());
-  for (auto& type_id : arrow_type_ids) {
-    cols.push_back(task::PhysicalColumn(
-      ctx, ctx.get_next_input_arg(), arrow_type_from_id(static_cast<arrow::Type::type>(type_id))));
+  cols.reserve(arrow_types.size());
+  for (auto& type : arrow_types) {
+    cols.push_back(task::PhysicalColumn(ctx, ctx.get_next_input_arg(), type));
   }
   return task::PhysicalTable(std::move(cols));
 }
@@ -647,14 +645,12 @@ inline task::PhysicalTable get_next_input<task::PhysicalTable>(TaskContext& ctx)
 template <>
 inline task::PhysicalTable get_next_output<task::PhysicalTable>(TaskContext& ctx)
 {
-  auto arrow_type_ids =
-    argument::get_next_scalar_vector<std::underlying_type_t<arrow::Type::type>>(ctx);
+  auto arrow_types = deserialize_arrow_types(argument::get_next_scalar_vector<uint8_t>(ctx));
 
   std::vector<task::PhysicalColumn> cols;
-  cols.reserve(arrow_type_ids.size());
-  for (auto& type_id : arrow_type_ids) {
-    cols.push_back(task::PhysicalColumn(
-      ctx, ctx.get_next_output_arg(), arrow_type_from_id(static_cast<arrow::Type::type>(type_id))));
+  cols.reserve(arrow_types.size());
+  for (auto& type : arrow_types) {
+    cols.push_back(task::PhysicalColumn(ctx, ctx.get_next_output_arg(), type));
   }
   return task::PhysicalTable(std::move(cols));
 }
