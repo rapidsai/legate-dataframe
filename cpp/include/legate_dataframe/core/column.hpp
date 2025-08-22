@@ -35,6 +35,12 @@
 
 namespace legate::dataframe {
 
+// Make this function available to cuda code
+// Can likely be removed in future
+namespace detail {
+legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array, bool scalar = false);
+};
+
 /**
  * @brief Logical column
  *

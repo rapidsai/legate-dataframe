@@ -194,4 +194,31 @@ std::shared_ptr<arrow::DataType> deserialize_arrow_type(const std::vector<uint8_
  */
 std::vector<std::shared_ptr<arrow::DataType>> deserialize_arrow_types(
   const std::vector<uint8_t>& data);
+
+/*
+ * @brief If a store is unbound, bind a buffer to it of size and return its pointer, if already
+ * bound, then check the buffer is of size and return its pointer.
+ *
+ * @param store The physical store to bind the buffer to
+ * @param size The size of the buffer
+ * @return A pointer to the buffer.
+ */
+template <typename T>
+T* maybe_bind_buffer(legate::PhysicalStore store, std::size_t size)
+{
+  T* out;
+  if (store.is_unbound_store()) {
+    out = store.create_output_buffer<T, 1>(legate::Point<1>(size), true).ptr(0);
+  } else {
+    auto acc = store.write_accessor<T, 1>();
+    assert((store.shape<1>().hi[0] - store.shape<1>().lo[0]) == -1 ||
+           acc.accessor.is_dense_row_major(store.shape<1>()));
+    if (store.shape<1>().volume() != size) {
+      throw std::runtime_error("Store size does not match the expected size");
+    }
+    out = acc.ptr(store.shape<1>().lo[0]);
+  }
+  return out;
+}
+
 }  // namespace legate::dataframe
