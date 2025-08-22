@@ -22,9 +22,6 @@
 
 #include <legate_dataframe/core/task_context.hpp>
 
-/* WARNING: this header should only be included in CUDA source files (*.cu)
- *          because of nccl.h
- */
 namespace legate::dataframe::task {
 
 #define CHECK_NCCL(expr)                    \

@@ -17,13 +17,9 @@
 #include <limits>
 
 #include <cuda_runtime_api.h>
-
-#include <legate/cuda/cuda.h>
-
-#include <arrow/api.h>
 #include <cudf/null_mask.hpp>
 #include <cudf/utilities/bit.hpp>
-
+#include <legate/cuda/cuda.h>
 #include <legate_dataframe/core/null_mask.hpp>
 #include <legate_dataframe/utils.hpp>
 
@@ -91,21 +87,6 @@ __global__ void bools_to_bitmask(int64_t bools_size,
     LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
   }
   return bitmask;
-}
-
-std::shared_ptr<arrow::Buffer> null_mask_bools_to_bits(const legate::PhysicalStore& bools)
-{
-  auto bools_acc   = bools.read_accessor<bool, 1>();
-  auto bools_shape = bools.shape<1>();
-  auto bools_size  = bools_shape.volume();
-  auto bitmap_size = arrow::bit_util::BytesForBits(bools_size);
-  auto buffer      = ARROW_RESULT(arrow::AllocateBuffer(bitmap_size));
-  auto ptr         = buffer->mutable_data();
-  std::memset(ptr, 0, static_cast<size_t>(buffer->capacity()));
-  for (size_t i = 0; i < bools_size; ++i) {
-    if (bools_acc[bools_shape.lo[0] + i] > 0) { arrow::bit_util::SetBit(ptr, i); }
-  }
-  return buffer;
 }
 
 namespace {
