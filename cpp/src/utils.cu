@@ -132,6 +132,9 @@ cudf::data_type to_cudf_type(const arrow::DataType& arrow_type)
       }
       break;
     }
+    case arrow::Type::DATE32: {
+      return cudf::data_type{cudf::type_id::TIMESTAMP_DAYS};
+    }
     case arrow::Type::TIMESTAMP: {
       const auto& duration_type = static_cast<const arrow::DurationType&>(arrow_type);
       if (duration_type.unit() == arrow::TimeUnit::SECOND) {

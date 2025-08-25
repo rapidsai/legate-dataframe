@@ -83,6 +83,8 @@ TYPED_TEST_SUITE(CudfInterOp, cudf::test::FixedWidthTypesWithoutFixedPoint);
 
 TYPED_TEST(CudfInterOp, RoundTrip)
 {
+  if constexpr (std::is_same_v<TypeParam, cudf::duration_D>)
+    GTEST_SKIP() << "Cudf to arrow conversion not supported";
   std::vector<std::unique_ptr<cudf::column>> cols;
   cudf::test::fixed_width_column_wrapper<TypeParam> a({0, 1, 2, 3, 4});
   cudf::test::fixed_width_column_wrapper<TypeParam> b({5, 6, 7, 8, 9}, {1, 0, 1, 1, 1});
@@ -103,6 +105,8 @@ TYPED_TEST(CudfInterOp, RoundTrip)
 
 TYPED_TEST(CudfInterOp, RoundTripEmpty)
 {
+  if constexpr (std::is_same_v<TypeParam, cudf::duration_D>)
+    GTEST_SKIP() << "Cudf to arrow conversion not supported";
   std::vector<std::unique_ptr<cudf::column>> cols;
   cudf::test::fixed_width_column_wrapper<TypeParam> a({});
   auto empty_mask = rmm::device_uvector<bool>(0, cudf::get_default_stream());
@@ -151,6 +155,8 @@ TEST(CudfInterOpStrings, EmptyRoundTrip)
 
 TYPED_TEST(CudfInterOp, ScalarConversion)
 {
+  if constexpr (std::is_same_v<TypeParam, cudf::duration_D>)
+    GTEST_SKIP() << "Cudf to arrow conversion not supported";
   using ScalarType = cudf::scalar_type_t<TypeParam>;
 
   TypeParam scalar_val = cudf::test::make_type_param_scalar<TypeParam>(5);
