@@ -144,6 +144,9 @@ std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
     case cudf::type_id::TIMESTAMP_NANOSECONDS: {
       return arrow::timestamp(arrow::TimeUnit::NANO);
     }
+    case cudf::type_id::TIMESTAMP_DAYS: {
+      return arrow::date32();
+    }
     case cudf::type_id::DURATION_SECONDS: {
       return arrow::duration(arrow::TimeUnit::SECOND);
     }
