@@ -408,6 +408,9 @@ LogicalTable parquet_read(const std::vector<std::string>& files,
         task.add_constraint(legate::image(constraint_var, var));
       }
     }
+    // Work-around to keep row group ranges alive to help legate intermittently
+    // (if we were to do this, it should impose the constraint more clearly)
+    ret.set_constraint_keep_alive(info.row_group_ranges);
   }
   runtime->submit(std::move(task));
   return ret;
