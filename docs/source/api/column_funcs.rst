@@ -21,10 +21,3 @@ Column functions
 
 .. autofunction::
     legate_dataframe.lib.replace.replace_nulls
-
-
-Related options/enums
----------------------
-
-.. autodata:: legate_dataframe.lib.timestamps.DatetimeComponent
-    :no-value:

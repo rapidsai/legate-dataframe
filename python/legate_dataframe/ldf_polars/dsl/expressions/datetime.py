@@ -88,17 +88,17 @@ class TemporalFunction(Expr):
 
     __slots__ = ("name", "options")
     _non_child = ("dtype", "name", "options")
-    _COMPONENT_MAP: ClassVar[dict[Name, timestamps.DatetimeComponent]] = {
-        Name.Year: timestamps.DatetimeComponent.YEAR,
-        Name.Month: timestamps.DatetimeComponent.MONTH,
-        Name.Day: timestamps.DatetimeComponent.DAY,
-        Name.WeekDay: timestamps.DatetimeComponent.WEEKDAY,
-        Name.Hour: timestamps.DatetimeComponent.HOUR,
-        Name.Minute: timestamps.DatetimeComponent.MINUTE,
-        Name.Second: timestamps.DatetimeComponent.SECOND,
-        Name.Millisecond: timestamps.DatetimeComponent.MILLISECOND,
-        Name.Microsecond: timestamps.DatetimeComponent.MICROSECOND,
-        Name.Nanosecond: timestamps.DatetimeComponent.NANOSECOND,
+    _COMPONENT_MAP: ClassVar[dict[Name, str]] = {
+        Name.Year: "year",
+        Name.Month: "month",
+        Name.Day: "day",
+        Name.WeekDay: "day_of_week",
+        Name.Hour: "hour",
+        Name.Minute: "minute",
+        Name.Second: "second",
+        Name.Millisecond: "millisecond",
+        Name.Microsecond: "microsecond",
+        Name.Nanosecond: "nanosecond",
     }
 
     _valid_ops: ClassVar[set[Name]] = {
@@ -142,12 +142,8 @@ class TemporalFunction(Expr):
         if self.name is TemporalFunction.Name.OrdinalDay:
             raise NotImplementedError("OrdinalDay is not implemented")
         if self.name is TemporalFunction.Name.Microsecond:
-            millis = timestamps.extract_timestamp_component(
-                column.obj, timestamps.DatetimeComponent.MILLISECOND
-            )
-            micros = timestamps.extract_timestamp_component(
-                column.obj, timestamps.DatetimeComponent.MICROSECOND
-            )
+            millis = timestamps.extract_timestamp_component(column.obj, "millisecond")
+            micros = timestamps.extract_timestamp_component(column.obj, "microsecond")
             millis_as_micros = binaryop.binary_operation(
                 millis,
                 pa.scalar(1_000, type=pa.int32()),
@@ -162,15 +158,9 @@ class TemporalFunction(Expr):
             )
             return Column(total_micros)
         elif self.name is TemporalFunction.Name.Nanosecond:
-            millis = timestamps.extract_timestamp_component(
-                column.obj, timestamps.DatetimeComponent.MILLISECOND
-            )
-            micros = timestamps.extract_timestamp_component(
-                column.obj, timestamps.DatetimeComponent.MICROSECOND
-            )
-            nanos = timestamps.extract_timestamp_component(
-                column.obj, timestamps.DatetimeComponent.NANOSECOND
-            )
+            millis = timestamps.extract_timestamp_component(column.obj, "millisecond")
+            micros = timestamps.extract_timestamp_component(column.obj, "microsecond")
+            nanos = timestamps.extract_timestamp_component(column.obj, "nanosecond")
             millis_as_nanos = binaryop.binary_operation(
                 millis,
                 pa.scalar(1_000_000, type=pa.int32()),

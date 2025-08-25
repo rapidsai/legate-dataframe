@@ -22,8 +22,23 @@
 #include <cudf/types.hpp>
 
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
+namespace task {
+class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+class ExtractTimestampComponentTask
+  : public Task<ExtractTimestampComponentTask, OpCode::ExtractTimestampComponent> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+}  // namespace task
 
 /**
  * @brief Returns a new timestamp column converting a strings column into
@@ -77,17 +92,17 @@ namespace legate::dataframe {
  * @return New datetime column
  */
 LogicalColumn to_timestamps(const LogicalColumn& input,
-                            cudf::data_type timestamp_type,
+                            std::shared_ptr<arrow::DataType> timestamp_type,
                             std::string format);
 
 /**
  * @brief Extracts part of a timestamp as a int16.
  *
  * @param input Timestamp column
- * @param component The component which to extract.
- * @return New int16 column.
+ * @param component The component which to extract. A string like "year", "month", "day",
+ * "millisecond" etc. See arrow documentation for "Temporal component extraction" for a full list.
+ * @return New int64 column.
  */
-LogicalColumn extract_timestamp_component(const LogicalColumn& input,
-                                          cudf::datetime::datetime_component component);
+LogicalColumn extract_timestamp_component(const LogicalColumn& input, std::string component);
 
 }  // namespace legate::dataframe
