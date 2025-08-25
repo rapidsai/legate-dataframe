@@ -15,52 +15,29 @@
  */
 
 #include <arrow/compute/api.h>
-#include <cudf/types.hpp>
 #include <legate.h>
-
-#include <cudf/stream_compaction.hpp>
-
-#include <legate_dataframe/core/column.hpp>
-#include <legate_dataframe/core/library.hpp>
-#include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/core/task_argument.hpp>
 #include <legate_dataframe/core/task_context.hpp>
+#include <legate_dataframe/stream_compaction.hpp>
 #include <stdexcept>
 
 namespace legate::dataframe {
 namespace task {
 
-class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBooleanMask> {
- public:
-  static void cpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
+/*static*/ void ApplyBooleanMaskTask::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
 
-    const auto tbl          = argument::get_next_input<PhysicalTable>(ctx);
-    const auto boolean_mask = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output             = argument::get_next_output<PhysicalTable>(ctx);
+  const auto tbl          = argument::get_next_input<PhysicalTable>(ctx);
+  const auto boolean_mask = argument::get_next_input<PhysicalColumn>(ctx);
+  auto output             = argument::get_next_output<PhysicalTable>(ctx);
 
-    auto result =
-      ARROW_RESULT(arrow::compute::CallFunction(
-                     "filter", {tbl.arrow_table_view(), boolean_mask.arrow_array_view()}))
-        .table();
+  auto result = ARROW_RESULT(arrow::compute::CallFunction(
+                               "filter", {tbl.arrow_table_view(), boolean_mask.arrow_array_view()}))
+                  .table();
 
-    output.move_into(std::move(result));
-  }
-
-  static void gpu_variant(legate::TaskContext context)
-  {
-    TaskContext ctx{context};
-
-    const auto tbl    = argument::get_next_input<PhysicalTable>(ctx);
-    auto boolean_mask = argument::get_next_input<PhysicalColumn>(ctx);
-    auto output       = argument::get_next_output<PhysicalTable>(ctx);
-
-    auto ret = cudf::apply_boolean_mask(
-      tbl.table_view(), boolean_mask.column_view(), ctx.stream(), ctx.mr());
-    output.move_into(std::move(ret));
-  }
-};
+  output.move_into(std::move(result));
+}
 
 }  // namespace task
 

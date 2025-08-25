@@ -5,16 +5,15 @@
 # cython: language_level=3
 
 
+from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string
 
-from pylibcudf.libcudf.datetime cimport datetime_component
-from pylibcudf.types cimport data_type
+from pyarrow.lib cimport CDataType
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
-from legate_dataframe.lib.core.data_type cimport as_data_type
+from legate_dataframe.lib.core.data_type cimport as_arrow_data_type
 
 from numpy.typing import DTypeLike
-from pylibcudf.datetime import DatetimeComponent  # no-cython-lint
 
 from legate_dataframe.utils import _track_provenance
 
@@ -22,13 +21,13 @@ from legate_dataframe.utils import _track_provenance
 cdef extern from "<legate_dataframe/timestamps.hpp>" namespace "legate::dataframe":
     cpp_LogicalColumn cpp_to_timestamps "to_timestamps"(
         const cpp_LogicalColumn& input,
-        data_type timestamp_type,
+        shared_ptr[CDataType] timestamp_type,
         string format,
     ) except +
 
     cpp_LogicalColumn cpp_extract_timestamp_component "extract_timestamp_component"(
         const cpp_LogicalColumn& input,
-        datetime_component component,
+        string component,
     ) except +
 
 
@@ -71,7 +70,7 @@ def to_timestamps(
     return LogicalColumn.from_handle(
         cpp_to_timestamps(
             col._handle,
-            as_data_type(timestamp_type),
+            as_arrow_data_type(timestamp_type),
             str(format_pattern).encode('UTF-8')
         )
     )
@@ -80,7 +79,7 @@ def to_timestamps(
 @_track_provenance
 def extract_timestamp_component(
     LogicalColumn col,
-    datetime_component component,
+    component: str,
 ) -> LogicalColumn:
     """
     Extract part of the timestamp as int16.
@@ -90,11 +89,13 @@ def extract_timestamp_component(
     col : LogicalColumn
         Column of timestamps
     component
-        The component to extract.  Must be specified as a ``DatetimeComponent``.
+        The component which to extract. A string like "year", "month",
+        "day", "millisecond" etc. See arrow documentation for
+        "Temporal component extraction" for a full list.
 
     Returns
     -------
-        New int16 column
+        New int64 column
 
     Notes
     -----
@@ -104,5 +105,5 @@ def extract_timestamp_component(
 
     """
     return LogicalColumn.from_handle(
-        cpp_extract_timestamp_component(col._handle, component)
+        cpp_extract_timestamp_component(col._handle, component.encode('UTF-8'))
     )
