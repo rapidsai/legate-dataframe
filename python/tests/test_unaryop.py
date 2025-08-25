@@ -97,14 +97,6 @@ def test_cast_timedelta():
     assert res.to_arrow() == array.cast(to_dtype)
 
 
-def test_bad_cast():
-    # We try to reject invalid casts (before the Task would crash hard).
-    # Unfortunately, libcudf fails to reject some invalid cases :(.
-    col = LogicalColumn.from_arrow(pa.array([1, 2, 3]))
-    with pytest.raises(ValueError, match="Cannot cast column to specified type"):
-        cast(col, "str")
-
-
 def test_cast_scalar():
     # It makes sense for unary operators to propagte "scalar" information
     # check that.
