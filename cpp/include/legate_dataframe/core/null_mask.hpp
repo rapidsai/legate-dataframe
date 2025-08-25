@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <arrow/api.h>
 #include <cudf/null_mask.hpp>
 #include <cudf/utilities/bit.hpp>
 #include <rmm/cuda_stream.hpp>

@@ -43,8 +43,8 @@ std::string arrow_aggregation_name(std::string name)
   TaskContext ctx{context};
   auto table        = argument::get_next_input<PhysicalTable>(ctx);
   auto output       = argument::get_next_output<PhysicalTable>(ctx);
-  auto _key_col_idx = argument::get_next_scalar_vector<size_t>(ctx);
-  std::vector<cudf::size_type> key_col_idx(_key_col_idx.begin(), _key_col_idx.end());
+  auto _key_col_idx = argument::get_next_scalar_vector<std::size_t>(ctx);
+  std::vector<std::size_t> key_col_idx(_key_col_idx.begin(), _key_col_idx.end());
 
   // Get the `column_aggs` task argument
   std::vector<arrow::compute::Aggregate> aggregates;

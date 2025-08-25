@@ -262,8 +262,14 @@ template <bool needs_communication>
   } else {
     // All-to-all repartition to one hash bucket per rank. Matching rows from
     // both tables then guaranteed to be on the same rank.
-    auto repartitioned_lhs = repartition_by_hash(ctx, revert_broadcast_arrow(ctx, lhs), lhs_keys);
-    auto repartitioned_rhs = repartition_by_hash(ctx, revert_broadcast_arrow(ctx, rhs), rhs_keys);
+    auto repartitioned_lhs =
+      repartition_by_hash(ctx,
+                          revert_broadcast_arrow(ctx, lhs),
+                          std::vector<std::size_t>(lhs_keys.begin(), lhs_keys.end()));
+    auto repartitioned_rhs =
+      repartition_by_hash(ctx,
+                          revert_broadcast_arrow(ctx, rhs),
+                          std::vector<std::size_t>(rhs_keys.begin(), rhs_keys.end()));
 
     result = arrow_join_and_gather(ctx,
                                    repartitioned_lhs,
