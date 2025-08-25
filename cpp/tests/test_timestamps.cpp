@@ -16,6 +16,7 @@
 
 #include <legate.h>
 
+#include "test_utils.hpp"
 #include <arrow/api.h>
 #include <arrow/compute/api.h>
 #include <gtest/gtest.h>
@@ -44,4 +45,37 @@ TEST(TimestampsTest, ToTimestamps)
         .make_array();
     EXPECT_TRUE(expected->Equals(result.get_arrow()));
   }
+}
+
+TEST(TimestampsTest, ExtractTimestampComponent)
+{
+  LogicalColumn input({"2010-06-19T13:55", "2011-06-19T13:55", "", "2010-07-19T13:55"},
+                      {1, 1, 0, 0});
+  std::string format{"%Y-%m-%dT%H:%M"};
+
+  auto timestamps = to_timestamps(input, arrow::timestamp(arrow::TimeUnit::SECOND), format);
+  std::vector<std::string> components = {
+    "year",
+    "month",
+    "day",
+    "hour",
+    "minute",
+    "second",
+    "millisecond",
+    "microsecond",
+    "nanosecond",
+  };
+  for (auto component : components) {
+    auto result = extract_timestamp_component(timestamps, component);
+    auto expected =
+      ARROW_RESULT(arrow::compute::CallFunction(component, {timestamps.get_arrow()})).make_array();
+    EXPECT_TRUE(expected->Equals(result.get_arrow()));
+  }
+}
+
+TEST(TimestampsTest, ExtractBadTimestamp)
+{
+  LogicalColumn input(narrow<int>({1, 2, 3, 4}), {1, 1, 0, 0});
+
+  EXPECT_THROW(extract_timestamp_component(input, "year"), std::invalid_argument);
 }
