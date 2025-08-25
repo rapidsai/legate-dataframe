@@ -18,11 +18,23 @@
 
 #include <legate.h>
 
-#include <cudf/unary.hpp>
-
 #include <legate_dataframe/core/column.hpp>
+#include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
+namespace task {
+
+class CastTask : public Task<CastTask, OpCode::Cast> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+}  // namespace task
 
 /**
  * @brief Cast column to a new data type.
