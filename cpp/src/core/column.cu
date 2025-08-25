@@ -53,9 +53,9 @@ T* maybe_bind_buffer(legate::PhysicalStore store, std::size_t size)
     out = store.create_output_buffer<T, 1>(legate::Point<1>(size), true).ptr(0);
   } else {
     auto acc = store.write_accessor<T, 1>();
-    assert((store.shape<1>().hi[0] - store.shape<1>().lo[0]) == -1 ||
+    assert((store.shape<1>().hi[0] - store.shape<1>().lo[0]) <= 0 ||
            acc.accessor.is_dense_row_major(store.shape<1>()));
-    assert((store.shape<1>().hi[0] + 1 - store.shape<1>().lo[0]) == size);
+    assert((store.shape<1>().hi[0] + 1 - store.shape<1>().lo[0]) == size || size == 0);
     out = acc.ptr(store.shape<1>().lo[0]);
   }
   return out;
