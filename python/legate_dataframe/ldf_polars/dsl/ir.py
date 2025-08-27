@@ -117,7 +117,7 @@ def broadcast(*columns: Column, target_length: int | None = None) -> list[Column
         raise NotImplementedError("broadcast not implemented")
 
     return [
-        column if column.size != 1 else broadcast_func(column, nrows)
+        column if column.size == nrows else broadcast_func(column, nrows)
         for column in columns
     ]
 
