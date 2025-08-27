@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <cudf/round.hpp>
 #include <cudf/types.hpp>
 #include <cudf/unary.hpp>
 #include <legate.h>
@@ -33,6 +34,32 @@ namespace legate::dataframe::task {
   auto output                       = argument::get_next_output<PhysicalColumn>(ctx);
   cudf::column_view col             = input.column_view();
   std::unique_ptr<cudf::column> ret = cudf::cast(col, output.cudf_type(), ctx.stream(), ctx.mr());
+  if (get_prefer_eager_allocations()) {
+    output.copy_into(std::move(ret));
+  } else {
+    output.move_into(std::move(ret));
+  }
+}
+
+/*static*/ void RoundTask::gpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+
+  const auto input      = argument::get_next_input<PhysicalColumn>(ctx);
+  auto digits           = argument::get_next_scalar<int32_t>(ctx);
+  auto mode             = argument::get_next_scalar<std::string>(ctx);
+  auto output           = argument::get_next_output<PhysicalColumn>(ctx);
+  cudf::column_view col = input.column_view();
+  cudf::rounding_method rounding_method;
+  if (mode == "half_away_from_zero") {
+    rounding_method = cudf::rounding_method::HALF_UP;
+  } else if (mode == "half_to_even") {
+    rounding_method = cudf::rounding_method::HALF_EVEN;
+  } else {
+    throw std::invalid_argument("Unsupported rounding method: " + mode);
+  }
+  std::unique_ptr<cudf::column> ret =
+    cudf::round(col, digits, rounding_method, ctx.stream(), ctx.mr());
   if (get_prefer_eager_allocations()) {
     output.copy_into(std::move(ret));
   } else {
