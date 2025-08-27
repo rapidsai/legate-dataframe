@@ -30,7 +30,7 @@
 #include <cudf/detail/contiguous_split.hpp>  // `cudf::detail::pack`
 #include <cudf/partitioning.hpp>
 
-#include <legate_dataframe/core/nccl.hpp>
+#include <legate_dataframe/core/nccl.cuh>
 #include <legate_dataframe/core/repartition_by_hash.hpp>
 #include <legate_dataframe/core/task_context.hpp>
 
