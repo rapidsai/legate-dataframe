@@ -16,11 +16,11 @@
 
 #pragma once
 
-#include <vector>
-
+#include <arrow/api.h>
 #include <legate.h>
-
 #include <legate_dataframe/core/task_context.hpp>
+#include <legate_dataframe/utils.hpp>
+#include <vector>
 
 namespace legate::dataframe::argument {
 
@@ -89,6 +89,13 @@ inline void add_next_scalar_vector(AutoTask& task, const std::vector<std::string
   add_next_scalar(task, ss.str());
 }
 
+template <>
+inline void add_next_scalar<std::shared_ptr<arrow::DataType>>(
+  legate::AutoTask& task, const std::shared_ptr<arrow::DataType>& scalar)
+{
+  add_next_scalar_vector(task, serialize_arrow_type(scalar));
+}
+
 /**
  * @brief Get next scalar task argument
  *
@@ -132,6 +139,13 @@ std::vector<T> get_next_scalar_vector(TaskContext& ctx)
     ret.emplace_back(item);
   }
   return ret;
+}
+
+template <>
+inline std::shared_ptr<arrow::DataType> get_next_scalar<std::shared_ptr<arrow::DataType>>(
+  TaskContext& ctx)
+{
+  return deserialize_arrow_type(argument::get_next_scalar_vector<uint8_t>(ctx));
 }
 
 template <>
