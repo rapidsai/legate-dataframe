@@ -12,3 +12,4 @@ Python API Reference
    table_funcs
    column
    table
+   polars

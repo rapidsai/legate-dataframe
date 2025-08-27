@@ -21,250 +21,12 @@
 #include <stdexcept>
 #include <string>
 
-#include <cudf/copying.hpp>
-
+#include "arrow/io/api.h"
+#include <arrow/ipc/api.h>
 #include <legate.h>
-#include <legate/cuda/stream_pool.h>
 #include <legate_dataframe/utils.hpp>
 
 namespace legate::dataframe {
-
-namespace {
-struct pprint_1d_scalar_fn {
-  template <typename T, std::enable_if_t<cudf::is_numeric<T>()>* = nullptr>
-  std::string operator()(cudf::column_view col,
-                         cudf::size_type index,
-                         rmm::cuda_stream_view stream,
-                         rmm::mr::device_memory_resource* mr)
-  {
-    std::unique_ptr<cudf::scalar> scalar = cudf::get_element(col, index, stream, mr);
-    auto typed_scalar = static_cast<cudf::numeric_scalar<T> const*>(scalar.get());
-    T val             = typed_scalar->value(stream);
-    return std::to_string(val);
-  }
-  template <typename T, std::enable_if_t<!cudf::is_numeric<T>()>* = nullptr>
-  std::string operator()(cudf::column_view col,
-                         cudf::size_type index,
-                         rmm::cuda_stream_view stream,
-                         rmm::mr::device_memory_resource* mr)
-  {
-    throw std::runtime_error("not implemented");
-  }
-};
-}  // namespace
-
-std::string pprint_1d(cudf::column_view col,
-                      cudf::size_type index,
-                      rmm::cuda_stream_view stream,
-                      rmm::mr::device_memory_resource* mr)
-{
-  return cudf::type_dispatcher(col.type(), pprint_1d_scalar_fn{}, col, index, stream, mr);
-}
-
-cudf::type_id to_cudf_type_id(legate::Type::Code code)
-{
-  switch (code) {
-    case legate::Type::Code::BOOL: {
-      return cudf::type_id::BOOL8;
-    }
-    case legate::Type::Code::INT8: {
-      return cudf::type_id::INT8;
-    }
-    case legate::Type::Code::INT16: {
-      return cudf::type_id::INT16;
-    }
-    case legate::Type::Code::INT32: {
-      return cudf::type_id::INT32;
-    }
-    case legate::Type::Code::INT64: {
-      return cudf::type_id::INT64;
-    }
-    case legate::Type::Code::UINT8: {
-      return cudf::type_id::UINT8;
-    }
-    case legate::Type::Code::UINT16: {
-      return cudf::type_id::UINT16;
-    }
-    case legate::Type::Code::UINT32: {
-      return cudf::type_id::UINT32;
-    }
-    case legate::Type::Code::UINT64: {
-      return cudf::type_id::UINT64;
-    }
-    case legate::Type::Code::FLOAT32: {
-      return cudf::type_id::FLOAT32;
-    }
-    case legate::Type::Code::FLOAT64: {
-      return cudf::type_id::FLOAT64;
-    }
-    case legate::Type::Code::STRING: {
-      return cudf::type_id::STRING;
-    }
-    default:
-      throw std::invalid_argument("Unsupported Legate datatype: " +
-                                  legate::primitive_type(code).to_string());
-  }
-}
-
-cudf::data_type to_cudf_type(const arrow::DataType& arrow_type)
-{
-  switch (arrow_type.id()) {
-    case arrow::Type::BOOL: {
-      return cudf::data_type{cudf::type_id::BOOL8};
-    }
-    case arrow::Type::INT8: {
-      return cudf::data_type{cudf::type_id::INT8};
-    }
-    case arrow::Type::INT16: {
-      return cudf::data_type{cudf::type_id::INT16};
-    }
-    case arrow::Type::INT32: {
-      return cudf::data_type{cudf::type_id::INT32};
-    }
-    case arrow::Type::INT64: {
-      return cudf::data_type{cudf::type_id::INT64};
-    }
-    case arrow::Type::UINT8: {
-      return cudf::data_type{cudf::type_id::UINT8};
-    }
-    case arrow::Type::UINT16: {
-      return cudf::data_type{cudf::type_id::UINT16};
-    }
-    case arrow::Type::UINT32: {
-      return cudf::data_type{cudf::type_id::UINT32};
-    }
-    case arrow::Type::UINT64: {
-      return cudf::data_type{cudf::type_id::UINT64};
-    }
-    case arrow::Type::FLOAT: {
-      return cudf::data_type{cudf::type_id::FLOAT32};
-    }
-    case arrow::Type::DOUBLE: {
-      return cudf::data_type{cudf::type_id::FLOAT64};
-    }
-    case arrow::Type::STRING: {
-      return cudf::data_type{cudf::type_id::STRING};
-    }
-    case arrow::Type::LARGE_STRING: {
-      return cudf::data_type{cudf::type_id::STRING};
-    }
-    case arrow::Type::DATE64: {
-      return cudf::data_type{cudf::type_id::TIMESTAMP_MILLISECONDS};
-    }
-    case arrow::Type::DURATION: {
-      const auto& duration_type = static_cast<const arrow::DurationType&>(arrow_type);
-      if (duration_type.unit() == arrow::TimeUnit::SECOND) {
-        return cudf::data_type{cudf::type_id::DURATION_SECONDS};
-      } else if (duration_type.unit() == arrow::TimeUnit::MILLI) {
-        return cudf::data_type{cudf::type_id::DURATION_MILLISECONDS};
-      } else if (duration_type.unit() == arrow::TimeUnit::MICRO) {
-        return cudf::data_type{cudf::type_id::DURATION_MICROSECONDS};
-      } else if (duration_type.unit() == arrow::TimeUnit::NANO) {
-        return cudf::data_type{cudf::type_id::DURATION_NANOSECONDS};
-      }
-      break;
-    }
-    case arrow::Type::TIMESTAMP: {
-      const auto& duration_type = static_cast<const arrow::DurationType&>(arrow_type);
-      if (duration_type.unit() == arrow::TimeUnit::SECOND) {
-        return cudf::data_type{cudf::type_id::TIMESTAMP_SECONDS};
-      } else if (duration_type.unit() == arrow::TimeUnit::MILLI) {
-        return cudf::data_type{cudf::type_id::TIMESTAMP_MILLISECONDS};
-      } else if (duration_type.unit() == arrow::TimeUnit::MICRO) {
-        return cudf::data_type{cudf::type_id::TIMESTAMP_MICROSECONDS};
-      } else if (duration_type.unit() == arrow::TimeUnit::NANO) {
-        return cudf::data_type{cudf::type_id::TIMESTAMP_NANOSECONDS};
-      }
-      break;
-    }
-    default: break;
-  }
-  throw std::invalid_argument("Converting arrow type to cudf failed for type: " +
-                              arrow_type.ToString());
-}
-
-legate::Type to_legate_type(cudf::type_id dtype)
-{
-  switch (dtype) {
-    case cudf::type_id::INT8: {
-      return legate::int8();
-    }
-    case cudf::type_id::INT16: {
-      return legate::int16();
-    }
-    case cudf::type_id::INT32: {
-      return legate::int32();
-    }
-    case cudf::type_id::INT64: {
-      return legate::int64();
-    }
-    case cudf::type_id::UINT8: {
-      return legate::uint8();
-    }
-    case cudf::type_id::UINT16: {
-      return legate::uint16();
-    }
-    case cudf::type_id::UINT32: {
-      return legate::uint32();
-    }
-    case cudf::type_id::UINT64: {
-      return legate::uint64();
-    }
-    case cudf::type_id::FLOAT32: {
-      return legate::float32();
-    }
-    case cudf::type_id::FLOAT64: {
-      return legate::float64();
-    }
-    case cudf::type_id::BOOL8: {
-      return legate::bool_();
-    }
-    case cudf::type_id::STRING: {
-      return legate::string_type();
-    }
-    case cudf::type_id::TIMESTAMP_DAYS: {
-      return legate::int32();
-    }
-    case cudf::type_id::TIMESTAMP_SECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::TIMESTAMP_MILLISECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::TIMESTAMP_MICROSECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::TIMESTAMP_NANOSECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::DURATION_DAYS: {
-      return legate::int32();
-    }
-    case cudf::type_id::DURATION_SECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::DURATION_MILLISECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::DURATION_MICROSECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::DURATION_NANOSECONDS: {
-      return legate::int64();
-    }
-    case cudf::type_id::DICTIONARY32:
-    case cudf::type_id::DECIMAL32:
-    case cudf::type_id::DECIMAL64:
-    case cudf::type_id::DECIMAL128:
-    case cudf::type_id::LIST:
-    case cudf::type_id::STRUCT:
-    default:
-      throw std::invalid_argument(
-        "unsupported cudf datatype: " +
-        std::to_string(static_cast<std::underlying_type_t<cudf::type_id>>(dtype)));
-  }
-}
-
 legate::Type to_legate_type(const arrow::DataType& arrow_type)
 {
   switch (arrow_type.id()) {
@@ -382,6 +144,9 @@ std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
     case cudf::type_id::TIMESTAMP_NANOSECONDS: {
       return arrow::timestamp(arrow::TimeUnit::NANO);
     }
+    case cudf::type_id::TIMESTAMP_DAYS: {
+      return arrow::date32();
+    }
     case cudf::type_id::DURATION_SECONDS: {
       return arrow::duration(arrow::TimeUnit::SECOND);
     }
@@ -404,6 +169,50 @@ std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
       throw std::invalid_argument(
         "unsupported cudf datatype: " +
         std::to_string(static_cast<std::underlying_type_t<cudf::type_id>>(code)));
+  }
+}
+std::shared_ptr<arrow::DataType> to_arrow_type(legate::Type::Code code)
+{
+  switch (code) {
+    case legate::Type::Code::BOOL: {
+      return arrow::boolean();
+    }
+    case legate::Type::Code::INT8: {
+      return arrow::int8();
+    }
+    case legate::Type::Code::INT16: {
+      return arrow::int16();
+    }
+    case legate::Type::Code::INT32: {
+      return arrow::int32();
+    }
+    case legate::Type::Code::INT64: {
+      return arrow::int64();
+    }
+    case legate::Type::Code::UINT8: {
+      return arrow::uint8();
+    }
+    case legate::Type::Code::UINT16: {
+      return arrow::uint16();
+    }
+    case legate::Type::Code::UINT32: {
+      return arrow::uint32();
+    }
+    case legate::Type::Code::UINT64: {
+      return arrow::uint64();
+    }
+    case legate::Type::Code::FLOAT32: {
+      return arrow::float32();
+    }
+    case legate::Type::Code::FLOAT64: {
+      return arrow::float64();
+    }
+    case legate::Type::Code::STRING: {
+      return arrow::utf8();
+    }
+    default:
+      throw std::invalid_argument("Unsupported Legate datatype: " +
+                                  legate::primitive_type(code).to_string());
   }
 }
 
@@ -545,4 +354,42 @@ size_t linearize(const legate::DomainPoint& lo,
   return legate::dim_dispatch(point.dim, linearize_fn{}, lo, hi, point);
 }
 
+std::vector<uint8_t> serialize_arrow_type(std::shared_ptr<arrow::DataType> type)
+{
+  auto schema = arrow::schema({arrow::field("type", type)});
+  auto buffer = ARROW_RESULT(arrow::ipc::SerializeSchema(*schema));
+  return std::vector<uint8_t>(buffer->data(), buffer->data() + buffer->size());
+}
+
+std::vector<uint8_t> serialize_arrow_types(std::vector<std::shared_ptr<arrow::DataType>> types)
+{
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+  for (const auto& type : types) {
+    fields.push_back(arrow::field(std::to_string(fields.size()), type));
+  }
+  auto schema = arrow::schema(fields);
+  auto buffer = ARROW_RESULT(arrow::ipc::SerializeSchema(*schema));
+  return std::vector<uint8_t>(buffer->data(), buffer->data() + buffer->size());
+}
+
+std::shared_ptr<arrow::DataType> deserialize_arrow_type(const std::vector<uint8_t>& data)
+{
+  auto buffer       = arrow::Buffer::Wrap(data.data(), data.size());
+  auto input_stream = arrow::io::BufferReader(buffer);
+  auto schema       = ARROW_RESULT(arrow::ipc::ReadSchema(&input_stream, nullptr));
+  return schema->fields().at(0)->type();
+}
+
+std::vector<std::shared_ptr<arrow::DataType>> deserialize_arrow_types(
+  const std::vector<uint8_t>& data)
+{
+  auto buffer       = arrow::Buffer::Wrap(data.data(), data.size());
+  auto input_stream = arrow::io::BufferReader(buffer);
+  auto schema       = ARROW_RESULT(arrow::ipc::ReadSchema(&input_stream, nullptr));
+  std::vector<std::shared_ptr<arrow::DataType>> types;
+  for (const auto& field : schema->fields()) {
+    types.push_back(field->type());
+  }
+  return types;
+}
 }  // namespace legate::dataframe

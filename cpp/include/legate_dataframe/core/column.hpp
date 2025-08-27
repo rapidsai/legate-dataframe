@@ -35,6 +35,12 @@
 
 namespace legate::dataframe {
 
+// Make this function available to cuda code
+// Can likely be removed in future
+namespace detail {
+legate::LogicalArray from_arrow(std::shared_ptr<arrow::Array> arrow_array, bool scalar = false);
+};
+
 /**
  * @brief Logical column
  *
@@ -76,9 +82,9 @@ class LogicalColumn {
     assert(!scalar || array_->unbound() || array_->volume() == 1);
 
     if (cudf_type.id() == cudf::type_id::EMPTY) {
-      cudf_type_ = cudf::data_type{to_cudf_type_id(array_->type().code())};
+      arrow_type_ = to_arrow_type(array_->type().code());
     } else {
-      cudf_type_ = std::move(cudf_type);
+      arrow_type_ = to_arrow_type(cudf_type.id());
     }
   }
 
@@ -102,11 +108,12 @@ class LogicalColumn {
     assert(!scalar || array_->unbound() || array_->volume() == 1);
 
     if (!data_type) {
-      cudf_type_ = cudf::data_type{to_cudf_type_id(array_->type().code())};
+      arrow_type_ = to_arrow_type(array_->type().code());
     } else {
-      cudf_type_ = to_cudf_type(*data_type);
+      arrow_type_ = data_type;
     }
   }
+
   /*
    * Convenience constructor for tests
    */
@@ -133,8 +140,8 @@ class LogicalColumn {
       std::copy(null_mask.begin(), null_mask.end(), null_mask_ptr);
       array_ = std::move(legate::LogicalArray(data_store, null_mask_store));
     }
-    scalar_    = scalar;
-    cudf_type_ = cudf::data_type{to_cudf_type_id(legate_type_code)};
+    scalar_     = scalar;
+    arrow_type_ = to_arrow_type(legate_type_code);
   }
 
   /*
@@ -177,8 +184,8 @@ class LogicalColumn {
       array_ = runtime->create_string_array(legate::LogicalArray(ranges_store, null_mask_store),
                                             legate::LogicalArray(data_store));
     }
-    scalar_    = scalar;
-    cudf_type_ = cudf::data_type{cudf::type_id::STRING};
+    scalar_     = scalar;
+    arrow_type_ = arrow::utf8();
   }
 
   /**
@@ -408,17 +415,14 @@ class LogicalColumn {
    *
    * @return The cudf data type
    */
-  [[nodiscard]] cudf::data_type cudf_type() const { return cudf_type_; }
+  [[nodiscard]] cudf::data_type cudf_type() const { return to_cudf_type(arrow_type_); }
 
   /**
    * @brief Get the arrow data type of the column
    *
    * @return The arrow data type
    */
-  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const
-  {
-    return to_arrow_type(cudf_type_.id());
-  }
+  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const { return arrow_type_; }
 
   /**
    * @brief Indicates whether the array is nullable
@@ -479,7 +483,7 @@ class LogicalColumn {
   // In order to support a default ctor and assignment (used by Cython),
   // we make the legate array optional and the rest non-const.
   std::optional<legate::LogicalArray> array_;
-  cudf::data_type cudf_type_{cudf::type_id::EMPTY};
+  std::shared_ptr<arrow::DataType> arrow_type_;
   bool scalar_{false};
 };
 
@@ -503,12 +507,9 @@ class PhysicalColumn {
    */
   PhysicalColumn(TaskContext& ctx,
                  legate::PhysicalArray array,
-                 cudf::data_type cudf_type,
+                 std::shared_ptr<arrow::DataType> arrow_type,
                  bool scalar_out = false)
-    : ctx_{&ctx},
-      array_{std::move(array)},
-      cudf_type_{std::move(cudf_type)},
-      scalar_out_{scalar_out}
+    : ctx_{&ctx}, array_{std::move(array)}, arrow_type_(arrow_type), scalar_out_{scalar_out}
   {
   }
 
@@ -548,12 +549,9 @@ class PhysicalColumn {
    *
    * @return The cudf data type
    */
-  [[nodiscard]] cudf::data_type cudf_type() const { return cudf_type_; }
+  [[nodiscard]] cudf::data_type cudf_type() const { return to_cudf_type(arrow_type_); }
 
-  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const
-  {
-    return to_arrow_type(cudf_type_.id());
-  }
+  [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const { return arrow_type_; }
 
   /**
    * @brief Indicates whether the column is nullable
@@ -701,7 +699,7 @@ class PhysicalColumn {
  private:
   TaskContext* ctx_;
   legate::PhysicalArray array_;
-  const cudf::data_type cudf_type_;
+  const std::shared_ptr<arrow::DataType> arrow_type_;
   mutable std::vector<std::unique_ptr<cudf::column>> tmp_cols_;
   mutable std::vector<rmm::device_buffer> tmp_null_masks_;
   const bool scalar_out_;  // scalar output checks binding has size 1.
@@ -743,19 +741,16 @@ legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& co
 template <>
 inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(TaskContext& ctx)
 {
-  auto cudf_type_id = static_cast<cudf::type_id>(
-    argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
-  return task::PhysicalColumn(ctx, ctx.get_next_input_arg(), cudf::data_type{cudf_type_id});
+  auto arrow_type = argument::get_next_scalar<std::shared_ptr<arrow::DataType>>(ctx);
+  return task::PhysicalColumn(ctx, ctx.get_next_input_arg(), arrow_type);
 }
 
 template <>
 inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(TaskContext& ctx)
 {
-  auto cudf_type_id = static_cast<cudf::type_id>(
-    argument::get_next_scalar<std::underlying_type_t<cudf::type_id>>(ctx));
-  auto scalar = argument::get_next_scalar<bool>(ctx);
-  return task::PhysicalColumn(
-    ctx, ctx.get_next_output_arg(), cudf::data_type{cudf_type_id}, scalar);
+  auto arrow_type = argument::get_next_scalar<std::shared_ptr<arrow::DataType>>(ctx);
+  auto scalar     = argument::get_next_scalar<bool>(ctx);
+  return task::PhysicalColumn(ctx, ctx.get_next_output_arg(), arrow_type, scalar);
 }
 
 }  // namespace argument
