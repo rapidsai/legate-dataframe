@@ -335,6 +335,13 @@ class LogicalTable {
    */
   std::string repr(size_t max_num_items_ptr_column = 30) const;
 
+  void set_constraint_keep_alive(legate::LogicalArray constraint)
+  {
+    for (auto& col : columns_) {
+      col.set_constraint_keep_alive(constraint);
+    }
+  }
+
  private:
   std::vector<LogicalColumn> columns_;
   std::map<std::string, size_t> column_names_;
