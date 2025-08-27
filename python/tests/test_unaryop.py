@@ -19,8 +19,12 @@ import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalColumn
-from legate_dataframe.lib.unaryop import cast, unary_operation
-from legate_dataframe.testing import assert_frame_equal, gen_random_series
+from legate_dataframe.lib.unaryop import cast, round, unary_operation
+from legate_dataframe.testing import (
+    assert_frame_equal,
+    assert_matches_polars,
+    gen_random_series,
+)
 
 ops = [
     "sin",
@@ -109,6 +113,25 @@ def test_cast_scalar():
     assert res.to_arrow()[0].as_py() == -3
 
 
+@pytest.mark.parametrize("mode", ["half_away_from_zero", "half_to_even"])
+@pytest.mark.parametrize("digits", [-1, 0, 1])
+def test_round(digits, mode):
+    array = 1000 * (np.random.random(1000) - 0.5)
+    array[[0, 1]] = [-0.5, 0.5]  # check half-way rounding explicitly
+    array = pa.array(array)
+    col = LogicalColumn.from_arrow(array)
+    res = round(col, digits, mode)
+    arrow_mode = (
+        "half_towards_infinity" if mode == "half_away_from_zero" else "half_to_even"
+    )
+    expect = pa.compute.round(array, ndigits=digits, round_mode=arrow_mode)
+    assert np.allclose(
+        expect.to_numpy(zero_copy_only=False),
+        res.to_arrow().to_numpy(zero_copy_only=False),
+        equal_nan=True,
+    )
+
+
 polars_ops = [
     "sin",
     "cos",
@@ -145,3 +168,14 @@ def test_unary_operation_polars(op):
     res_ldf = np.asarray(q.legate.collect().to_arrow())
 
     np.testing.assert_array_almost_equal(res_pl, res_ldf)
+
+
+@pytest.mark.parametrize("mode", ["half_away_from_zero", "half_to_even"])
+@pytest.mark.parametrize("digits", [0, 1])  # -1 seems unsupported by polars
+def test_round_polars(digits, mode):
+    pl = pytest.importorskip("polars")
+
+    a = gen_random_series(nelem=1000, num_nans=10)
+    q = pl.LazyFrame({"a": a}).with_columns(res=pl.col("a").round(digits, mode))
+
+    assert_matches_polars(q)

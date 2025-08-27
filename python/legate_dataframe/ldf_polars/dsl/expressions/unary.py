@@ -14,6 +14,7 @@ from legate_dataframe import LogicalColumn
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
 from legate_dataframe.ldf_polars.utils import dtypes
+from legate_dataframe.ldf_polars.utils.versions import POLARS_VERSION_LT_129
 from legate_dataframe.lib import replace, unaryop
 
 if TYPE_CHECKING:
@@ -163,7 +164,19 @@ class UnaryFunction(Expr):
         # - cum_max
         # - cum_prod
         # - cum_sum
-        if self.name == "drop_nulls":
+        if self.name == "round":
+            round_mode = "half_away_from_zero"
+            if POLARS_VERSION_LT_129:
+                (decimal_places,) = self.options  # pragma: no cover
+            else:
+                # pragma: no cover
+                (
+                    decimal_places,
+                    round_mode,
+                ) = self.options
+            (values,) = (child.evaluate(df, context=context) for child in self.children)
+            return Column(unaryop.round(values.obj, decimal_places, round_mode))
+        elif self.name == "drop_nulls":
             # Could implement it via apply boolean mask, but probably better to do it explicitly
             raise NotImplementedError(
                 "drop_nulls not implemented (but should prioritize this)"

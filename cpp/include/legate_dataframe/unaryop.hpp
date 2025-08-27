@@ -29,6 +29,11 @@ class CastTask : public Task<CastTask, OpCode::Cast> {
   static void cpu_variant(legate::TaskContext context);
   static void gpu_variant(legate::TaskContext context);
 };
+class RoundTask : public Task<RoundTask, OpCode::Round> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
 class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  public:
   static void cpu_variant(legate::TaskContext context);
@@ -45,6 +50,17 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  * @returns Logical column of same size as `col` of the new data type
  */
 LogicalColumn cast(const LogicalColumn& col, cudf::data_type dtype);
+
+/**
+ * @brief Round column.
+ *
+ * @param col Logical column as input
+ * @param digits The number of digits to round to
+ * @param mode The rounding mode to use, currently either `"half_to_even"` or `"half_up"`.
+ *
+ * @returns Logical column of same size as `col` of the rounded values
+ */
+LogicalColumn round(const LogicalColumn& col, int32_t digits, std::string mode);
 
 /**
  * @brief Performs unary operation on all values in column

@@ -35,6 +35,7 @@ enum : int {
   ParquetRead,
   ParquetReadArray,
   ReplaceNullsWithScalar,
+  Round,
   UnaryOp,
   BinaryOpColCol,
   BinaryOpColScalar,

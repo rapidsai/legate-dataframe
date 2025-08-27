@@ -5,6 +5,9 @@ Column functions
     legate_dataframe.lib.unaryop.cast
 
 .. autofunction::
+    legate_dataframe.lib.unaryop.round
+
+.. autofunction::
     legate_dataframe.lib.unaryop.unary_operation
 
 .. autofunction::

@@ -34,8 +34,12 @@ using namespace legate::dataframe;
 
 template <typename T>
 struct UnaryOpsTest : testing::Test {};
+template <typename T>
+struct RoundTest : testing::Test {};
 
 TYPED_TEST_SUITE(UnaryOpsTest, NumericTypes);
+TYPED_TEST_SUITE(RoundTest, FloatTypes);
+
 namespace {
 bool skip(std::string const& op, legate::Type const& type)
 {
@@ -141,5 +145,25 @@ TYPED_TEST(UnaryOpsTest, CastFromInt16ToAny)
                                                     arrow::compute::CastOptions::Unsafe()))
                     .make_array();
   LogicalColumn result = cast(column, to_dtype);
+  EXPECT_TRUE(expected->Equals(*result.get_arrow()));
+}
+
+TYPED_TEST(RoundTest, RoundBasic)
+{
+  LogicalColumn column(
+    narrow<double>({-1.5, -2.5, -3.5, -4.5, 1.5, 1.1234, 123455., -4321235., -1234.}));
+  auto result = round(column, 0, "half_away_from_zero");
+  auto expected =
+    ARROW_RESULT(arrow::compute::Round(column.get_arrow(),
+                                       arrow::compute::RoundOptions(
+                                         0, arrow::compute::RoundMode::HALF_TOWARDS_INFINITY)))
+      .make_array();
+  EXPECT_TRUE(expected->Equals(*result.get_arrow()));
+
+  result   = round(column, -1, "half_to_even");
+  expected = ARROW_RESULT(arrow::compute::Round(column.get_arrow(),
+                                                arrow::compute::RoundOptions(
+                                                  -1, arrow::compute::RoundMode::HALF_TO_EVEN)))
+               .make_array();
   EXPECT_TRUE(expected->Equals(*result.get_arrow()));
 }

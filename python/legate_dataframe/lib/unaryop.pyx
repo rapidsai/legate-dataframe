@@ -4,6 +4,7 @@
 # distutils: language = c++
 # cython: language_level=3
 
+from libc.stdint cimport int32_t
 from libcpp.string cimport string
 
 from pylibcudf.types cimport data_type
@@ -21,6 +22,10 @@ cdef extern from "<legate_dataframe/unaryop.hpp>" nogil:
 
     cpp_LogicalColumn cpp_cast "legate::dataframe::cast"(
         const cpp_LogicalColumn& col, data_type dtype
+    ) except +
+
+    cpp_LogicalColumn cpp_round "legate::dataframe::round"(
+        const cpp_LogicalColumn& col, int32_t digits, string mode
     ) except +
 
 
@@ -63,4 +68,27 @@ def cast(LogicalColumn col, dtype) -> LogicalColumn:
     """
     return LogicalColumn.from_handle(
         cpp_cast(col._handle, as_data_type(dtype))
+    )
+
+
+@_track_provenance
+def round(LogicalColumn col, int32_t digits, mode="half_to_even") -> LogicalColumn:
+    """Cast a logical column to the desired data type.
+
+    Parameters
+    ----------
+    col
+        Logical column as input
+    decimals
+        Number of decimals to round to.
+    mode
+        Rounding mode, currently either `"half_to_even"` or `"half_away_from_zero"`
+        are supported.
+
+    Returns
+    -------
+        Logical column of same size as `col` but with new data type.
+    """
+    return LogicalColumn.from_handle(
+        cpp_round(col._handle, digits, mode.encode('utf-8'))
     )

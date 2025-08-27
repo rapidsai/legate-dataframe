@@ -27,6 +27,7 @@ using NumericTypes = ::testing::Types<bool,
                                       uint64_t,
                                       float,
                                       double>;
+using FloatTypes   = ::testing::Types<float, double>;
 
 template <typename T, typename in_T>
 std::vector<T> narrow(std::initializer_list<in_T> list)

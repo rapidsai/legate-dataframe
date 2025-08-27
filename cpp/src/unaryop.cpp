@@ -41,6 +41,32 @@ namespace task {
   }
 }
 
+/*static*/ void RoundTask::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const auto input = argument::get_next_input<PhysicalColumn>(ctx);
+  auto decimals    = argument::get_next_scalar<int32_t>(ctx);
+  auto mode        = argument::get_next_scalar<std::string>(ctx);
+  auto output      = argument::get_next_output<PhysicalColumn>(ctx);
+
+  arrow::compute::RoundOptions round_options;
+  round_options.ndigits = decimals;
+  if (mode == "half_away_from_zero") {
+    round_options.round_mode = arrow::compute::RoundMode::HALF_TOWARDS_INFINITY;
+  } else if (mode == "half_to_even") {
+    round_options.round_mode = arrow::compute::RoundMode::HALF_TO_EVEN;
+  } else {
+    throw std::invalid_argument("Unsupported rounding method: " + mode);
+  }
+
+  auto res = ARROW_RESULT(arrow::compute::Round(input.arrow_array_view(), round_options));
+  if (get_prefer_eager_allocations()) {
+    output.copy_into(std::move(res.make_array()));
+  } else {
+    output.move_into(std::move(res.make_array()));
+  }
+}
+
 /*static*/ void UnaryOpTask::cpu_variant(legate::TaskContext context)
 {
   TaskContext ctx{context};
@@ -76,6 +102,29 @@ LogicalColumn cast(const LogicalColumn& col, cudf::data_type to_type)
   return ret;
 }
 
+LogicalColumn round(const LogicalColumn& col, int32_t digits, std::string mode)
+{
+  auto runtime = legate::Runtime::get_runtime();
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::RoundTask::TASK_CONFIG.task_id());
+
+  if (mode != "half_away_from_zero" && mode != "half_to_even") {
+    throw std::invalid_argument("Unsupported rounding method: " + mode);
+  }
+
+  // Unary ops can return a scalar column for a scalar column input.
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = col.num_rows(); }
+  auto ret    = LogicalColumn::empty_like(col.arrow_type(), col.nullable(), col.is_scalar(), size);
+  auto in_var = argument::add_next_input(task, col);
+  argument::add_next_scalar(task, digits);
+  argument::add_next_scalar(task, mode);
+  auto out_var = argument::add_next_output(task, ret);
+  if (size.has_value()) { task.add_constraint(legate::align(out_var, in_var)); }
+  runtime->submit(std::move(task));
+  return ret;
+}
+
 LogicalColumn unary_operation(const LogicalColumn& col, std::string op)
 {
   auto runtime = legate::Runtime::get_runtime();
@@ -101,6 +150,7 @@ namespace {
 void __attribute__((constructor)) register_tasks()
 {
   legate::dataframe::task::CastTask::register_variants();
+  legate::dataframe::task::RoundTask::register_variants();
   legate::dataframe::task::UnaryOpTask::register_variants();
 }
 
