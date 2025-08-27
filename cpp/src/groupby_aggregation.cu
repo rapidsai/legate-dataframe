@@ -56,6 +56,9 @@ std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggreg
     case cudf::aggregation::Kind::NUNIQUE: {
       return cudf::make_nunique_aggregation<cudf::groupby_aggregation>();
     }
+    case cudf::aggregation::Kind::COUNT_ALL: {
+      return cudf::make_count_aggregation<cudf::groupby_aggregation>(cudf::null_policy::INCLUDE);
+    }
     default: {
       throw std::invalid_argument("Unsupported groupby aggregation");
     }
@@ -75,10 +78,9 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
     {"variance", cudf::aggregation::Kind::VARIANCE},
     {"stddev", cudf::aggregation::Kind::STD},
     {"approximate_median", cudf::aggregation::Kind::MEDIAN},
-    {"count_distinct", cudf::aggregation::Kind::NUNIQUE}};
-
-  //  {"count_all", cudf::aggregation::Kind::COUNT_ALL},
-  // "count_all" could be supported but needs some work as it has 0 inputs
+    {"count_distinct", cudf::aggregation::Kind::NUNIQUE},
+    {"count_all", cudf::aggregation::Kind::COUNT_ALL},
+  };
 
   // Don't do these as we don't support nested types at the moment
   // {"list", cudf::aggregation::Kind::COLLECT_LIST},
