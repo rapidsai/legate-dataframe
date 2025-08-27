@@ -353,7 +353,7 @@ namespace argument {
 
 legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col, bool broadcast)
 {
-  add_next_scalar_vector(task, serialize_arrow_type(col.arrow_type()));
+  add_next_scalar(task, col.arrow_type());
   auto arr      = col.get_logical_array();
   auto variable = task.add_input(arr);
   if (broadcast) { task.add_constraint(legate::broadcast(variable, {0})); }
@@ -362,7 +362,7 @@ legate::Variable add_next_input(legate::AutoTask& task, const LogicalColumn& col
 
 legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& col)
 {
-  add_next_scalar_vector(task, serialize_arrow_type(col.arrow_type()));
+  add_next_scalar(task, col.arrow_type());
   // While we don't care much for reading from a scalar column, pass scalar information
   // for outputs to enforce the result having the right size.
   add_next_scalar(task, col.is_scalar());

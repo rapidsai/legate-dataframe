@@ -741,14 +741,14 @@ legate::Variable add_next_output(legate::AutoTask& task, const LogicalColumn& co
 template <>
 inline task::PhysicalColumn get_next_input<task::PhysicalColumn>(TaskContext& ctx)
 {
-  auto arrow_type = deserialize_arrow_type(argument::get_next_scalar_vector<uint8_t>(ctx));
+  auto arrow_type = argument::get_next_scalar<std::shared_ptr<arrow::DataType>>(ctx);
   return task::PhysicalColumn(ctx, ctx.get_next_input_arg(), arrow_type);
 }
 
 template <>
 inline task::PhysicalColumn get_next_output<task::PhysicalColumn>(TaskContext& ctx)
 {
-  auto arrow_type = deserialize_arrow_type(argument::get_next_scalar_vector<uint8_t>(ctx));
+  auto arrow_type = argument::get_next_scalar<std::shared_ptr<arrow::DataType>>(ctx);
   auto scalar     = argument::get_next_scalar<bool>(ctx);
   return task::PhysicalColumn(ctx, ctx.get_next_output_arg(), arrow_type, scalar);
 }
