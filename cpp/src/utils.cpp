@@ -21,6 +21,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "arrow/io/api.h"
+#include <arrow/ipc/api.h>
 #include <legate.h>
 #include <legate_dataframe/utils.hpp>
 
@@ -142,6 +144,9 @@ std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
     case cudf::type_id::TIMESTAMP_NANOSECONDS: {
       return arrow::timestamp(arrow::TimeUnit::NANO);
     }
+    case cudf::type_id::TIMESTAMP_DAYS: {
+      return arrow::date32();
+    }
     case cudf::type_id::DURATION_SECONDS: {
       return arrow::duration(arrow::TimeUnit::SECOND);
     }
@@ -164,6 +169,50 @@ std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
       throw std::invalid_argument(
         "unsupported cudf datatype: " +
         std::to_string(static_cast<std::underlying_type_t<cudf::type_id>>(code)));
+  }
+}
+std::shared_ptr<arrow::DataType> to_arrow_type(legate::Type::Code code)
+{
+  switch (code) {
+    case legate::Type::Code::BOOL: {
+      return arrow::boolean();
+    }
+    case legate::Type::Code::INT8: {
+      return arrow::int8();
+    }
+    case legate::Type::Code::INT16: {
+      return arrow::int16();
+    }
+    case legate::Type::Code::INT32: {
+      return arrow::int32();
+    }
+    case legate::Type::Code::INT64: {
+      return arrow::int64();
+    }
+    case legate::Type::Code::UINT8: {
+      return arrow::uint8();
+    }
+    case legate::Type::Code::UINT16: {
+      return arrow::uint16();
+    }
+    case legate::Type::Code::UINT32: {
+      return arrow::uint32();
+    }
+    case legate::Type::Code::UINT64: {
+      return arrow::uint64();
+    }
+    case legate::Type::Code::FLOAT32: {
+      return arrow::float32();
+    }
+    case legate::Type::Code::FLOAT64: {
+      return arrow::float64();
+    }
+    case legate::Type::Code::STRING: {
+      return arrow::utf8();
+    }
+    default:
+      throw std::invalid_argument("Unsupported Legate datatype: " +
+                                  legate::primitive_type(code).to_string());
   }
 }
 
@@ -305,4 +354,42 @@ size_t linearize(const legate::DomainPoint& lo,
   return legate::dim_dispatch(point.dim, linearize_fn{}, lo, hi, point);
 }
 
+std::vector<uint8_t> serialize_arrow_type(std::shared_ptr<arrow::DataType> type)
+{
+  auto schema = arrow::schema({arrow::field("type", type)});
+  auto buffer = ARROW_RESULT(arrow::ipc::SerializeSchema(*schema));
+  return std::vector<uint8_t>(buffer->data(), buffer->data() + buffer->size());
+}
+
+std::vector<uint8_t> serialize_arrow_types(std::vector<std::shared_ptr<arrow::DataType>> types)
+{
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+  for (const auto& type : types) {
+    fields.push_back(arrow::field(std::to_string(fields.size()), type));
+  }
+  auto schema = arrow::schema(fields);
+  auto buffer = ARROW_RESULT(arrow::ipc::SerializeSchema(*schema));
+  return std::vector<uint8_t>(buffer->data(), buffer->data() + buffer->size());
+}
+
+std::shared_ptr<arrow::DataType> deserialize_arrow_type(const std::vector<uint8_t>& data)
+{
+  auto buffer       = arrow::Buffer::Wrap(data.data(), data.size());
+  auto input_stream = arrow::io::BufferReader(buffer);
+  auto schema       = ARROW_RESULT(arrow::ipc::ReadSchema(&input_stream, nullptr));
+  return schema->fields().at(0)->type();
+}
+
+std::vector<std::shared_ptr<arrow::DataType>> deserialize_arrow_types(
+  const std::vector<uint8_t>& data)
+{
+  auto buffer       = arrow::Buffer::Wrap(data.data(), data.size());
+  auto input_stream = arrow::io::BufferReader(buffer);
+  auto schema       = ARROW_RESULT(arrow::ipc::ReadSchema(&input_stream, nullptr));
+  std::vector<std::shared_ptr<arrow::DataType>> types;
+  for (const auto& field : schema->fields()) {
+    types.push_back(field->type());
+  }
+  return types;
+}
 }  // namespace legate::dataframe

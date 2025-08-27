@@ -29,6 +29,7 @@ namespace legate::dataframe {
 // TODO: macros to go here, disabling cudf related utilities for CPU only builds
 [[nodiscard]] cudf::type_id to_cudf_type_id(legate::Type::Code code);
 [[nodiscard]] std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code);
+[[nodiscard]] std::shared_ptr<arrow::DataType> to_arrow_type(legate::Type::Code code);
 [[nodiscard]] cudf::data_type to_cudf_type(const arrow::DataType& arrow_type);
 [[nodiscard]] inline cudf::data_type to_cudf_type(
   const std::shared_ptr<arrow::DataType>& arrow_type)
@@ -155,5 +156,64 @@ template <typename PrimaryContainer, typename OtherContainer>
 size_t linearize(const legate::DomainPoint& lo,
                  const legate::DomainPoint& hi,
                  const legate::DomainPoint& point);
+
+/**
+ * @brief Serialize an Arrow data type to a byte vector
+ *
+ * @param type The Arrow data type to serialize
+ * @return A byte vector containing the serialized data
+ */
+std::vector<uint8_t> serialize_arrow_type(std::shared_ptr<arrow::DataType> type);
+
+/*
+ * @brief Serialize a vector of Arrow data types to a byte vector
+ *
+ * @param types The vector of Arrow data types to serialize
+ * @return A byte vector containing the serialized data
+ */
+std::vector<uint8_t> serialize_arrow_types(std::vector<std::shared_ptr<arrow::DataType>> types);
+
+/**
+ * @brief Deserialize a byte vector into an Arrow data type
+ *
+ * @param data The byte vector containing the serialized data
+ * @return The deserialized Arrow data type
+ */
+std::shared_ptr<arrow::DataType> deserialize_arrow_type(const std::vector<uint8_t>& data);
+
+/*
+ * @brief Deserialize a byte vector into a vector of Arrow data types
+ *
+ * @param data The byte vector containing the serialized data
+ * @return The deserialized vector of Arrow data types
+ */
+std::vector<std::shared_ptr<arrow::DataType>> deserialize_arrow_types(
+  const std::vector<uint8_t>& data);
+
+/*
+ * @brief If a store is unbound, bind a buffer to it of size and return its pointer, if already
+ * bound, then check the buffer is of size and return its pointer.
+ *
+ * @param store The physical store to bind the buffer to
+ * @param size The size of the buffer
+ * @return A pointer to the buffer.
+ */
+template <typename T>
+T* maybe_bind_buffer(legate::PhysicalStore store, std::size_t size)
+{
+  T* out;
+  if (store.is_unbound_store()) {
+    out = store.create_output_buffer<T, 1>(legate::Point<1>(size), true).ptr(0);
+  } else {
+    auto acc = store.write_accessor<T, 1>();
+    assert((store.shape<1>().hi[0] - store.shape<1>().lo[0]) <= 0 ||
+           acc.accessor.is_dense_row_major(store.shape<1>()));
+    if (size != 0 && store.shape<1>().volume() != size) {
+      throw std::runtime_error("Store size does not match the expected size");
+    }
+    out = acc.ptr(store.shape<1>().lo[0]);
+  }
+  return out;
+}
 
 }  // namespace legate::dataframe
