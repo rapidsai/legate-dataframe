@@ -17,7 +17,7 @@
 #include <cudf/concatenate.hpp>
 #include <cudf/io/parquet.hpp>
 #include <cudf/unary.hpp>
-#include <legate_dataframe/core/transposed_copy.cuh>
+#include <legate_dataframe/core/transposed_copy.h>
 
 #include <legate_dataframe/parquet.hpp>
 
