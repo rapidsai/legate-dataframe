@@ -85,7 +85,7 @@ namespace task {
 
 }  // namespace task
 
-LogicalColumn cast(const LogicalColumn& col, cudf::data_type to_type)
+LogicalColumn cast(const LogicalColumn& col, std::shared_ptr<arrow::DataType> to_type)
 {
   auto runtime = legate::Runtime::get_runtime();
   legate::AutoTask task =
@@ -134,7 +134,7 @@ LogicalColumn unary_operation(const LogicalColumn& col, std::string op)
   std::optional<size_t> size{};
   if (get_prefer_eager_allocations()) { size = col.num_rows(); }
   // Unary ops can return a scalar column for a scalar column input.
-  auto ret = LogicalColumn::empty_like(col.cudf_type(), col.nullable(), col.is_scalar(), size);
+  auto ret = LogicalColumn::empty_like(col.arrow_type(), col.nullable(), col.is_scalar(), size);
 
   argument::add_next_scalar(task, op);
   argument::add_next_input(task, col);

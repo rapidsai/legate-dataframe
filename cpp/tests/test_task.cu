@@ -162,13 +162,14 @@ TEST(TaskTest, GlobalRowOffsetSingleRow)
 
 TEST(TaskTest, GlobalRowOffsetEmpty)
 {
-  std::vector<std::unique_ptr<cudf::column>> cols;
-  cudf::test::fixed_width_column_wrapper<int64_t> a({});
-  cudf::test::fixed_width_column_wrapper<int64_t> b({});
-  cols.push_back(a.release());
-  cols.push_back(b.release());
-  cudf::table _tbl(std::move(cols));
-  LogicalTable input(_tbl, {"a", "b"});
+  auto a_array = arrow::MakeArray(arrow::int64(), std::vector<int64_t>{}).ValueOrDie();
+  auto b_array = arrow::MakeArray(arrow::int64(), std::vector<int64_t>{}).ValueOrDie();
+
+  auto schema =
+    arrow::schema({arrow::field("a", arrow::int64()), arrow::field("b", arrow::int64())});
+
+  auto table = arrow::Table::Make(schema, {a_array, b_array});
+  LogicalTable input(table);
   check_global_row_offset(input);
 }
 

@@ -101,7 +101,7 @@ LogicalColumn make_output_column(const LogicalColumn& values, std::string aggreg
   auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
   // Note: Left nullable here as true - not sure there is a way to know in advance if it should
   // be nullable or not. The safe option is to set it true always.
-  return LogicalColumn::empty_like(to_cudf_type(result->column(2)->type()), /* nullable = */ true);
+  return LogicalColumn::empty_like(result->column(2)->type(), /* nullable = */ true);
 }
 }  // namespace
 

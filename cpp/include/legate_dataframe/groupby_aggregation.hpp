@@ -26,14 +26,18 @@ namespace legate::dataframe {
 namespace task {
 class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::GroupByAggregation> {
  public:
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_concurrent(true)
                                                 .with_elide_device_ctx_sync(true);
+#endif
   static constexpr auto CPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(true).with_concurrent(true);
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 }  // namespace task
 

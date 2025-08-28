@@ -27,17 +27,23 @@ namespace task {
 class CastTask : public Task<CastTask, OpCode::Cast> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 class RoundTask : public Task<RoundTask, OpCode::Round> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 }  // namespace task
 
@@ -49,7 +55,7 @@ class UnaryOpTask : public Task<UnaryOpTask, OpCode::UnaryOp> {
  *
  * @returns Logical column of same size as `col` of the new data type
  */
-LogicalColumn cast(const LogicalColumn& col, cudf::data_type dtype);
+LogicalColumn cast(const LogicalColumn& col, std::shared_ptr<arrow::DataType> dtype);
 
 /**
  * @brief Round column.

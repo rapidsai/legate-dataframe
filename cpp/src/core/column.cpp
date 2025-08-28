@@ -161,7 +161,7 @@ legate::LogicalArray from_arrow(std::shared_ptr<arrow::Scalar> scalar)
 LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
   : LogicalColumn{// This type conversion monstrosity can be improved
                   detail::from_arrow(arrow_array),
-                  to_cudf_type(arrow_array->type()),
+                  arrow_array->type(),
                   /* scalar */ false}
 {
 }
@@ -169,7 +169,7 @@ LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
 LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Scalar> arrow_scalar)
   : LogicalColumn{// This type conversion monstrosity can be improved
                   detail::from_arrow(arrow_scalar),
-                  to_cudf_type(arrow_scalar->type),
+                  arrow_scalar->type,
                   /* scalar */ true}
 {
 }

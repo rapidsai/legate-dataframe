@@ -32,15 +32,19 @@ template <bool needs_communication>
 class JoinTask : public Task<JoinTask<needs_communication>,
                              needs_communication ? OpCode::JoinConcurrent : OpCode::Join> {
  public:
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_concurrent(needs_communication)
                                                 .with_elide_device_ctx_sync(true);
+#endif
   static constexpr auto CPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(true).with_concurrent(needs_communication);
 
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 /**
  * @brief Help function to determine if we need to repartition the tables
@@ -69,7 +73,7 @@ bool is_repartition_not_needed(const TaskContext& ctx,
  * @param join_type The join type such as INNER, LEFT, or FULL
  * @param lhs_out_columns Indices of the left hand table columns to include in the result.
  * @param rhs_out_columns Indices of the right hand table columns to include in the result.
- * @param compare_nulls Controls whether null join-key values should match or not
+ * @param nulls_equal Controls whether null join-key values should match or not
  * @param broadcast Which, if any, of the inputs should be copied to all workers.
  * @return The joining result
  */
@@ -80,8 +84,8 @@ LogicalTable join(const LogicalTable& lhs,
                   JoinType join_type,
                   const std::vector<size_t>& lhs_out_columns,
                   const std::vector<size_t>& rhs_out_columns,
-                  cudf::null_equality compare_nulls = cudf::null_equality::EQUAL,
-                  BroadcastInput broadcast          = BroadcastInput::AUTO);
+                  bool nulls_equal         = true,
+                  BroadcastInput broadcast = BroadcastInput::AUTO);
 
 /**
  * @brief Perform a join between the specified tables.
@@ -99,7 +103,7 @@ LogicalTable join(const LogicalTable& lhs,
  * @param join_type The join type such as INNER, LEFT, or FULL
  * @param lhs_out_columns Names of the left hand table columns to include in the result.
  * @param rhs_out_columns Names of the right hand table columns to include in the result.
- * @param compare_nulls Controls whether null join-key values should match or not
+ * @param nulls_equal Controls whether null join-key values should match or not
  * @param broadcast Which, if any, of the inputs should be copied to all workers.
  * @return The joining result
  */
@@ -110,8 +114,8 @@ LogicalTable join(const LogicalTable& lhs,
                   JoinType join_type,
                   const std::vector<std::string>& lhs_out_columns,
                   const std::vector<std::string>& rhs_out_columns,
-                  cudf::null_equality compare_nulls = cudf::null_equality::EQUAL,
-                  BroadcastInput broadcast          = BroadcastInput::AUTO);
+                  bool nulls_equal         = true,
+                  BroadcastInput broadcast = BroadcastInput::AUTO);
 
 /**
  * @brief Perform a join between the specified tables.
@@ -130,7 +134,7 @@ LogicalTable join(const LogicalTable& lhs,
  * @param left_keys The column indices of the left table to join on
  * @param right_keys The column indices of the right table to join on
  * @param join_type The join type such as INNER, LEFT, or FULL
- * @param compare_nulls Controls whether null join-key values should match or not
+ * @param nulls_equal Controls whether null join-key values should match or not
  * @param broadcast Which, if any, of the inputs should be copied to all workers.
  * @return The joining result
  */
@@ -139,7 +143,7 @@ LogicalTable join(const LogicalTable& lhs,
                   const std::set<size_t>& lhs_keys,
                   const std::set<size_t>& rhs_keys,
                   JoinType join_type,
-                  cudf::null_equality compare_nulls = cudf::null_equality::EQUAL,
-                  BroadcastInput broadcast          = BroadcastInput::AUTO);
+                  bool nulls_equal         = true,
+                  BroadcastInput broadcast = BroadcastInput::AUTO);
 
 }  // namespace legate::dataframe

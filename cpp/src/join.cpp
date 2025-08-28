@@ -303,7 +303,7 @@ void append_empty_like_columns(std::vector<LogicalColumn>& output,
 {
   for (const auto& col : table.get_columns()) {
     output.push_back(
-      LogicalColumn::empty_like(col.cudf_type(), col.nullable(), /* scalar */ false, size));
+      LogicalColumn::empty_like(col.arrow_type(), col.nullable(), /* scalar */ false, size));
   }
 }
 
@@ -316,7 +316,7 @@ void append_empty_like_columns_force_nullable(std::vector<LogicalColumn>& output
                                               std::optional<size_t> size = std::nullopt)
 {
   for (const auto& col : table.get_columns()) {
-    output.push_back(LogicalColumn::empty_like(col.cudf_type(), true, /* scalar */ false, size));
+    output.push_back(LogicalColumn::empty_like(col.arrow_type(), true, /* scalar */ false, size));
   }
 }
 }  // namespace
@@ -328,7 +328,7 @@ LogicalTable join(const LogicalTable& lhs,
                   JoinType join_type,
                   const std::vector<size_t>& lhs_out_columns,
                   const std::vector<size_t>& rhs_out_columns,
-                  cudf::null_equality compare_nulls,
+                  bool nulls_equal,
                   BroadcastInput broadcast)
 {
   auto runtime = legate::Runtime::get_runtime();
@@ -400,8 +400,7 @@ LogicalTable join(const LogicalTable& lhs,
   argument::add_next_scalar_vector(task, std::vector<int32_t>(lhs_keys.begin(), lhs_keys.end()));
   argument::add_next_scalar_vector(task, std::vector<int32_t>(rhs_keys.begin(), rhs_keys.end()));
   argument::add_next_scalar(task, static_cast<std::underlying_type_t<JoinType>>(join_type));
-  argument::add_next_scalar(
-    task, static_cast<std::underlying_type_t<cudf::null_equality>>(compare_nulls));
+  argument::add_next_scalar(task, nulls_equal);
   argument::add_next_scalar_vector(
     task, std::vector<int32_t>(lhs_out_columns.begin(), lhs_out_columns.end()));
   argument::add_next_scalar_vector(
@@ -432,7 +431,7 @@ LogicalTable join(const LogicalTable& lhs,
                   JoinType join_type,
                   const std::vector<std::string>& lhs_out_columns,
                   const std::vector<std::string>& rhs_out_columns,
-                  cudf::null_equality compare_nulls,
+                  bool nulls_equal,
                   BroadcastInput broadcast)
 {
   // Convert column names to indices
@@ -461,7 +460,7 @@ LogicalTable join(const LogicalTable& lhs,
               join_type,
               lhs_out_columns_idx,
               rhs_out_columns_idx,
-              compare_nulls,
+              nulls_equal,
               broadcast);
 }
 
@@ -470,7 +469,7 @@ LogicalTable join(const LogicalTable& lhs,
                   const std::set<size_t>& lhs_keys,
                   const std::set<size_t>& rhs_keys,
                   JoinType join_type,
-                  cudf::null_equality compare_nulls,
+                  bool nulls_equal,
                   BroadcastInput broadcast)
 {
   // By default, the output includes all the columns from `lhs` and `rhs`.
@@ -485,7 +484,7 @@ LogicalTable join(const LogicalTable& lhs,
               join_type,
               lhs_out_columns,
               rhs_out_columns,
-              compare_nulls,
+              nulls_equal,
               broadcast);
 }
 

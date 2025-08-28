@@ -25,7 +25,9 @@ namespace task {
 class ApplyBooleanMaskTask : public Task<ApplyBooleanMaskTask, OpCode::ApplyBooleanMask> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 }  // namespace task
