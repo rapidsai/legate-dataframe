@@ -935,10 +935,13 @@ class GroupBy(IR):
                 # Anything else, we pre-evaluate
                 col = value.evaluate(df)
 
-            col_name = columns.get(col, None)
-            if col_name is None:
-                # NOTE(seberg): May need a unique name here eventually
-                columns[col] = (col_name := name)
+            if value.agg_request == "count_all":
+                col_name = None
+            else:
+                col_name = columns.get(col, None)
+                if col_name is None:
+                    # NOTE(seberg): May need a unique name here eventually
+                    columns[col] = (col_name := name)
 
             requests.append((col_name, value.agg_request, name))
 
