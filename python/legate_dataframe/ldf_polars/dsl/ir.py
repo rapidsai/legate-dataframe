@@ -117,7 +117,7 @@ def broadcast(*columns: Column, target_length: int | None = None) -> list[Column
         raise NotImplementedError("broadcast not implemented")
 
     return [
-        column if column.size != 1 else broadcast_func(column, nrows)
+        column if column.size == nrows else broadcast_func(column, nrows)
         for column in columns
     ]
 
@@ -935,10 +935,13 @@ class GroupBy(IR):
                 # Anything else, we pre-evaluate
                 col = value.evaluate(df)
 
-            col_name = columns.get(col, None)
-            if col_name is None:
-                # NOTE(seberg): May need a unique name here eventually
-                columns[col] = (col_name := name)
+            if value.agg_request == "count_all":
+                col_name = None
+            else:
+                col_name = columns.get(col, None)
+                if col_name is None:
+                    # NOTE(seberg): May need a unique name here eventually
+                    columns[col] = (col_name := name)
 
             requests.append((col_name, value.agg_request, name))
 

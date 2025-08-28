@@ -70,6 +70,10 @@ class Len(Expr):
             LogicalColumn.from_cudf(cudf.Scalar(df.num_rows, dtype=self.dtype))
         )
 
+    @property
+    def agg_request(self):
+        return "count_all"
+
 
 class UnaryFunction(Expr):
     """Class representing unary functions of an expression."""

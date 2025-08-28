@@ -53,8 +53,13 @@ std::string arrow_aggregation_name(std::string name)
     auto in_col_idx  = argument::get_next_scalar<size_t>(ctx);
     auto kind        = argument::get_next_scalar<std::string>(ctx);
     auto out_col_idx = argument::get_next_scalar<size_t>(ctx);
-    aggregates.push_back(
-      {arrow_aggregation_name(kind), std::to_string(in_col_idx), std::to_string(i)});
+    auto name        = arrow_aggregation_name(kind);
+    if (name == "hash_count_all") {
+      assert(in_col_idx == key_col_idx[0]);
+      aggregates.push_back({name, std::to_string(i)});
+    } else {
+      aggregates.push_back({name, std::to_string(in_col_idx), std::to_string(i)});
+    }
   }
 
   std::vector<std::string> dummy_column_names;
@@ -85,6 +90,10 @@ namespace {
 
 LogicalColumn make_output_column(const LogicalColumn& values, std::string aggregation_kind)
 {
+  if (aggregation_kind == "count_all") {
+    return LogicalColumn::empty_like(arrow::int64(), /* nullable = */ false);
+  }
+
   // Run a dummy arrow aggregation to get the output type
   auto table = arrow::Table::Make(arrow::schema({arrow::field("keys", arrow::int32()),
                                                  arrow::field("values", values.arrow_type())}),
@@ -113,6 +122,8 @@ LogicalTable groupby_aggregation(
                                                                          // column name
     column_aggregations)
 {
+  if (keys.size() == 0) { throw std::invalid_argument("must pass at least one key column"); }
+
   // Let's create the output table
   std::vector<LogicalColumn> output_columns;
   std::vector<std::string> output_column_names;
@@ -123,7 +134,9 @@ LogicalTable groupby_aggregation(
   }
   // And then it has one column per column aggregation
   for (const auto& [in_col_name, kind, out_col_name] : column_aggregations) {
-    output_columns.push_back(make_output_column(table.get_column(in_col_name), kind));
+    // Use the provided column, or the first key for count_all:
+    auto col = (kind != "count_all") ? table.get_column(in_col_name) : table.get_column(keys[0]);
+    output_columns.push_back(make_output_column(col, kind));
 
     if (std::find(output_column_names.begin(), output_column_names.end(), out_col_name) !=
         output_column_names.end()) {
@@ -134,17 +147,23 @@ LogicalTable groupby_aggregation(
   }
   LogicalTable output(std::move(output_columns), std::move(output_column_names));
 
-  // Since `PhysicalTable` doesn't have column names, we convert names to indices
-  std::vector<std::tuple<size_t, std::string, size_t>> column_aggs;
-  for (const auto& [in_col_name, kind, out_col_name] : column_aggregations) {
-    size_t in_col_idx = table.get_column_names().at(in_col_name);
-    // We index the output columns after the key columns
-    size_t out_col_idx = keys.size() + column_aggs.size();
-    column_aggs.push_back(std::make_tuple(in_col_idx, kind, out_col_idx));
-  }
   std::vector<size_t> key_col_idx;
   for (const std::string& key : keys) {
     key_col_idx.push_back(table.get_column_names().at(key));
+  }
+
+  // Since `PhysicalTable` doesn't have column names, we convert names to indices
+  std::vector<std::tuple<size_t, std::string, size_t>> column_aggs;
+  for (const auto& [in_col_name, kind, out_col_name] : column_aggregations) {
+    if (kind == "count_all" && in_col_name != "") {
+      throw std::invalid_argument("count_all must use the empty string as column name.");
+    }
+    size_t in_col_idx =
+      (kind != "count_all") ? table.get_column_names().at(in_col_name) : key_col_idx.at(0);
+
+    // We index the output columns after the key columns
+    size_t out_col_idx = keys.size() + column_aggs.size();
+    column_aggs.push_back(std::make_tuple(in_col_idx, kind, out_col_idx));
   }
 
   auto runtime = legate::Runtime::get_runtime();

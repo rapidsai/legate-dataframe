@@ -104,6 +104,7 @@ def test_aggregation_basic(table, keys, aggs):
         "min",
         "max",
         "count",
+        "count_all",
         "mean",
         "variance",
         "stddev",
@@ -132,8 +133,16 @@ def test_numeric_aggregations(value_type, key_type, aggregation):
     )
     keys = ["key_a", "key_b"]
     column_aggregations = [
-        ("value_a", aggregation, f"value_a_{aggregation}"),
-        ("value_b", aggregation, f"value_b_{aggregation}"),
+        (
+            "value_a" if aggregation != "count_all" else None,
+            aggregation,
+            f"value_a_{aggregation}",
+        ),
+        (
+            "value_b" if aggregation != "count_all" else None,
+            aggregation,
+            f"value_b_{aggregation}",
+        ),
     ]
 
     expected = arrow_groupby(table, keys, column_aggregations)
@@ -155,7 +164,7 @@ def test_numeric_aggregations(value_type, key_type, aggregation):
         # "max",
         "mean",
         "count",
-        # "len",  # -> "count_all"
+        "len",  # -> "count_all"
         # TODO(seberg): Need to enable any/all in general
         # (this is slightly harder due to NULL logic handling)
         # "any",
@@ -178,7 +187,10 @@ def test_polars_basic(agg):
         }
     ).lazy()
 
-    if agg not in {"any", "all"}:
+    if agg == "len":
+        q1 = q.group_by("a").agg(pl.len())
+        q2 = q.group_by("b").agg(pl.len())
+    elif agg not in {"any", "all"}:
         q1 = q.group_by("a").agg(getattr(pl.col("b"), agg)())
         q2 = q.group_by("b").agg(getattr(pl, agg)("a"))
     else:

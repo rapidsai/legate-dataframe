@@ -76,6 +76,11 @@ def groupby_aggregation(
 
     cdef vector[AggTuple] aggs
     for in_col_name, kind, out_col_name in column_aggregations:
+        if kind == "count_all":
+            if in_col_name is not None:
+                raise ValueError("input column name must be `None` for 'count_all'")
+            in_col_name = ""
+
         aggs.push_back(
             AggTuple(
                 in_col_name.encode('UTF-8'),
