@@ -24,7 +24,7 @@ cdef extern from "<legate_dataframe/binaryop.hpp>" nogil:
         const cpp_LogicalColumn& rhs,
         string op,
         shared_ptr[CDataType] output_type
-    )
+    ) except +
 
 
 @_track_provenance

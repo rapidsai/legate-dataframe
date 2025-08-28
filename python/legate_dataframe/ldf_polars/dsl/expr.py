@@ -36,7 +36,7 @@ from legate_dataframe.ldf_polars.dsl.expressions.slicing import Slice
 
 # from legate_dataframe.ldf_polars.dsl.expressions.sorting import Sort, SortBy
 # from legate_dataframe.ldf_polars.dsl.expressions.string import StringFunction
-# from legate_dataframe.ldf_polars.dsl.expressions.ternary import Ternary
+from legate_dataframe.ldf_polars.dsl.expressions.ternary import Ternary
 from legate_dataframe.ldf_polars.dsl.expressions.unary import Cast, Len, UnaryFunction
 
 __all__ = [
@@ -62,6 +62,6 @@ __all__ = [
     # "SortBy",
     # "StringFunction",
     "TemporalFunction",
-    # "Ternary",
+    "Ternary",
     "UnaryFunction",
 ]
