@@ -22,112 +22,69 @@
 
 namespace legate::dataframe::task {
 
-std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(cudf::aggregation::Kind kind)
+static inline void options_unsupported(
+  const std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>& options)
 {
-  switch (kind) {
-    case cudf::aggregation::Kind::SUM: {
-      return cudf::make_sum_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::PRODUCT: {
-      return cudf::make_product_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::MIN: {
-      return cudf::make_min_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::MAX: {
-      return cudf::make_max_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::COUNT_VALID: {
-      return cudf::make_count_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::MEAN: {
-      return cudf::make_mean_aggregation<cudf::groupby_aggregation>();
-    }
-    // 0 degrees of freedom instead of default 1 to match Arrow's behavior
-    case cudf::aggregation::Kind::VARIANCE: {
-      return cudf::make_variance_aggregation<cudf::groupby_aggregation>(0);
-    }
-    case cudf::aggregation::Kind::STD: {
-      return cudf::make_std_aggregation<cudf::groupby_aggregation>(0);
-    }
-    case cudf::aggregation::Kind::MEDIAN: {
-      return cudf::make_median_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::NUNIQUE: {
-      return cudf::make_nunique_aggregation<cudf::groupby_aggregation>();
-    }
-    case cudf::aggregation::Kind::COUNT_ALL: {
-      return cudf::make_count_aggregation<cudf::groupby_aggregation>(cudf::null_policy::INCLUDE);
-    }
-    default: {
-      throw std::invalid_argument("Unsupported groupby aggregation");
-    }
+  if (options.has_value()) {
+    throw std::invalid_argument("Options are not supported for this aggregation");
   }
 }
 
-cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
+static inline cudf::null_policy get_null_policy(
+  const std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>& options,
+  cudf::null_policy default_policy)
 {
-  std::map<std::string, cudf::aggregation::Kind> agg_map = {
-    // Direct mappings
-    {"sum", cudf::aggregation::Kind::SUM},
-    {"product", cudf::aggregation::Kind::PRODUCT},
-    {"min", cudf::aggregation::Kind::MIN},
-    {"max", cudf::aggregation::Kind::MAX},
-    {"count", cudf::aggregation::Kind::COUNT_VALID},
-    {"mean", cudf::aggregation::Kind::MEAN},
-    {"variance", cudf::aggregation::Kind::VARIANCE},
-    {"stddev", cudf::aggregation::Kind::STD},
-    {"approximate_median", cudf::aggregation::Kind::MEDIAN},
-    {"count_distinct", cudf::aggregation::Kind::NUNIQUE},
-    {"count_all", cudf::aggregation::Kind::COUNT_ALL},
-  };
-
-  // Don't do these as we don't support nested types at the moment
-  // {"list", cudf::aggregation::Kind::COLLECT_LIST},
-  // {"tdigest", cudf::aggregation::Kind::TDIGEST}
-
-  // Arrow aggregations with no direct cuDF equivalent:
-  // any - cudf has as a reduction aggregation but not groupby aggregation
-  // all - cudf has as a reduction aggregation but not groupby aggregation
-  // distinct
-  // first - could map to NTH_ELEMENT with n=0
-  // first_last - no equivalent
-  // kurtosis - no equivalent
-  // last - could map to NTH_ELEMENT with n=-1
-  // min_max - no single equivalent (would need separate MIN/MAX)
-  // one - no equivalent
-  // pivot_wider - no equivalent
-  // skew - no equivalent
-
-  // cuDF aggregations with no direct Arrow equivalent:
-  // SUM_OF_SQUARES - no equivalent
-  // M2 - no equivalent
-  // QUANTILE - no equivalent
-  // ARGMAX - no equivalent
-  // ARGMIN - no equivalent
-  // NTH_ELEMENT - no equivalent
-  // ROW_NUMBER - no equivalent
-  // EWMA - no equivalent
-  // RANK - no equivalent
-  // COLLECT_SET - no equivalent
-  // LEAD - no equivalent
-  // LAG - no equivalent
-  // PTX - no equivalent
-  // CUDA - no equivalent
-  // HOST_UDF - no equivalent
-  // MERGE_LISTS - no equivalent
-  // MERGE_SETS - no equivalent
-  // MERGE_M2 - no equivalent
-  // COVARIANCE - no equivalent
-  // CORRELATION - no equivalent
-  // MERGE_TDIGEST - no equivalent
-  // HISTOGRAM - no equivalent
-  // MERGE_HISTOGRAM - no equivalent
-  // BITWISE_AGG - no equivalent
-  if (agg_map.count(agg_name) == 0) {
-    throw std::invalid_argument("Unsupported aggregation: " + agg_name);
+  if (!options.has_value()) { return default_policy; }
+  auto opts = dynamic_cast<arrow::compute::CountOptions*>(options.value().get());
+  switch (opts->mode) {
+    case arrow::compute::CountOptions::CountMode::ALL: return cudf::null_policy::INCLUDE;
+    case arrow::compute::CountOptions::CountMode::ONLY_VALID: return cudf::null_policy::EXCLUDE;
+    default: throw std::invalid_argument("Unsupported count mode");
   }
-  return agg_map.at(agg_name);
+}
+
+std::unique_ptr<cudf::groupby_aggregation> make_groupby_aggregation(
+  const std::string& agg_name,
+  const std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>& options)
+{
+  if (agg_name == "sum") {
+    options_unsupported(options);
+    return cudf::make_sum_aggregation<cudf::groupby_aggregation>();
+  } else if (agg_name == "product") {
+    options_unsupported(options);
+    return cudf::make_product_aggregation<cudf::groupby_aggregation>();
+  } else if (agg_name == "min") {
+    options_unsupported(options);
+    return cudf::make_min_aggregation<cudf::groupby_aggregation>();
+  } else if (agg_name == "max") {
+    options_unsupported(options);
+    return cudf::make_max_aggregation<cudf::groupby_aggregation>();
+  } else if (agg_name == "count") {
+    return cudf::make_count_aggregation<cudf::groupby_aggregation>(
+      get_null_policy(options, cudf::null_policy::EXCLUDE));
+  } else if (agg_name == "mean") {
+    options_unsupported(options);
+    return cudf::make_mean_aggregation<cudf::groupby_aggregation>();
+  } else if (agg_name == "variance") {
+    // 0 degrees of freedom instead of default 1 to match Arrow's behavior
+    options_unsupported(options);
+    return cudf::make_variance_aggregation<cudf::groupby_aggregation>(0);
+  } else if (agg_name == "stddev") {
+    options_unsupported(options);
+    return cudf::make_std_aggregation<cudf::groupby_aggregation>(0);
+  } else if (agg_name == "approximate_median") {
+    options_unsupported(options);
+    return cudf::make_median_aggregation<cudf::groupby_aggregation>();
+  } else if (agg_name == "count_distinct") {
+    return cudf::make_nunique_aggregation<cudf::groupby_aggregation>(
+      get_null_policy(options, cudf::null_policy::EXCLUDE));
+  } else if (agg_name == "count_all") {
+    // No direct count_all counterpart, we always count along a column (and ignore the content)
+    options_unsupported(options);  // count_all has no options anyway.
+    return cudf::make_count_aggregation<cudf::groupby_aggregation>(cudf::null_policy::INCLUDE);
+  } else {
+    throw std::invalid_argument("Unsupported groupby aggregation");
+  }
 }
 
 /*static*/ void GroupByAggregationTask::gpu_variant(legate::TaskContext context)
@@ -139,13 +96,16 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
   std::vector<cudf::size_type> key_col_idx(_key_col_idx.begin(), _key_col_idx.end());
 
   // Get the `column_aggs` task argument
-  std::vector<std::tuple<size_t, cudf::aggregation::Kind, size_t>> column_aggs;
+  std::vector<std::tuple<size_t, std::unique_ptr<cudf::groupby_aggregation>, size_t>> column_aggs;
   auto column_aggs_size = argument::get_next_scalar<size_t>(ctx);
   for (size_t i = 0; i < column_aggs_size; ++i) {
-    auto in_col_idx  = argument::get_next_scalar<size_t>(ctx);
-    auto kind        = argument::get_next_scalar<std::string>(ctx);
+    auto in_col_idx = argument::get_next_scalar<size_t>(ctx);
+    auto kind       = argument::get_next_scalar<std::string>(ctx);
+    auto options =
+      argument::get_next_scalar<std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>>(
+        ctx);
     auto out_col_idx = argument::get_next_scalar<size_t>(ctx);
-    column_aggs.push_back({in_col_idx, arrow_to_cudf_aggregation(kind), out_col_idx});
+    column_aggs.push_back({in_col_idx, make_groupby_aggregation(kind, options), out_col_idx});
   }
 
   // Repartition `table` based on the keys such that each node can do a local groupby.
@@ -158,7 +118,7 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
   std::map<size_t, std::pair<size_t, size_t>> out_col_to_request_and_agg_idx;
   {
     std::map<size_t, size_t> in_col_to_request_idx;
-    for (const auto& [in_col_idx, kind, out_col_idx] : column_aggs) {
+    for (auto& [in_col_idx, agg, out_col_idx] : column_aggs) {
       // If this is the first time we see `in_col_idx`, we create a new `aggregation_request`
       // with `values` set to the column of `in_col_idx` and an empty aggregation vector.
       if (in_col_to_request_idx.find(in_col_idx) == in_col_to_request_idx.end()) {
@@ -170,8 +130,8 @@ cudf::aggregation::Kind arrow_to_cudf_aggregation(const std::string& agg_name)
       // Find the `aggregation_request` that belongs to `in_col_idx`
       size_t request_idx = in_col_to_request_idx.at(in_col_idx);
       auto& request      = requests.at(request_idx);
-      // Add the aggregation kind to the request
-      request.aggregations.push_back(make_groupby_aggregation(kind));
+      // Add the aggregation to the request
+      request.aggregations.push_back(std::move(agg));
 
       // Record in which index in `requests` and `request.aggregations`, the
       // aggregation was added.

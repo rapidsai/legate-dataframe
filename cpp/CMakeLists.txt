@@ -75,8 +75,7 @@ rapids_cpm_init()
 
 # If CCCL versions don't get picked up correctly, we may need to add them early on here (right now
 # it seems fetching rmm/cudf manage to ensure we ge the right one.)
-include("${rapids-cmake-dir}/cpm/cccl.cmake")
-rapids_cpm_cccl()
+# include("${rapids-cmake-dir}/cpm/cccl.cmake") rapids_cpm_cccl()
 
 include(cmake/thirdparty/get_rmm.cmake)
 include(cmake/thirdparty/get_cudf.cmake)
