@@ -31,6 +31,7 @@ enum : int {
   CSVWrite,
   CSVRead,
   Cast,
+  CopyIfElse,
   ParquetWrite,
   ParquetRead,
   ParquetReadArray,

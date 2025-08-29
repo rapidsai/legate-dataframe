@@ -13,8 +13,9 @@
 # =============================================================================
 
 # Set the list of Cython files to build
-set(cython_sources binaryop.pyx csv.pyx groupby_aggregation.pyx join.pyx parquet.pyx reduction.pyx
-                   replace.pyx sort.pyx stream_compaction.pyx timestamps.pyx unaryop.pyx
+set(cython_sources
+    binaryop.pyx copying.pyx csv.pyx groupby_aggregation.pyx join.pyx parquet.pyx reduction.pyx
+    replace.pyx sort.pyx stream_compaction.pyx timestamps.pyx unaryop.pyx
 )
 
 rapids_cython_create_modules(

@@ -662,6 +662,18 @@ def _(
 
 @_translate_expr.register
 def _(
+    node: pl_expr.Ternary, translator: Translator, dtype: plc.DataType, schema: Schema
+) -> expr.Expr:
+    return expr.Ternary(
+        dtype,
+        translator.translate_expr(n=node.predicate, schema=schema),
+        translator.translate_expr(n=node.truthy, schema=schema),
+        translator.translate_expr(n=node.falsy, schema=schema),
+    )
+
+
+@_translate_expr.register
+def _(
     node: pl_expr.BinaryExpr,
     translator: Translator,
     dtype: plc.DataType,
