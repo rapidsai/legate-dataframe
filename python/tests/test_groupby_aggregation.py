@@ -27,15 +27,20 @@ from legate_dataframe.testing import assert_arrow_table_equal, assert_matches_po
 def arrow_groupby(
     table: pa.Table,
     keys: List[str],
-    column_aggregations: Iterable[Tuple[str, str, str]],
+    column_aggregations: Iterable[
+        Tuple[str, str | Tuple[str, pa.compute.FunctionOptions], str]
+    ],
 ) -> pa.Table:
     """Helper function that performs Arrow groupby using the legate syntax"""
 
     pyarrow_aggregations = [(a, b) for a, b, _ in column_aggregations]
     for i in range(len(pyarrow_aggregations)):
-        if pyarrow_aggregations[i][1] == "count_all":
+        col, agg = pyarrow_aggregations[i]
+        if agg == "count_all":
             # count_all is a special case, it has no input column
             pyarrow_aggregations[i] = ([], "count_all")
+        elif isinstance(agg, tuple):
+            pyarrow_aggregations[i] = (col, *agg)
 
     result = pa.TableGroupBy(table, keys).aggregate(pyarrow_aggregations)
 
@@ -110,6 +115,7 @@ def test_aggregation_basic(table, keys, aggs):
         "stddev",
         "approximate_median",
         "count_distinct",
+        ("count_distinct", pa.compute.CountOptions(mode="all")),
     ],
 )
 def test_numeric_aggregations(value_type, key_type, aggregation):
@@ -172,7 +178,7 @@ def test_numeric_aggregations(value_type, key_type, aggregation):
         # "var",  # -> "variance",
         # "std",  # -> "stddev",
         # "approximate_median",
-        # "n_unique",  # -> "count_distinct"
+        "n_unique",  # -> "count_distinct" + options
         # "tdigest",
     ],
 )

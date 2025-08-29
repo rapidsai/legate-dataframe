@@ -17,6 +17,7 @@
 #pragma once
 
 #include <arrow/api.h>
+#include <arrow/compute/api.h>
 #include <legate.h>
 #include <legate_dataframe/core/task_context.hpp>
 #include <legate_dataframe/utils.hpp>
@@ -46,6 +47,20 @@ template <>
 inline void add_next_scalar<legate::Scalar>(legate::AutoTask& task, const legate::Scalar& scalar)
 {
   task.add_scalar_arg(scalar);
+}
+
+template <>
+inline void add_next_scalar<std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>>(
+  legate::AutoTask& task,
+  const std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>& options)
+{
+  if (options.has_value()) {
+    auto buffer = ARROW_RESULT(options.value()->Serialize());
+    add_next_scalar(task, std::string_view(options.value()->type_name()));
+    add_next_scalar(task, std::string_view(*buffer));
+  } else {
+    add_next_scalar(task, std::string(""));  // store empty, assume no one uses that name
+  }
 }
 
 /**
@@ -146,6 +161,20 @@ inline std::shared_ptr<arrow::DataType> get_next_scalar<std::shared_ptr<arrow::D
   TaskContext& ctx)
 {
   return deserialize_arrow_type(argument::get_next_scalar_vector<uint8_t>(ctx));
+}
+
+template <>
+inline std::optional<std::shared_ptr<arrow::compute::FunctionOptions>> get_next_scalar(
+  TaskContext& ctx)
+{
+  auto options_type = ctx.get_next_scalar_arg().value<std::string>();
+  if (options_type == "") {
+    return std::nullopt;
+  } else {
+    auto options = ctx.get_next_scalar_arg().value<std::string>();
+    return ARROW_RESULT(
+      arrow::compute::FunctionOptions::Deserialize(options_type, arrow::Buffer(options)));
+  }
 }
 
 template <>

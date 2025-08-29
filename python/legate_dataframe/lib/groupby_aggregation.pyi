@@ -3,10 +3,14 @@
 
 from typing import Iterable, Tuple
 
+from pyarrow.compute import FunctionOptions
+
 from legate_dataframe.lib.core.table import LogicalTable
 
 def groupby_aggregation(
     table: LogicalTable,
     keys: Iterable[str],
-    column_aggregations: Iterable[Tuple[str | None, str, str]],
+    column_aggregations: Iterable[
+        Tuple[str | None, str | Tuple[str, FunctionOptions], str]
+    ],
 ) -> LogicalTable: ...
