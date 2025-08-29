@@ -97,7 +97,7 @@ void copy_into_tranposed(TaskContext& ctx,
                                .row_offset  = row_offset};
 
       // Cast if necessary
-      auto target_arrow_type = to_arrow_type(to_cudf_type_id(type.code()));
+      auto target_arrow_type = to_arrow_type(type.code());
       if (array->type_id() != target_arrow_type->id()) {
         auto casted_array = ARROW_RESULT(arrow::compute::Cast(*array, target_arrow_type));
         array             = std::move(casted_array);

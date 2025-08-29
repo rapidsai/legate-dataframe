@@ -22,10 +22,12 @@
 
 #include <arrow/api.h>
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_view.hpp>
 #include <cudf/scalar/scalar.hpp>
 #include <cudf/types.hpp>
+#endif
 
 #include <legate.h>
 
@@ -62,6 +64,7 @@ class LogicalColumn {
    */
   LogicalColumn() = default;
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Create a column with a legate array as the data
    *
@@ -87,6 +90,7 @@ class LogicalColumn {
       arrow_type_ = to_arrow_type(cudf_type.id());
     }
   }
+#endif
 
   /**
    * @brief Create a column with a legate array as the data
@@ -188,6 +192,7 @@ class LogicalColumn {
     arrow_type_ = arrow::utf8();
   }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Create a column from a local cudf column
    *
@@ -199,6 +204,7 @@ class LogicalColumn {
    */
   LogicalColumn(cudf::column_view cudf_col,
                 rmm::cuda_stream_view stream = cudf::get_default_stream());
+#endif
 
   /**
    * @brief Create a column from a local arrow array
@@ -221,6 +227,7 @@ class LogicalColumn {
    */
   LogicalColumn(std::shared_ptr<arrow::Scalar> arrow_scalar);
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Create a scalar column from a local cudf scalar
    *
@@ -233,6 +240,7 @@ class LogicalColumn {
    */
   LogicalColumn(const cudf::scalar& cudf_scalar,
                 rmm::cuda_stream_view stream = cudf::get_default_stream());
+#endif
 
   /**
    * @brief Create a new column from an existing column
@@ -248,10 +256,11 @@ class LogicalColumn {
   {
     return LogicalColumn(legate::Runtime::get_runtime()->create_array(
                            other.array_->type(), other.array_->dim(), other.array_->nullable()),
-                         other.cudf_type(),
+                         other.arrow_type(),
                          false);
   }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Create a new unbounded column from an existing local cuDF column
    *
@@ -264,7 +273,9 @@ class LogicalColumn {
                            to_legate_type(other.type().id()), 1, other.nullable()),
                          other.type());
   }
+#endif
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Create a new unbounded column from dtype and nullable
    *
@@ -290,6 +301,7 @@ class LogicalColumn {
                            scalar);
     }
   }
+#endif
 
   /**
    * @brief Create a new unbounded column from dtype and nullable
@@ -341,6 +353,7 @@ class LogicalColumn {
    */
   legate::PhysicalArray get_physical_array() const { return array_->get_physical_array(); }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy the logical column into a local cudf column
    *
@@ -354,6 +367,7 @@ class LogicalColumn {
   std::unique_ptr<cudf::column> get_cudf(
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
+#endif
 
   /**
    * @brief Copy the logical column into a local arrow array
@@ -365,6 +379,7 @@ class LogicalColumn {
    */
   std::shared_ptr<arrow::Array> get_arrow() const;
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy the logical column into a local cudf scalar
    *
@@ -379,6 +394,8 @@ class LogicalColumn {
   std::unique_ptr<cudf::scalar> get_cudf_scalar(
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
+
+#endif
 
   /**
    * @brief Offload column to the specified target memory (default SYSMEM).
@@ -410,12 +427,14 @@ class LogicalColumn {
    */
   [[nodiscard]] legate::Type type() const { return array_->type(); }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Get the cudf data type of the column
    *
    * @return The cudf data type
    */
   [[nodiscard]] cudf::data_type cudf_type() const { return to_cudf_type(arrow_type_); }
+#endif
 
   /**
    * @brief Get the arrow data type of the column
@@ -544,12 +563,14 @@ class PhysicalColumn {
    */
   [[nodiscard]] legate::Type type() const { return array_.type(); }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Get the cudf data type of the column
    *
    * @return The cudf data type
    */
   [[nodiscard]] cudf::data_type cudf_type() const { return to_cudf_type(arrow_type_); }
+#endif
 
   [[nodiscard]] std::shared_ptr<arrow::DataType> arrow_type() const { return arrow_type_; }
 
@@ -568,7 +589,7 @@ class PhysicalColumn {
    * but the number of rows isn't one.
    * @return The number of rows
    */
-  [[nodiscard]] cudf::size_type num_rows() const
+  [[nodiscard]] std::size_t num_rows() const
   {
     if (unbound()) {
       throw std::runtime_error(
@@ -613,6 +634,7 @@ class PhysicalColumn {
    */
   [[nodiscard]] bool is_partitioned() const { return array_.data().is_partitioned(); }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Return a cudf column view of this physical column
    *
@@ -623,8 +645,11 @@ class PhysicalColumn {
    * @return A new column view.
    */
   cudf::column_view column_view() const;
+#endif
 
   std::shared_ptr<arrow::Array> arrow_array_view() const;
+
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Return a cudf scalar for physical column
    *
@@ -638,6 +663,7 @@ class PhysicalColumn {
    * @return A new cudf scalar.
    */
   std::unique_ptr<cudf::scalar> cudf_scalar() const;
+#endif
 
   /**
    * @brief Return a printable representational string
@@ -649,6 +675,7 @@ class PhysicalColumn {
                    cudaStream_t stream,
                    size_t max_num_items = 30) const;
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy local cudf column into this unbound physical column
    *
@@ -662,6 +689,7 @@ class PhysicalColumn {
    * @param scalar The cudf scalar to copy
    */
   void copy_into(std::unique_ptr<cudf::scalar> scalar);
+#endif
 
   /**
    * @brief Copy local arrow array into this unbound physical column
@@ -670,6 +698,7 @@ class PhysicalColumn {
    */
   void copy_into(std::shared_ptr<arrow::Array> column);
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Move local cudf column into this unbound physical column
    *
@@ -683,6 +712,7 @@ class PhysicalColumn {
    * @param scalar The cudf scalar to move
    */
   void move_into(std::unique_ptr<cudf::scalar> scalar);
+#endif
 
   /**
    * @brief Move arrow array into this unbound physical column
@@ -700,8 +730,10 @@ class PhysicalColumn {
   TaskContext* ctx_;
   legate::PhysicalArray array_;
   const std::shared_ptr<arrow::DataType> arrow_type_;
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   mutable std::vector<std::unique_ptr<cudf::column>> tmp_cols_;
   mutable std::vector<rmm::device_buffer> tmp_null_masks_;
+#endif
   const bool scalar_out_;  // scalar output checks binding has size 1.
 };
 }  // namespace task

@@ -17,11 +17,8 @@ cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
 include(cmake/fetch_rapids.cmake)
 include(rapids-cmake)
 include(rapids-cpm)
-include(rapids-cuda)
 include(rapids-export)
 include(rapids-find)
-
-rapids_cuda_init_architectures(LegateDataframe)
 
 # read project version from VERSION file
 file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" _version_content)
@@ -48,6 +45,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_SHARED_LIBS "Build legate-dataframe shared library" ON)
 option(BUILD_EXAMPLES "Configure CMake to build examples" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
+option(LEGATE_DATAFRAME_USE_CUDA "Build library with gpu_tasks" ON)
+if(LEGATE_DATAFRAME_USE_CUDA)
+  add_definitions(-DLEGATE_DATAFRAME_USE_CUDA)
+endif()
 
 # Set a default build type if none was specified
 rapids_cmake_build_type("Release")
@@ -60,12 +61,15 @@ rapids_cmake_support_conda_env(conda_env MODIFY_PREFIX_PATH)
 
 # ##################################################################################################
 # * compiler options ------------------------------------------------------------------------------
-rapids_find_package(
-  CUDAToolkit REQUIRED
-  BUILD_EXPORT_SET LegateDataframe-exports
-  INSTALL_EXPORT_SET LegateDataframe-exports
-)
-include(cmake/Modules/ConfigureCUDA.cmake) # set other CUDA compilation flags
+
+if(LEGATE_DATAFRAME_USE_CUDA)
+  rapids_find_package(
+    CUDAToolkit REQUIRED
+    BUILD_EXPORT_SET LegateDataframe-exports
+    INSTALL_EXPORT_SET LegateDataframe-exports
+  )
+  include(cmake/Modules/ConfigureCUDA.cmake) # set other CUDA compilation flags
+endif()
 
 # ##################################################################################################
 # * dependencies ----------------------------------------------------------------------------------
@@ -73,23 +77,25 @@ include(cmake/Modules/ConfigureCUDA.cmake) # set other CUDA compilation flags
 # add third party dependencies using CPM
 rapids_cpm_init()
 
-# If CCCL versions don't get picked up correctly, we may need to add them early on here (right now
-# it seems fetching rmm/cudf manage to ensure we ge the right one.)
-include("${rapids-cmake-dir}/cpm/cccl.cmake")
-rapids_cpm_cccl()
+if(LEGATE_DATAFRAME_USE_CUDA)
+  include(rapids-cuda)
+  rapids_cuda_init_architectures(LegateDataframe)
+  include(cmake/thirdparty/get_rmm.cmake)
+  include(cmake/thirdparty/get_cudf.cmake)
+  rapids_find_generate_module(
+    NCCL
+    HEADER_NAMES nccl.h
+    LIBRARY_NAMES nccl
+  )
 
-include(cmake/thirdparty/get_rmm.cmake)
-include(cmake/thirdparty/get_cudf.cmake)
-
-rapids_find_generate_module(
-  NCCL
-  HEADER_NAMES nccl.h
-  LIBRARY_NAMES nccl
-)
-
-# Currently NCCL has no CMake build-system so we require it built and installed on the machine
-# already
-rapids_find_package(NCCL REQUIRED)
+  # Currently NCCL has no CMake build-system so we require it built and installed on the machine
+  # already
+  rapids_find_package(NCCL REQUIRED)
+  # If CCCL versions don't get picked up correctly, we may need to add them early on here (right now
+  # it seems fetching rmm/cudf manage to ensure we ge the right one.)
+  include("${rapids-cmake-dir}/cpm/cccl.cmake")
+  rapids_cpm_cccl()
+endif()
 
 rapids_find_package(
   legate REQUIRED Legion LegionRuntime
@@ -123,7 +129,12 @@ endif()
 # ##################################################################################################
 # * library targets -------------------------------------------------------------------------------
 
-file(GLOB SOURCES "src/*.cpp" "src/*.cu" "src/core/*.cpp" "src/core/*.cu")
+if(LEGATE_DATAFRAME_USE_CUDA)
+  file(GLOB SOURCES "src/*.cpp" "src/*.cu" "src/core/*.cpp" "src/core/*.cu")
+else()
+  file(GLOB SOURCES "src/*.cpp" "src/core/*.cpp")
+endif()
+
 add_library(LegateDataframe ${SOURCES})
 add_library(LegateDataframe::LegateDataframe ALIAS LegateDataframe)
 
@@ -141,6 +152,10 @@ set_target_properties(
              POSITION_INDEPENDENT_CODE ON
              INTERFACE_POSITION_INDEPENDENT_CODE ON
 )
+
+if(LEGATE_DATAFRAME_USE_CUDA)
+  set_target_properties(LegateDataframe PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+endif()
 
 # Need to add this define, as is done in legate CMakeLists.txt as well for __half support.  If
 # __half support fails elsewhere it may be needed there. This may be a CCCL 2.7.0 issue and become
@@ -163,9 +178,16 @@ target_include_directories(
 
 target_link_libraries(
   LegateDataframe
-  PUBLIC legate::legate rmm::rmm cudf::cudf Arrow::arrow_shared
-  PRIVATE ArrowAcero::arrow_acero_shared Parquet::parquet_shared NCCL::NCCL
+  PUBLIC legate::legate Arrow::arrow_shared
+  PRIVATE ArrowAcero::arrow_acero_shared Parquet::parquet_shared
 )
+if(LEGATE_DATAFRAME_USE_CUDA)
+  target_link_libraries(
+    LegateDataframe
+    PUBLIC rmm::rmm cudf::cudf
+    PRIVATE NCCL::NCCL
+  )
+endif()
 
 # Add Conda library, and include paths if specified
 if(TARGET conda_env)

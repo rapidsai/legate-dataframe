@@ -21,6 +21,11 @@ include(rapids-test)
 # NB: calling `rapids_test_init()` to have CTest manage GPU resource doesn't work
 
 file(GLOB SOURCES "*.cpp")
+if(LEGATE_DATAFRAME_USE_CUDA)
+  file(GLOB CUDA_SOURCES "*.cu")
+  list(APPEND SOURCES ${CUDA_SOURCES})
+endif()
+
 add_executable(cpp_tests ${SOURCES})
 set_target_properties(
   cpp_tests
@@ -38,17 +43,15 @@ set(LDF_TEST_CUDA_FLAGS --expt-extended-lambda --expt-relaxed-constexpr)
 target_compile_options(cpp_tests PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${LDF_TEST_CUDA_FLAGS}>")
 
 target_link_libraries(
-  cpp_tests
-  PRIVATE LegateDataframe
-          cudf
-          cudf::cudftestutil
-          cudf::cudftestutil_impl
-          GTest::gmock
-          Arrow::arrow_shared
-          ArrowAcero::arrow_acero_shared
-          GTest::gtest
-          $<TARGET_NAME_IF_EXISTS:conda_env>
+  cpp_tests PRIVATE LegateDataframe GTest::gmock Arrow::arrow_shared ArrowAcero::arrow_acero_shared
+                    GTest::gtest $<TARGET_NAME_IF_EXISTS:conda_env>
 )
+if(LEGATE_DATAFRAME_USE_CUDA)
+  target_link_libraries(
+    cpp_tests PRIVATE LegateDataframe cudf cudf::cudftestutil cudf::cudftestutil_impl
+  )
+endif()
+
 rapids_test_add(
   NAME cpp_tests
   COMMAND cpp_tests

@@ -27,11 +27,15 @@ namespace task {
 
 class ReduceLocalTask : public Task<ReduceLocalTask, OpCode::ReduceLocal> {
  public:
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
+#endif
   static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(true);
 
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 }  // namespace task

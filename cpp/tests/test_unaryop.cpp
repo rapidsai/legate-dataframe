@@ -19,13 +19,6 @@
 #include <cstdint>
 #include <legate.h>
 
-#include <cudf/unary.hpp>
-#include <cudf/utilities/type_dispatcher.hpp>
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_utilities.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/type_lists.hpp>
-
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/unaryop.hpp>
@@ -128,7 +121,7 @@ TYPED_TEST(UnaryOpsTest, UnaryOpsWithNull)
 TYPED_TEST(UnaryOpsTest, CastFromAnyToFloat32)
 {
   LogicalColumn column(narrow<TypeParam>({-1, -2, -3, -4}));
-  auto result = cast(column, cudf::data_type{cudf::type_id::FLOAT32});
+  auto result = cast(column, arrow::float32());
   auto expected =
     ARROW_RESULT(arrow::compute::Cast(
                    column.get_arrow(), arrow::float32(), arrow::compute::CastOptions::Unsafe()))
@@ -138,12 +131,13 @@ TYPED_TEST(UnaryOpsTest, CastFromAnyToFloat32)
 
 TYPED_TEST(UnaryOpsTest, CastFromInt16ToAny)
 {
+  LogicalColumn dummy(narrow<TypeParam>({1}));  // Use this just to get arrow type from TypeParam
   LogicalColumn column(narrow<int16_t>({-1, -2, -3, -4}));
-  auto to_dtype = cudf::data_type{cudf::type_to_id<TypeParam>()};
-  auto expected = ARROW_RESULT(arrow::compute::Cast(column.get_arrow(),
-                                                    to_arrow_type(to_dtype.id()),
-                                                    arrow::compute::CastOptions::Unsafe()))
-                    .make_array();
+  auto to_dtype = dummy.arrow_type();
+  auto expected =
+    ARROW_RESULT(
+      arrow::compute::Cast(column.get_arrow(), to_dtype, arrow::compute::CastOptions::Unsafe()))
+      .make_array();
   LogicalColumn result = cast(column, to_dtype);
   EXPECT_TRUE(expected->Equals(*result.get_arrow()));
 }

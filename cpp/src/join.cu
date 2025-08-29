@@ -172,7 +172,8 @@ template <bool needs_communication>
   const auto lhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
   const auto rhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
   auto join_type          = argument::get_next_scalar<JoinType>(ctx);
-  auto null_equality      = argument::get_next_scalar<cudf::null_equality>(ctx);
+  auto null_equality      = argument::get_next_scalar<bool>(ctx) ? cudf::null_equality::EQUAL
+                                                                 : cudf::null_equality::UNEQUAL;
   const auto lhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
   const auto rhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
   auto output             = argument::get_next_output<PhysicalTable>(ctx);

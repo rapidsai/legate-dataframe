@@ -27,7 +27,9 @@ namespace task {
 class CopyIfElseTask : public Task<CopyIfElseTask, OpCode::CopyIfElse> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 }  // namespace task

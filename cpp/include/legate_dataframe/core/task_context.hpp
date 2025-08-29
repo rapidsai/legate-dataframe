@@ -22,9 +22,11 @@
 
 #include <legate.h>
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <rmm/cuda_stream.hpp>
 
-#include <legate_dataframe/core/allocator.hpp>
+#include <legate_dataframe/core/allocator.cuh>
+#endif
 
 namespace legate {
 namespace dataframe {
@@ -43,7 +45,9 @@ class TaskContext {
   size_t _arg_scalar_idx{0};
   size_t _arg_input_idx{0};
   size_t _arg_output_idx{0};
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   std::optional<TaskMemoryResource> _mr;
+#endif
 
  public:
   const int rank;
@@ -84,6 +88,7 @@ class TaskContext {
     return {_arg_scalar_idx, _arg_input_idx, _arg_output_idx};
   }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   TaskMemoryResource* mr()
   {
     if (!_mr.has_value()) { _mr = TaskMemoryResource(); }
@@ -99,6 +104,7 @@ class TaskContext {
    * @return The tasks CUDA stream
    */
   cudaStream_t stream() { return _context.get_task_stream(); }
+#endif
 
   legate::Scalar get_next_scalar_arg() { return _context.scalars().at(_arg_scalar_idx++); }
   legate::PhysicalArray get_next_input_arg() { return _context.input(_arg_input_idx++); }

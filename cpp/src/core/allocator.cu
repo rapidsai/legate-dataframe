@@ -21,7 +21,7 @@
 
 #include <rmm/mr/device/per_device_resource.hpp>
 
-#include <legate_dataframe/core/allocator.hpp>
+#include <legate_dataframe/core/allocator.cuh>
 #include <legate_dataframe/utils.hpp>
 
 namespace legate::dataframe {

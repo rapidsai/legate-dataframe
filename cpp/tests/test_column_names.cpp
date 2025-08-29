@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,7 @@
 
 #include <legate.h>
 
-#include <cudf_test/column_utilities.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/cudf_gtest.hpp>
-
+#include <gtest/gtest.h>
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/filling.hpp>
 #include <legate_dataframe/join.hpp>
@@ -49,26 +46,6 @@ TEST(ColumnNameTest, FromColumnVector)
   }
 
   auto tbl_like = LogicalTable::empty_like(tbl);
-  EXPECT_TRUE(tbl_like.get_column_names() == tbl.get_column_names());
-}
-
-TEST(ColumnNameTest, FromCudf)
-{
-  const std::vector<std::string> names = {"a", "b"};
-  std::vector<std::unique_ptr<cudf::column>> cols;
-  cudf::test::fixed_width_column_wrapper<int32_t> a({0, 1, 2, 3, 4});
-  cudf::test::fixed_width_column_wrapper<int32_t> b({5, 6, 7, 8, 9});
-  cols.push_back(a.release());
-  cols.push_back(b.release());
-  cudf::table original(std::move(cols));
-
-  auto tbl = LogicalTable(original, names);
-  for (size_t i = 0; i < names.size(); ++i) {
-    const auto& col = tbl.get_column(names[i]);
-    CUDF_TEST_EXPECT_COLUMNS_EQUAL(col.get_cudf()->view(), original.get_column(i));
-  }
-
-  auto tbl_like = LogicalTable::empty_like(original.view(), names);
   EXPECT_TRUE(tbl_like.get_column_names() == tbl.get_column_names());
 }
 

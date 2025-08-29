@@ -50,7 +50,9 @@ const std::set<std::string> cudf_supported_binary_ops = {"add",
 class BinaryOpColColTask : public Task<BinaryOpColColTask, OpCode::BinaryOpColCol> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 }  // namespace task

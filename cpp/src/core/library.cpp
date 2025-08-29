@@ -18,7 +18,9 @@
 #include <type_traits>
 #include <vector>
 
-#include <legate_dataframe/core/allocator.hpp>
+#ifdef LEGATE_DATAFRAME_USE_CUDA
+#include <legate_dataframe/core/allocator.cuh>
+#endif
 #include <legate_dataframe/core/library.hpp>
 
 namespace legate::dataframe {
@@ -135,6 +137,7 @@ legate::Library create_and_registrate_library()
 {
   auto runtime = legate::Runtime::get_runtime();
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   if (runtime->get_machine().count(legate::mapping::TaskTarget::GPU) > 0) {
     // If we are running on a GPU, we should set the global RMM memory resource
     // to hook into more/most allocations triggered via libcudf.
@@ -143,6 +146,7 @@ legate::Library create_and_registrate_library()
       GlobalMemoryResource::set_as_default_mmr_resource();
     }
   }
+#endif
   // Set with_has_allocations globally since currently all tasks allocate (and libcudf may also)
   auto options =
     legate::VariantOptions{}.with_has_allocations(true).with_elide_device_ctx_sync(true);

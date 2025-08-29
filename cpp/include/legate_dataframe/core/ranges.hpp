@@ -17,14 +17,17 @@
 #pragma once
 
 #include <arrow/api.h>
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <cudf/column/column.hpp>
 #include <rmm/cuda_stream.hpp>
 #include <rmm/mr/device/device_memory_resource.hpp>
+#endif
 
 #include <legate.h>
 
 namespace legate::dataframe {
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 /**
  * @brief Convert global ranges (legate) to local offsets (cudf)
  *
@@ -41,6 +44,7 @@ namespace legate::dataframe {
   legate::Memory::Kind mem_kind,
   rmm::cuda_stream_view stream,
   rmm::mr::device_memory_resource* mr);
+#endif
 
 [[nodiscard]] std::shared_ptr<arrow::Buffer> global_ranges_to_arrow_offsets(
   const legate::PhysicalStore& ranges);
@@ -64,6 +68,7 @@ void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect
 void arrow_offsets_to_local_ranges(const arrow::LargeStringArray& array,
                                    legate::Rect<1>* ranges_acc);
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 /**
  * @brief Convert local offsets (cudf) to local ranges (legate)
  *
@@ -76,5 +81,6 @@ void cudf_offsets_to_local_ranges(int64_t ranges_size,
                                   legate::Rect<1>* ranges_acc,
                                   cudf::column_view offsets,
                                   rmm::cuda_stream_view stream);
+#endif
 
 }  // namespace legate::dataframe

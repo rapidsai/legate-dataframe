@@ -105,7 +105,7 @@ std::shared_ptr<arrow::Array> create_array(int64_t num_elements, T fill_value)
 
 std::shared_ptr<arrow::Table> extract_local_splits(TaskContext& ctx,
                                                    std::shared_ptr<arrow::Table> sorted_table,
-                                                   const std::vector<cudf::size_type>& keys_idx)
+                                                   const std::vector<std::size_t>& keys_idx)
 {
   auto split_indices =
     vector_to_array(get_split_ind(ctx, sorted_table->num_rows(), ctx.nranks, true));
@@ -130,7 +130,7 @@ std::shared_ptr<arrow::Table> extract_local_splits(TaskContext& ctx,
 std::shared_ptr<arrow::Table> merge_distributed_split_candidates(
   TaskContext& ctx,
   std::shared_ptr<arrow::Table> local_splits_and_metadata,
-  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<std::size_t>& keys_idx,
   const std::vector<arrow::compute::SortKey>& column_order,
   arrow::compute::NullPlacement null_precedence)
 {
@@ -175,7 +175,7 @@ std::shared_ptr<arrow::Table> extract_global_splits(
 bool compare(TaskContext& ctx,
              std::shared_ptr<arrow::Table> row_a,
              std::shared_ptr<arrow::Table> row_b,
-             const std::vector<cudf::size_type>& keys_idx,
+             const std::vector<std::size_t>& keys_idx,
              const std::vector<arrow::compute::SortKey>& column_order,
              arrow::compute::NullPlacement null_precedence)
 {
@@ -197,7 +197,7 @@ bool compare(TaskContext& ctx,
 std::size_t lower_bound_row(TaskContext& ctx,
                             std::shared_ptr<arrow::Table> haystack,
                             std::shared_ptr<arrow::Table> needle,  // This is a single row
-                            const std::vector<cudf::size_type>& keys_idx,
+                            const std::vector<std::size_t>& keys_idx,
                             const std::vector<arrow::compute::SortKey>& column_order,
                             arrow::compute::NullPlacement null_precedence)
 {
@@ -222,7 +222,7 @@ std::vector<std::size_t> find_destination_ranks(
   TaskContext& ctx,
   std::shared_ptr<arrow::Table> sorted_table,
   std::shared_ptr<arrow::Table> global_split_values,
-  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<std::size_t>& keys_idx,
   const std::vector<arrow::compute::SortKey>& column_order,
   arrow::compute::NullPlacement null_precedence)
 {
@@ -273,7 +273,7 @@ std::vector<std::size_t> find_destination_ranks(
 std::vector<std::size_t> find_splits_for_distribution(
   TaskContext& ctx,
   std::shared_ptr<arrow::Table> sorted_table,
-  const std::vector<cudf::size_type>& keys_idx,
+  const std::vector<std::size_t>& keys_idx,
   const std::vector<arrow::compute::SortKey>& column_order,
   arrow::compute::NullPlacement null_precedence)
 {
@@ -314,7 +314,7 @@ static std::shared_ptr<arrow::Table> apply_limit(std::shared_ptr<arrow::Table> t
   TaskContext ctx{context};
 
   const auto tbl            = argument::get_next_input<PhysicalTable>(ctx);
-  const auto keys_idx       = argument::get_next_scalar_vector<cudf::size_type>(ctx);
+  const auto keys_idx       = argument::get_next_scalar_vector<std::size_t>(ctx);
   const auto sort_ascending = argument::get_next_scalar_vector<bool>(ctx);
   const auto nulls_at_end   = argument::get_next_scalar<bool>(ctx);
   const auto stable         = argument::get_next_scalar<bool>(ctx);
@@ -392,7 +392,7 @@ LogicalTable sort(const LogicalTable& tbl,
 
   auto ret = LogicalTable::empty_like(tbl);
 
-  std::vector<cudf::size_type> keys_idx(keys.size());
+  std::vector<std::size_t> keys_idx(keys.size());
 
   bool use_arrow          = runtime->get_machine().count(legate::mapping::TaskTarget::GPU) == 0;
   const auto& name_to_idx = tbl.get_column_names();
