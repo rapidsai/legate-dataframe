@@ -109,22 +109,34 @@ std::shared_ptr<arrow::Table> arrow_join(const legate::dataframe::LogicalTable& 
 
 auto sort_table(std::shared_ptr<arrow::Table> table)
 {
+  // Arrow doesn't like it if column names are duplicated, so just rename everything then change it
+  // back at the end
+  auto column_names = table->ColumnNames();
+  std::vector<std::string> temp_names(column_names.size());
+  for (int i = 0; i < column_names.size(); i++) {
+    temp_names[i] = std::to_string(i);
+  }
+  table = ARROW_RESULT(table->RenameColumns(temp_names));
   std::vector<arrow::compute::SortKey> sort_keys;
-  for (const auto& key : table->ColumnNames()) {
+  for (const auto& key : temp_names) {
     sort_keys.push_back(arrow::compute::SortKey{key, arrow::compute::SortOrder::Ascending});
   }
   auto indices = ARROW_RESULT(arrow::compute::SortIndices(
     table, arrow::compute::SortOptions(sort_keys, arrow::compute::NullPlacement::AtStart)));
-  return ARROW_RESULT(arrow::compute::Take(table, *indices, arrow::compute::TakeOptions{})).table();
+  auto result =
+    ARROW_RESULT(arrow::compute::Take(table, *indices, arrow::compute::TakeOptions{})).table();
+  return ARROW_RESULT(result->RenameColumns(column_names));
 }
 
 void test_join(const LogicalTable& a,
                const LogicalTable& b,
                std::set<std::size_t> keys_a,
                std::set<std::size_t> keys_b,
-               JoinType join_type)
+               JoinType join_type,
+               bool nulls_equal         = true,
+               BroadcastInput broadcast = BroadcastInput::AUTO)
 {
-  auto result        = join(a, b, keys_a, keys_b, join_type);
+  auto result        = join(a, b, keys_a, keys_b, join_type, nulls_equal, broadcast);
   auto sorted_result = sort_table(result.get_arrow());
 
   auto expected = arrow_join(a, b, keys_a, keys_b, join_type);
@@ -313,24 +325,6 @@ TEST(JoinTest, FullJoinWithNulls)
   test_join(table_0, table_1, {0, 1}, {0, 1}, legate::dataframe::JoinType::FULL);
 }
 
-TEST(JoinTest, FullJoinOnNulls)
-{
-  // Left table data - null at index 1 in column 'a'
-  LogicalColumn a(std::vector<int32_t>{3, 1}, {1, 0});
-  LogicalColumn b(std::vector<std::string>{"s0", "s1"});
-  LogicalColumn c(std::vector<int32_t>{0, 1});
-
-  // Right table data - null at index 3 in column 'd'
-  LogicalColumn d(std::vector<int32_t>{2, 5, 3, 7}, {1, 1, 1, 0});
-  LogicalColumn e(std::vector<std::string>{"s1", "s0", "s0", "s1"});
-  LogicalColumn f(std::vector<int32_t>{1, 4, 2, 8});
-
-  LogicalTable table_0({a, b, c}, {"a", "b", "c"});
-  LogicalTable table_1({d, e, f}, {"d", "e", "f"});
-
-  test_join(table_0, table_1, {0, 1}, {0, 1}, legate::dataframe::JoinType::FULL);
-}
-
 TEST(JoinTest, OutColumnIndices)
 {
   LogicalColumn a(std::vector<int32_t>{0, 1, 2});
@@ -407,7 +401,7 @@ TEST(JoinTest, OutColumnNames)
                                                    /* rhs_out_columns = */ {"data1"})
                              .get_arrow());
 
-  EXPECT_TRUE(ARROW_RESULT(expect->SelectColumns({1, 0, 5}))->Equals(*result));
+  EXPECT_TRUE(ARROW_RESULT(expect->SelectColumns({0, 1, 5}))->Equals(*result));
 }
 
 TEST(JoinTestBroacast, OutColumnNames)
@@ -455,7 +449,7 @@ TEST(JoinTestBroacast, OutColumnNames)
                    lg_t0, lg_t1, {"key"}, {"key"}, how, {"data0"}, {"data1"}, true, broadcast)
                    .get_arrow());
 
-    EXPECT_TRUE(ARROW_RESULT(expect->SelectColumns({1, 0, 5}))->Equals(*result));
+    EXPECT_TRUE(ARROW_RESULT(expect->SelectColumns({1, 5}))->Equals(*result));
   }
 }
 

@@ -232,7 +232,7 @@ template <bool needs_communication>
   const auto lhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
   const auto rhs_keys     = argument::get_next_scalar_vector<int32_t>(ctx);
   auto join_type          = argument::get_next_scalar<JoinType>(ctx);
-  auto null_equality      = argument::get_next_scalar<cudf::null_equality>(ctx);
+  auto nulls_equal        = argument::get_next_scalar<bool>(ctx);
   const auto lhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
   const auto rhs_out_cols = argument::get_next_scalar_vector<int32_t>(ctx);
   auto output             = argument::get_next_output<PhysicalTable>(ctx);
@@ -256,7 +256,7 @@ template <bool needs_communication>
                                    integer_to_string_vector(lhs_keys),
                                    integer_to_string_vector(rhs_keys),
                                    join_type,
-                                   null_equality == cudf::null_equality::EQUAL,
+                                   nulls_equal,
                                    integer_to_string_vector(lhs_out_cols),
                                    integer_to_string_vector(rhs_out_cols));
   } else {
@@ -277,7 +277,7 @@ template <bool needs_communication>
                                    integer_to_string_vector(lhs_keys),
                                    integer_to_string_vector(rhs_keys),
                                    join_type,
-                                   null_equality == cudf::null_equality::EQUAL,
+                                   nulls_equal,
                                    integer_to_string_vector(lhs_out_cols),
                                    integer_to_string_vector(rhs_out_cols));
   }

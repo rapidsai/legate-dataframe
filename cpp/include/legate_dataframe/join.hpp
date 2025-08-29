@@ -18,8 +18,6 @@
 
 #include <set>
 
-#include <cudf/types.hpp>  // cudf::null_equality
-
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 
