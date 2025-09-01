@@ -78,6 +78,13 @@ endif()
 rapids_cpm_init()
 
 if(LEGATE_DATAFRAME_USE_CUDA)
+  # If CCCL versions don't get picked up correctly, we may need to add them early on here (right now
+  # it seems fetching rmm/cudf manage to ensure we ge the right one.)
+  include("${rapids-cmake-dir}/cpm/cccl.cmake")
+  rapids_cpm_cccl()
+endif()
+
+if(LEGATE_DATAFRAME_USE_CUDA)
   include(rapids-cuda)
   rapids_cuda_init_architectures(LegateDataframe)
   include(cmake/thirdparty/get_rmm.cmake)
@@ -91,10 +98,6 @@ if(LEGATE_DATAFRAME_USE_CUDA)
   # Currently NCCL has no CMake build-system so we require it built and installed on the machine
   # already
   rapids_find_package(NCCL REQUIRED)
-  # If CCCL versions don't get picked up correctly, we may need to add them early on here (right now
-  # it seems fetching rmm/cudf manage to ensure we ge the right one.)
-  include("${rapids-cmake-dir}/cpm/cccl.cmake")
-  rapids_cpm_cccl()
 endif()
 
 rapids_find_package(

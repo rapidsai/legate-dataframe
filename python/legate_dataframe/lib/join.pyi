@@ -29,6 +29,6 @@ def join(
     join_type: JoinType,
     lhs_out_columns: Optional[Iterable[str]] = None,
     rhs_out_columns: Optional[Iterable[str]] = None,
-    compare_nulls: null_equality = null_equality.EQUAL,
+    nulls_equal: bool = True,
     broadcast: BroadcastInput = BroadcastInput.AUTO,
 ) -> LogicalTable: ...

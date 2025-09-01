@@ -19,7 +19,6 @@ import time
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import polars as pl
-import pylibcudf as plc
 
 import legate_dataframe.ldf_polars.dsl.expr as expr
 from legate_dataframe import LogicalTable
@@ -1037,12 +1036,6 @@ class Join(IR):
         left_on = [left.name for left in left_on_exprs]
         right_on = [right.name for right in right_on_exprs]
 
-        null_equality = (
-            plc.types.NullEquality.EQUAL
-            if nulls_equal
-            else plc.types.NullEquality.UNEQUAL
-        )
-
         if how == "Inner":
             join_type = join.JoinType.INNER
         elif how == "Left":
@@ -1078,7 +1071,7 @@ class Join(IR):
             rhs_keys=right_on,
             lhs_out_columns=lhs_out_columns,
             rhs_out_columns=rhs_out_columns,
-            compare_nulls=null_equality,
+            nulls_equal=nulls_equal,
         )
 
         return DataFrame.from_table(df).slice(zlice)

@@ -18,7 +18,7 @@ import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalTable
-from legate_dataframe.lib.join import BroadcastInput, JoinType, join, null_equality
+from legate_dataframe.lib.join import BroadcastInput, JoinType, join
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import (
     assert_arrow_table_equal,
@@ -101,9 +101,7 @@ def test_join(
                 rhs_keys=right_on,
                 join_type=how,
                 broadcast=broadcast,
-                compare_nulls=(
-                    null_equality.EQUAL if nulls_equal else null_equality.UNEQUAL
-                ),
+                nulls_equal=nulls_equal,
             )
         return
 
@@ -134,7 +132,7 @@ def test_join(
             rhs_keys=right_on,
             join_type=how,
             broadcast=broadcast,
-            compare_nulls=null_equality.EQUAL if nulls_equal else null_equality.UNEQUAL,
+            nulls_equal=nulls_equal,
         ).to_arrow()
 
     sort_order = [(col, "ascending") for col in res.column_names]

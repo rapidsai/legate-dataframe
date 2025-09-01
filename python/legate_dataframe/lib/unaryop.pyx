@@ -5,12 +5,13 @@
 # cython: language_level=3
 
 from libc.stdint cimport int32_t
+from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string
 
-from pylibcudf.types cimport data_type
+from pyarrow.lib cimport CDataType
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
-from legate_dataframe.lib.core.data_type cimport as_data_type
+from legate_dataframe.lib.core.data_type cimport as_arrow_data_type
 
 from legate_dataframe.utils import _track_provenance
 
@@ -21,7 +22,7 @@ cdef extern from "<legate_dataframe/unaryop.hpp>" nogil:
     ) except +
 
     cpp_LogicalColumn cpp_cast "legate::dataframe::cast"(
-        const cpp_LogicalColumn& col, data_type dtype
+        const cpp_LogicalColumn& col, shared_ptr[CDataType] dtype
     ) except +
 
     cpp_LogicalColumn cpp_round "legate::dataframe::round"(
@@ -67,7 +68,7 @@ def cast(LogicalColumn col, dtype) -> LogicalColumn:
         Logical column of same size as `col` but with new data type.
     """
     return LogicalColumn.from_handle(
-        cpp_cast(col._handle, as_data_type(dtype))
+        cpp_cast(col._handle, as_arrow_data_type(dtype))
     )
 
 
