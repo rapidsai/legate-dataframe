@@ -4,9 +4,12 @@
 # distutils: language = c++
 # cython: language_level=3
 
-
+from libcpp.memory cimport shared_ptr
+from libcpp.optional cimport optional
 from libcpp.string cimport string
 from libcpp.vector cimport vector
+
+from pyarrow._compute cimport CFunctionOptions, FunctionOptions
 
 from legate_dataframe.lib.core.table cimport LogicalTable, cpp_LogicalTable
 
@@ -21,11 +24,16 @@ cdef extern from * nogil:
     """
     #include <legate_dataframe/groupby_aggregation.hpp>
 
-    using AggTuple = std::tuple<std::string, std::string, std::string>;
+    using AggTuple = std::tuple<
+        std::string,
+        std::string,
+        std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>,
+        std::string>;
     """
-
     cdef cppclass AggTuple:
-        AggTuple(string, string, string) except +
+        AggTuple(
+            string, string, optional[shared_ptr[CFunctionOptions]], string,
+        ) except +
 
 
 cdef extern from "<legate_dataframe/groupby_aggregation.hpp>" nogil:
@@ -33,7 +41,7 @@ cdef extern from "<legate_dataframe/groupby_aggregation.hpp>" nogil:
         "legate::dataframe::groupby_aggregation"(
             const cpp_LogicalTable& table,
             const vector[string]& keys,
-            const vector[AggTuple]& column_aggregations
+            const vector[AggTuple]& column_aggregations,
         ) except +
 
 
@@ -65,12 +73,17 @@ def groupby_aggregation(
         the same input column but all output columns must be unique and not conflict
         with the name of the key columns.
 
+        Aggregation kind may be a tuple of ``("sum", pyarrow.compute.FunctionOptions)``
+        matching the given function.  This allows mainly to including NULLs for
+        "count_distinct".
+
     Returns
     -------
         A new logical table that contains the key columns and the aggregated columns
         using the output column names and order specified in `column_aggregations`.
     """
     cdef vector[string] _keys
+    cdef optional[shared_ptr[CFunctionOptions]] c_options
     for k in keys:
         _keys.push_back(k.encode('UTF-8'))
 
@@ -81,10 +94,21 @@ def groupby_aggregation(
                 raise ValueError("input column name must be `None` for 'count_all'")
             in_col_name = ""
 
+        if isinstance(kind, tuple):
+            kind, py_options = kind
+            if not isinstance(py_options, FunctionOptions):
+                raise TypeError("options must be an arrow `FunctionOptions` object.")
+            c_options = (<FunctionOptions>py_options).wrapped
+
+        if not isinstance(kind, str):
+            raise TypeError(
+                "aggregation kind must be string or tuple of string and options.")
+
         aggs.push_back(
             AggTuple(
                 in_col_name.encode('UTF-8'),
                 kind.encode('UTF-8'),
+                c_options,
                 out_col_name.encode('UTF-8')
             )
         )
