@@ -141,9 +141,14 @@ def test_join(
     assert_arrow_table_equal(res.sort_by(sort_order), expect.sort_by(sort_order))
 
 
-def test_column_names():
-    lhs = LogicalTable.from_arrow(pa.table({"key": [1, 2, 3], "data0": [1, 2, 3]}))
-    rhs = LogicalTable.from_arrow(pa.table({"key": [3, 2, 1], "data1": [1, 2, 3]}))
+def test_column_names_and_strings():
+    # Also use string as keys
+    lhs = LogicalTable.from_arrow(
+        pa.table({"key": ["1", "2", "3"], "data0": [1, 2, 3]})
+    )
+    rhs = LogicalTable.from_arrow(
+        pa.table({"key": ["3", "2", "1"], "data1": ["1", "2", "3"]})
+    )
 
     res = join(
         lhs,
