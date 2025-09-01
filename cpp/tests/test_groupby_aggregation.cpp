@@ -90,7 +90,8 @@ TYPED_TEST(GroupByAggregationTest, single_sum_with_nulls)
   arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
     {{"table_source", arrow::acero::TableSourceNodeOptions(table.get_arrow())},
      {"aggregate", arrow::acero::AggregateNodeOptions({aggregate}, {"key"})}});
-  auto expected = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+  auto expected =
+    ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
 
   auto result = groupby_aggregation(table, {"key"}, {std::make_tuple("value", "sum", "sum")});
 
@@ -123,7 +124,8 @@ TYPED_TEST(GroupByAggregationTest, nunique_and_max)
      {"aggregate",
       arrow::acero::AggregateNodeOptions({nunique_agg1, max_agg1, nunique_agg2, max_agg2},
                                          {"key"})}});
-  auto expected = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+  auto expected =
+    ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
 
   auto result = groupby_aggregation(table,
                                     {"key"},
@@ -157,7 +159,8 @@ TYPED_TEST(GroupByAggregationTest, stddev_and_mean_with_multiple_keys)
                                           {"hash_stddev", "vals2", "stddev2"},
                                           {"hash_mean", "vals2", "mean2"}},
                                          {"keys1", "keys2"})}});
-  auto expected = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+  auto expected =
+    ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
 
   auto result = groupby_aggregation(table,
                                     {"keys1", "keys2"},

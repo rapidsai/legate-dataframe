@@ -1,4 +1,4 @@
-# Copyright 2024 NVIDIA Corporation
+# Copyright (c) 2024-2025, NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ def run_legate(args):
     from legate.core import get_legate_runtime
 
     from legate_dataframe import LogicalColumn, LogicalTable
-    from legate_dataframe.lib.join import JoinType, join, null_equality
+    from legate_dataframe.lib.join import JoinType, join
 
     runtime = get_legate_runtime()
 
@@ -113,7 +113,7 @@ def run_legate(args):
             lhs_keys=["lhs-key"],
             rhs_keys=["rhs-key"],
             join_type=JoinType.INNER,
-            compare_nulls=null_equality.EQUAL,
+            nulls_equal=True,
         )
         t1 = blocking_timing()
         return t1 - t0, res.num_rows()

@@ -103,7 +103,7 @@ std::shared_ptr<arrow::Table> arrow_join(const legate::dataframe::LogicalTable& 
   arrow::acero::Declaration hashjoin{"hashjoin", {left_source, right_source}, std::move(join_opts)};
 
   // Execute the join
-  return ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin)));
+  return ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin), false /*use_threads*/));
 }
 }  // namespace
 

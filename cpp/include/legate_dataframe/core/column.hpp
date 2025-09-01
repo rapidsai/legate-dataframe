@@ -458,7 +458,7 @@ class LogicalColumn {
    * but the number of rows isn't one.
    * @return The number of rows
    */
-  [[nodiscard]] size_t num_rows() const
+  [[nodiscard]] std::size_t num_rows() const
   {
     if (unbound()) {
       throw std::runtime_error("Cannot call `.num_rows()` on a unbound LogicalColumn");

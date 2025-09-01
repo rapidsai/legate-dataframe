@@ -30,6 +30,3 @@ Related options/enums
 
 .. autodata:: legate_dataframe.lib.join.JoinType
     :no-value:
-
-.. autodata:: legate_dataframe.lib.join.null_equality
-    :no-value:

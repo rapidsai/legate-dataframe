@@ -220,7 +220,7 @@ std::shared_ptr<arrow::Table> arrow_join_and_gather(TaskContext& ctx,
   arrow::acero::Declaration right{"table_source", arrow::acero::TableSourceNodeOptions{rhs_temp}};
   arrow::acero::Declaration hashjoin{"hashjoin", {left, right}, std::move(join_opts)};
 
-  return ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin)));
+  return ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(hashjoin), false /*use_threads*/));
 }
 
 template <bool needs_communication>

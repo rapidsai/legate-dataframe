@@ -6,10 +6,6 @@ from typing import Iterable, Optional
 
 from legate_dataframe.lib.core.table import LogicalTable
 
-class null_equality(Enum):
-    EQUAL: int
-    UNEQUAL: int
-
 class JoinType(Enum):
     INNER: int
     LEFT: int
