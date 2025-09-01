@@ -15,6 +15,11 @@
  */
 
 #include <legate.h>
+#include <legate/cuda/cuda.h>
+
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
+#include <thrust/for_each.h>
 
 #include <cudf/copying.hpp>
 #include <cudf/types.hpp>
@@ -62,6 +67,92 @@ namespace legate::dataframe::task {
     output.copy_into(std::move(ret));
   } else {
     output.move_into(std::move(ret));
+  }
+}
+
+struct copy_store_fn {
+  template <legate::Type::Code CODE>
+  void operator()(TaskContext& ctx,
+                  const legate::PhysicalStore& input,
+                  legate::PhysicalStore& output)
+  {
+    using value_type = legate::type_of_t<CODE>;
+    std::array<size_t, 1> in_strides{};
+    std::array<size_t, 1> out_strides{};
+    auto in_ptr = input.read_accessor<value_type, 1>().ptr(input.shape<1>(), in_strides.data());
+    auto out_ptr =
+      output.write_accessor<value_type, 1>().ptr(output.shape<1>(), out_strides.data());
+    assert(input.shape<1>().volume() == output.shape<1>().volume());
+    assert(input.shape<1>().volume() <= 1 || (in_strides[0] == 1 && out_strides[0] == 1));
+    LEGATE_CHECK_CUDA(cudaMemcpyAsync(out_ptr,
+                                      in_ptr,
+                                      input.shape<1>().volume() * sizeof(value_type),
+                                      cudaMemcpyDeviceToDevice,
+                                      ctx.stream()));
+  }
+};
+
+/*static*/ void CopyTask::gpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const auto input = ctx.get_next_input_arg();
+  auto output      = ctx.get_next_output_arg();
+
+  auto in_store  = input.data();
+  auto out_store = output.data();
+  legate::type_dispatch(input.type().code(), copy_store_fn{}, ctx, in_store, out_store);
+  if (input.nullable()) {
+    auto null_mask_in_store  = input.null_mask();
+    auto null_mask_out_store = output.null_mask();
+    copy_store_fn{}.operator()<legate::Type::Code::BOOL>(
+      ctx, null_mask_in_store, null_mask_out_store);
+  } else if (output.nullable()) {
+    auto out_acc = output.null_mask().write_accessor<bool, 1>();
+    LEGATE_CHECK_CUDA(cudaMemsetAsync(out_acc.ptr(output.shape<1>()),
+                                      true,
+                                      output.shape<1>().volume() * sizeof(bool),
+                                      ctx.stream()));
+  }
+}
+
+/*static*/ void CopyOffsetsTask::gpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const auto input = ctx.get_next_input_arg();
+  auto output      = ctx.get_next_output_arg();
+  auto offset      = argument::get_next_scalar<int64_t>(ctx);
+
+  auto in_store  = input.data();
+  auto out_store = output.data();
+
+  std::array<size_t, 1> in_strides{};
+  std::array<size_t, 1> out_strides{};
+  auto in_ptr =
+    input.data().read_accessor<legate::Rect<1>, 1>().ptr(input.shape<1>(), in_strides.data());
+  auto out_ptr =
+    output.data().write_accessor<legate::Rect<1>, 1>().ptr(output.shape<1>(), out_strides.data());
+  assert(input.shape<1>().volume() == output.shape<1>().volume());
+  assert(input.shape<1>().volume() <= 1 || (in_strides[0] == 1 && out_strides[0] == 1));
+
+  thrust::transform(thrust::cuda::par.on(ctx.stream()),
+                    in_ptr,
+                    in_ptr + input.shape<1>().volume(),
+                    out_ptr,
+                    [offset] __device__(const legate::Rect<1>& rect) {
+                      return legate::Rect<1>{rect.lo[0] + offset, rect.hi[0] + offset};
+                    });
+
+  if (input.nullable()) {
+    auto null_mask_in_store  = input.null_mask();
+    auto null_mask_out_store = output.null_mask();
+    copy_store_fn{}.operator()<legate::Type::Code::BOOL>(
+      ctx, null_mask_in_store, null_mask_out_store);
+  } else if (output.nullable()) {
+    auto out_acc = output.null_mask().write_accessor<bool, 1>();
+    LEGATE_CHECK_CUDA(cudaMemsetAsync(out_acc.ptr(output.shape<1>()),
+                                      true,
+                                      output.shape<1>().volume() * sizeof(bool),
+                                      ctx.stream()));
   }
 }
 

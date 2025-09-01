@@ -329,7 +329,7 @@ def get_pyarrow_column_set(dtypes, nulls=True):
 
     for dtype in dtypes:
         mask = np.random.randint(2, size=len(data), dtype=bool) if nulls else None
-        series = pa.array(data, type=dtype, mask=mask)
+        series = pa.array(data, mask=mask).cast(dtype)
 
         yield pytest.param(series, id=f"col({dtype}, nulls={nulls})")
 

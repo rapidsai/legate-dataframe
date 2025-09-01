@@ -32,6 +32,8 @@ enum : int {
   CSVRead,
   Cast,
   CopyIfElse,
+  Copy,
+  CopyOffsets,  // can apply an offset to ranges
   ParquetWrite,
   ParquetRead,
   ParquetReadArray,

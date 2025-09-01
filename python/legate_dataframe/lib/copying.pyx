@@ -4,6 +4,8 @@
 # distutils: language = c++
 # cython: language_level=3
 
+from libcpp.vector cimport vector
+
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
 from legate_dataframe.lib.core.scalar cimport cpp_scalar_col_from_python
 
@@ -15,6 +17,10 @@ cdef extern from "<legate_dataframe/copying.hpp>" nogil:
         const cpp_LogicalColumn& lhs,
         const cpp_LogicalColumn& rhs,
         const cpp_LogicalColumn& cond,
+    ) except +
+
+    cpp_LogicalColumn cpp_concatenate "concatenate"(
+        const vector[cpp_LogicalColumn]& columns,
     ) except +
 
 
@@ -65,3 +71,30 @@ def copy_if_else(
     return LogicalColumn.from_handle(
         cpp_copy_if_else(cond._handle, lhs_col._handle, rhs_col._handle)
     )
+
+
+@_track_provenance
+def concatenate(columns):
+    """Concetenate columns into a single long column.
+
+    Creates a new column concatenating all columns.  Must have at
+    least one column and all columns must have the same type.
+
+    Parameters
+    ----------
+    columns
+        Iterable of logical columns.
+
+    Returns
+    -------
+        Output column with as many rows as all input columns combined.
+    """
+    cdef vector[cpp_LogicalColumn] cpp_cols
+    for column in columns:
+        if not isinstance(column, LogicalColumn):
+            raise TypeError(
+                f"columns must be a sequence of LogicalColumn, got "
+                f"'{type(column).__name__}'")
+        cpp_cols.push_back((<LogicalColumn>column)._handle)
+
+    return LogicalColumn.from_handle(cpp_concatenate(cpp_cols))
