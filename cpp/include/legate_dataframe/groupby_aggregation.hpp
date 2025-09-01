@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include <arrow/compute/api.h>
+
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/table.hpp>
 
@@ -48,17 +50,23 @@ class GroupByAggregationTask : public Task<GroupByAggregationTask, OpCode::Group
  * @param keys The names of the columns whose rows act as the groupby keys.
  * @param column_aggregations A vector of column aggregations to perform. Each column aggregation
  * produces a column in the output table by performing an aggregation-kind on a column in `table`.
- * It consist of a tuple: `(<input-column-name>, <aggregation-kind>, <output-column-name>)`. E.g.
- * `("x", "sum", "sum-of-x")` will produce a column named "sum-of-x" in the output table, which, for
- * each groupby key, has a row that contains the sum of the values in the column "x". Multiple
- * column aggregations can share the same input column but all output columns must be unique and not
- * conflict with the name of the key columns.
+ * It consist of a tuple: `(<input-column-name>, <aggregation-kind>, FunctionOptions,
+ * <output-column-name>)`. E.g. `("x", "sum", std::nullopt, "sum-of-x")` will produce a column named
+ * "sum-of-x" in the output table, which, for each groupby key, has a row that contains the sum of
+ * the values in the column "x". Multiple column aggregations can share the same input column but
+ * all output columns must be unique and not conflict with the name of the key columns. The options
+ * are `arrow::compute::FunctionsOptions` this allows mainly to include NULLs for "count_distinct"
+ * via the `CountOptions`.
+ *
  * @return A new logical table that contains the key columns and the aggregated columns using the
  * output column names and order specified in `column_aggregations`.
  */
 LogicalTable groupby_aggregation(
   const LogicalTable& table,
   const std::vector<std::string>& keys,
-  const std::vector<std::tuple<std::string, std::string, std::string>>& column_aggregations);
+  const std::vector<std::tuple<std::string,
+                               std::string,
+                               std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>,
+                               std::string>>& column_aggregations);
 
 }  // namespace legate::dataframe

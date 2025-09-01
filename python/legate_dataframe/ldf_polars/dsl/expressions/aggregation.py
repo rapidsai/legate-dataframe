@@ -10,6 +10,7 @@ import functools
 from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
+import pyarrow.compute
 import pylibcudf as plc
 
 from legate_dataframe import LogicalColumn
@@ -49,6 +50,9 @@ class Agg(Expr):
             self.op = functools.partial(self._reduce, request=name)
         elif name == "count":
             self.op = functools.partial(self._count, include_nulls=options)
+        elif name == "n_unique":
+            # request=("count_distinct", pa.compute.CountOptions()) not supported yet
+            self.op = self._n_unique
         else:
             raise NotImplementedError(f"Unsupported aggregation {name=}.")
 
@@ -57,6 +61,9 @@ class Agg(Expr):
             reduction.reduce(column.obj, request, self.dtype),
             name=column.name,
         )
+
+    def _n_unique(self, column: Column) -> Column:
+        raise NotImplementedError("n_unique not supported yet in normal reduce")
 
     def _count(self, column: Column, *, include_nulls: bool) -> Column:
         if include_nulls:
@@ -90,4 +97,6 @@ class Agg(Expr):
 
     @property
     def agg_request(self):
+        if self.name == "n_unique":
+            return ("count_distinct", pa.compute.CountOptions(mode="all"))
         return self.name

@@ -93,7 +93,8 @@ TYPED_TEST(GroupByAggregationTest, single_sum_with_nulls)
   auto expected =
     ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
 
-  auto result = groupby_aggregation(table, {"key"}, {std::make_tuple("value", "sum", "sum")});
+  auto result =
+    groupby_aggregation(table, {"key"}, {std::make_tuple("value", "sum", std::nullopt, "sum")});
 
   result = legate::dataframe::sort(result, {"key"}, {true}, true, true);
 
@@ -114,9 +115,11 @@ TYPED_TEST(GroupByAggregationTest, nunique_and_max)
   auto table = LogicalTable({keys_column, vals1_column, vals2_column}, names);
 
   // Create expected result using Arrow
+  auto count_opts =
+    std::make_shared<arrow::compute::CountOptions>(arrow::compute::CountOptions::CountMode::ALL);
   arrow::compute::Aggregate nunique_agg1("hash_count_distinct", {"vals1"}, "nunique1");
   arrow::compute::Aggregate max_agg1("hash_max", {"vals1"}, "max1");
-  arrow::compute::Aggregate nunique_agg2("hash_count_distinct", {"vals2"}, "nunique2");
+  arrow::compute::Aggregate nunique_agg2("hash_count_distinct", count_opts, "vals2", "nunique2");
   arrow::compute::Aggregate max_agg2("hash_max", {"vals2"}, "max2");
 
   arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
@@ -127,12 +130,13 @@ TYPED_TEST(GroupByAggregationTest, nunique_and_max)
   auto expected =
     ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
 
-  auto result = groupby_aggregation(table,
-                                    {"key"},
-                                    {std::make_tuple("vals1", "count_distinct", "nunique1"),
-                                     std::make_tuple("vals1", "max", "max1"),
-                                     std::make_tuple("vals2", "count_distinct", "nunique2"),
-                                     std::make_tuple("vals2", "max", "max2")});
+  auto result =
+    groupby_aggregation(table,
+                        {"key"},
+                        {std::make_tuple("vals1", "count_distinct", std::nullopt, "nunique1"),
+                         std::make_tuple("vals1", "max", std::nullopt, "max1"),
+                         std::make_tuple("vals2", "count_distinct", count_opts, "nunique2"),
+                         std::make_tuple("vals2", "max", std::nullopt, "max2")});
 
   result = legate::dataframe::sort(result, {"key"}, {true}, true, true);
 
@@ -164,10 +168,10 @@ TYPED_TEST(GroupByAggregationTest, stddev_and_mean_with_multiple_keys)
 
   auto result = groupby_aggregation(table,
                                     {"keys1", "keys2"},
-                                    {std::make_tuple("vals1", "stddev", "stddev1"),
-                                     std::make_tuple("vals1", "mean", "mean1"),
-                                     std::make_tuple("vals2", "stddev", "stddev2"),
-                                     std::make_tuple("vals2", "mean", "mean2")});
+                                    {std::make_tuple("vals1", "stddev", std::nullopt, "stddev1"),
+                                     std::make_tuple("vals1", "mean", std::nullopt, "mean1"),
+                                     std::make_tuple("vals2", "stddev", std::nullopt, "stddev2"),
+                                     std::make_tuple("vals2", "mean", std::nullopt, "mean2")});
 
   result = legate::dataframe::sort(result, {"keys1", "keys2"}, {true, true}, true, true);
 

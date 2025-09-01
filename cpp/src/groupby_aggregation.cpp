@@ -50,13 +50,21 @@ std::string arrow_aggregation_name(std::string name)
   std::vector<arrow::compute::Aggregate> aggregates;
   auto column_aggs_size = argument::get_next_scalar<size_t>(ctx);
   for (size_t i = 0; i < column_aggs_size; ++i) {
-    auto in_col_idx  = argument::get_next_scalar<size_t>(ctx);
-    auto kind        = argument::get_next_scalar<std::string>(ctx);
+    auto in_col_idx = argument::get_next_scalar<size_t>(ctx);
+    auto kind       = argument::get_next_scalar<std::string>(ctx);
+    auto options =
+      argument::get_next_scalar<std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>>(
+        ctx);
     auto out_col_idx = argument::get_next_scalar<size_t>(ctx);
     auto name        = arrow_aggregation_name(kind);
     if (name == "hash_count_all") {
+      if (options.has_value()) {
+        throw std::invalid_argument("count_all does not support options");
+      }
       assert(in_col_idx == key_col_idx[0]);
       aggregates.push_back({name, std::to_string(i)});
+    } else if (options.has_value()) {
+      aggregates.push_back({name, options.value(), std::to_string(in_col_idx), std::to_string(i)});
     } else {
       aggregates.push_back({name, std::to_string(in_col_idx), std::to_string(i)});
     }
@@ -89,9 +97,12 @@ std::string arrow_aggregation_name(std::string name)
 
 namespace {
 
-LogicalColumn make_output_column(const LogicalColumn& values, std::string aggregation_kind)
+LogicalColumn make_output_column(
+  const LogicalColumn& values,
+  const std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>& options,
+  std::string aggregation_kind)
 {
-  if (aggregation_kind == "count_all") {
+  if (aggregation_kind == "count_all" || aggregation_kind == "count_distinct") {
     return LogicalColumn::empty_like(arrow::int64(), /* nullable = */ false);
   }
 
@@ -101,13 +112,18 @@ LogicalColumn make_output_column(const LogicalColumn& values, std::string aggreg
                                   {ARROW_RESULT(arrow::MakeEmptyArray(arrow::int32())),
                                    ARROW_RESULT(arrow::MakeEmptyArray(values.arrow_type()))});
 
+  arrow::compute::Aggregate agg;
+  if (options.has_value()) {
+    agg = arrow::compute::Aggregate(
+      task::arrow_aggregation_name(aggregation_kind), options.value(), "values", "result");
+  } else {
+    agg =
+      arrow::compute::Aggregate(task::arrow_aggregation_name(aggregation_kind), "values", "result");
+  }
+
   arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
     {{"table_source", arrow::acero::TableSourceNodeOptions(table)},
-     {"aggregate",
-      arrow::acero::AggregateNodeOptions(
-        {arrow::compute::Aggregate(
-          task::arrow_aggregation_name(aggregation_kind), {"values"}, "result")},
-        {"keys", "values"})}});
+     {"aggregate", arrow::acero::AggregateNodeOptions({agg}, {"keys", "values"})}});
   auto result =
     ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
   // Note: Left nullable here as true - not sure there is a way to know in advance if it should
@@ -119,12 +135,31 @@ LogicalColumn make_output_column(const LogicalColumn& values, std::string aggreg
 LogicalTable groupby_aggregation(
   const LogicalTable& table,
   const std::vector<std::string>& keys,
-  const std::vector<std::tuple<std::string, std::string, std::string>>&  // input column name,
-                                                                         // aggregation kind, output
-                                                                         // column name
-    column_aggregations)
+  // input column name, aggregation kind, aggregation options (may be nullptr), result column name
+  const std::vector<std::tuple<std::string,
+                               std::string,
+                               std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>,
+                               std::string>>& column_aggregations)
 {
   if (keys.size() == 0) { throw std::invalid_argument("must pass at least one key column"); }
+
+  for (const auto& [in_col_name, kind, options, out_col_name] : column_aggregations) {
+    // Check that the options are valid for the given function/kind.
+    auto registry = arrow::compute::GetFunctionRegistry();
+    auto func     = ARROW_RESULT(registry->GetFunction(kind));
+    if (!func) { throw std::invalid_argument("unknown aggregation function: " + kind); }
+    if (options.has_value()) {
+      std::string options_type          = options.value()->type_name();
+      std::string expected_options_type = func->doc().options_class;
+      if (expected_options_type != options_type) {
+        throw std::invalid_argument("options type '" + std::string(options_type) +
+                                    "' does not match expected type '" + expected_options_type +
+                                    "' for function '" + kind + "'");
+      }
+    } else if (func->doc().options_required) {
+      throw std::invalid_argument("options are required for function '" + kind + "'");
+    }
+  }
 
   // Let's create the output table
   std::vector<LogicalColumn> output_columns;
@@ -135,10 +170,10 @@ LogicalTable groupby_aggregation(
     output_column_names.push_back(std::move(key));
   }
   // And then it has one column per column aggregation
-  for (const auto& [in_col_name, kind, out_col_name] : column_aggregations) {
+  for (const auto& [in_col_name, kind, options, out_col_name] : column_aggregations) {
     // Use the provided column, or the first key for count_all:
     auto col = (kind != "count_all") ? table.get_column(in_col_name) : table.get_column(keys[0]);
-    output_columns.push_back(make_output_column(col, kind));
+    output_columns.push_back(make_output_column(col, options, kind));
 
     if (std::find(output_column_names.begin(), output_column_names.end(), out_col_name) !=
         output_column_names.end()) {
@@ -155,8 +190,12 @@ LogicalTable groupby_aggregation(
   }
 
   // Since `PhysicalTable` doesn't have column names, we convert names to indices
-  std::vector<std::tuple<size_t, std::string, size_t>> column_aggs;
-  for (const auto& [in_col_name, kind, out_col_name] : column_aggregations) {
+  std::vector<std::tuple<size_t,
+                         std::string,
+                         std::optional<std::shared_ptr<arrow::compute::FunctionOptions>>,
+                         size_t>>
+    column_aggs;
+  for (const auto& [in_col_name, kind, options, out_col_name] : column_aggregations) {
     if (kind == "count_all" && in_col_name != "") {
       throw std::invalid_argument("count_all must use the empty string as column name.");
     }
@@ -165,7 +204,7 @@ LogicalTable groupby_aggregation(
 
     // We index the output columns after the key columns
     size_t out_col_idx = keys.size() + column_aggs.size();
-    column_aggs.push_back(std::make_tuple(in_col_idx, kind, out_col_idx));
+    column_aggs.push_back(std::make_tuple(in_col_idx, kind, options, out_col_idx));
   }
 
   auto runtime = legate::Runtime::get_runtime();
@@ -176,9 +215,10 @@ LogicalTable groupby_aggregation(
   argument::add_next_scalar_vector(task, key_col_idx);
   // Add the `column_aggs` task argument
   argument::add_next_scalar(task, column_aggs.size());
-  for (const auto& [in_col_idx, kind, out_col_idx] : column_aggs) {
+  for (const auto& [in_col_idx, kind, options, out_col_idx] : column_aggs) {
     argument::add_next_scalar(task, in_col_idx);
     argument::add_next_scalar(task, kind);
+    argument::add_next_scalar(task, options);
     argument::add_next_scalar(task, out_col_idx);
   }
 
