@@ -20,8 +20,6 @@
 #include <stdexcept>
 #include <string>
 
-#include <cudf/column/column_view.hpp>
-
 #include <legate_dataframe/core/table.hpp>
 #include <type_traits>
 
@@ -62,25 +60,6 @@ LogicalTable::LogicalTable(std::vector<LogicalColumn> columns,
 {
 }
 
-namespace {
-std::vector<LogicalColumn> from_cudf_table(const cudf::table_view& cudf_table,
-                                           rmm::cuda_stream_view stream)
-{
-  std::vector<LogicalColumn> ret;
-  for (const cudf::column_view& col : cudf_table) {
-    ret.emplace_back(col, stream);
-  }
-  return ret;
-}
-}  // namespace
-
-LogicalTable::LogicalTable(cudf::table_view cudf_table,
-                           const std::vector<std::string>& column_names,
-                           rmm::cuda_stream_view stream)
-  : LogicalTable(from_cudf_table(cudf_table, stream), column_names)
-{
-}
-
 size_t LogicalTable::num_rows() const
 {
   if (unbound()) {
@@ -95,20 +74,6 @@ bool LogicalTable::unbound() const
   // If one of the underlying columns are unbound, the table as a whole is unbound.
   return std::any_of(
     columns_.cbegin(), columns_.cend(), [](const LogicalColumn& col) { return col.unbound(); });
-}
-
-std::unique_ptr<cudf::table> LogicalTable::get_cudf(rmm::cuda_stream_view stream,
-                                                    rmm::mr::device_memory_resource* mr) const
-{
-  if (unbound()) {
-    throw std::runtime_error("cannot get a cudf table from an unbound LogicalTable");
-  }
-  std::vector<std::unique_ptr<cudf::column>> cols;
-  cols.reserve(columns_.size());
-  for (const auto& col : columns_) {
-    cols.push_back(col.get_cudf(stream, mr));
-  }
-  return std::make_unique<cudf::table>(std::move(cols));
 }
 
 std::shared_ptr<arrow::Table> LogicalTable::get_arrow() const

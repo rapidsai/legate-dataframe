@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # distutils: language = c++
@@ -6,6 +6,7 @@
 
 
 from libc.stdint cimport int32_t
+from libcpp cimport bool as cpp_bool
 from libcpp.set cimport set as cpp_set
 from libcpp.string cimport string
 from libcpp.vector cimport vector
@@ -16,13 +17,6 @@ from typing import Iterable, Optional
 
 from legate_dataframe.utils import _track_provenance
 
-
-cdef extern from "<cudf/types.hpp>" namespace "cudf":
-    cpdef enum class null_equality(int32_t):
-        """Options for the NULL equality (``EQUAL``, ``UNEQUAL``).
-        """
-        EQUAL,
-        UNEQUAL
 
 cdef extern from "<legate_dataframe/join.hpp>" namespace "legate::dataframe":
     cpdef enum class JoinType(int32_t):
@@ -48,7 +42,7 @@ cdef extern from "<legate_dataframe/join.hpp>" nogil:
         JoinType join_type,
         const vector[string]& lhs_out_columns,
         const vector[string]& rhs_out_columns,
-        null_equality compare_nulls,
+        cpp_bool nulls_equal,
         BroadcastInput broadcast
     ) except +
 
@@ -63,7 +57,7 @@ def join(
     JoinType join_type,
     lhs_out_columns: Optional[Iterable[str]] = None,
     rhs_out_columns: Optional[Iterable[str]] = None,
-    null_equality compare_nulls = null_equality.EQUAL,
+    nulls_equal: bool = True,
     BroadcastInput broadcast = BroadcastInput.AUTO
 ):
     """Perform an join between the specified tables.
@@ -93,7 +87,7 @@ def join(
         Right table column names to include in the result. If None,
         all columns are included. All names in `lhs_out_columns` and `rhs_out_columns`
         must be unique.
-    compare_nulls
+    nulls_equal
         Controls whether null join-key values should match or not
     broadcast : BroadcastInput
         Can be ``RIGHT`` or ``LEFT`` to indicate that the array is "broadcast"
@@ -140,7 +134,7 @@ def join(
             join_type,
             lhs_out_columns_vector,
             rhs_out_columns_vector,
-            compare_nulls,
+            nulls_equal,
             broadcast
         )
     )

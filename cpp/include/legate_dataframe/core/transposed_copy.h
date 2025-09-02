@@ -20,11 +20,14 @@
 #include <legate.h>
 #include <optional>
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <cudf/table/table_view.hpp>
+#endif
 #include <legate_dataframe/core/task_context.hpp>
 
 namespace legate::dataframe {
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 void copy_into_tranposed(TaskContext& ctx,
                          legate::PhysicalArray& array,
                          std::vector<std::unique_ptr<cudf::column>> columns,
@@ -37,6 +40,7 @@ void copy_into_tranposed(TaskContext& ctx,
                          std::vector<std::unique_ptr<cudf::column>> columns,
                          legate::Scalar& null_value,
                          legate::Type type);
+#endif
 
 void copy_into_tranposed(TaskContext& ctx,
                          void* data_ptr,

@@ -1,5 +1,5 @@
 # =============================================================================
-# Copyright (c) 2022-2024, NVIDIA CORPORATION.
+# Copyright (c) 2022-2025, NVIDIA CORPORATION.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License. You may obtain a copy of the License at
@@ -44,6 +44,10 @@ option(
   FIND_LegateDataframe
   "Search for existing legate dataframe C++ installations before defaulting to local files" OFF
 )
+option(LEGATE_DATAFRAME_USE_CUDA "Build library with gpu_tasks" ON)
+if(LEGATE_DATAFRAME_USE_CUDA)
+  add_definitions(-DLEGATE_DATAFRAME_USE_CUDA)
+endif()
 
 if(FIND_LegateDataframe)
   find_package(LegateDataframe ${PyLegateDataframe_version})

@@ -46,7 +46,7 @@ LogicalTable apply_boolean_mask(const LogicalTable& tbl, const LogicalColumn& bo
   auto runtime = legate::Runtime::get_runtime();
   auto ret     = LogicalTable::empty_like(tbl);
 
-  if (boolean_mask.cudf_type().id() != cudf::type_id::BOOL8) {
+  if (boolean_mask.arrow_type() != arrow::boolean()) {
     throw std::invalid_argument("boolean mask column must have a bool dtype.");
   }
 

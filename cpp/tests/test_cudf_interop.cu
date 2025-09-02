@@ -182,3 +182,23 @@ TYPED_TEST(CudfInterOp, ScalarConversion)
   auto typed_result = static_cast<ScalarType*>(result.get());
   EXPECT_EQ(typed_result->value(), scalar_val);
 }
+
+TEST(CudfInterOp, ColumnNameFromCudf)
+{
+  const std::vector<std::string> names = {"a", "b"};
+  std::vector<std::unique_ptr<cudf::column>> cols;
+  cudf::test::fixed_width_column_wrapper<int32_t> a({0, 1, 2, 3, 4});
+  cudf::test::fixed_width_column_wrapper<int32_t> b({5, 6, 7, 8, 9});
+  cols.push_back(a.release());
+  cols.push_back(b.release());
+  cudf::table original(std::move(cols));
+
+  auto tbl = LogicalTable(original, names);
+  for (size_t i = 0; i < names.size(); ++i) {
+    const auto& col = tbl.get_column(names[i]);
+    CUDF_TEST_EXPECT_COLUMNS_EQUAL(col.get_cudf()->view(), original.get_column(i));
+  }
+
+  auto tbl_like = LogicalTable::empty_like(original.view(), names);
+  EXPECT_TRUE(tbl_like.get_column_names() == tbl.get_column_names());
+}

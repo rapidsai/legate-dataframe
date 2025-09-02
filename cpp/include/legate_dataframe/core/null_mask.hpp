@@ -17,16 +17,19 @@
 #pragma once
 
 #include <arrow/api.h>
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <cudf/null_mask.hpp>
 #include <cudf/utilities/bit.hpp>
 #include <rmm/cuda_stream.hpp>
 #include <rmm/device_buffer.hpp>
 #include <rmm/mr/device/device_memory_resource.hpp>
+#endif
 
 #include <legate.h>
 
 namespace legate::dataframe {
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 /**
  * @brief Convert a null mask of booleans (legate) to bits (cudf)
  *
@@ -40,6 +43,7 @@ namespace legate::dataframe {
                                                          legate::Memory::Kind mem_kind,
                                                          rmm::cuda_stream_view stream,
                                                          rmm::mr::device_memory_resource* mr);
+#endif
 
 /**
  * @brief Converts a boolean null mask stored in a PhysicalStore to an Arrow bit-packed buffer.
@@ -54,6 +58,7 @@ namespace legate::dataframe {
 [[nodiscard]] std::shared_ptr<arrow::Buffer> null_mask_bools_to_bits(
   const legate::PhysicalStore& bools);
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 /**
  * @brief Convert a null mask of bits (cudf) to booleans (legate)
  *
@@ -66,5 +71,6 @@ void null_mask_bits_to_bools(int64_t bools_size,
                              bool* bools,
                              const cudf::bitmask_type* bitmask,
                              rmm::cuda_stream_view stream);
+#endif
 
 }  // namespace legate::dataframe

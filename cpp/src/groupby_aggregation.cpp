@@ -87,7 +87,8 @@ std::string arrow_aggregation_name(std::string name)
   arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
     {{"table_source", arrow::acero::TableSourceNodeOptions(repartitioned)},
      {"aggregate", arrow::acero::AggregateNodeOptions(aggregates, key_names)}});
-  auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+  auto result =
+    ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
 
   output.move_into(std::move(result));
 }
@@ -123,10 +124,11 @@ LogicalColumn make_output_column(
   arrow::acero::Declaration plan = arrow::acero::Declaration::Sequence(
     {{"table_source", arrow::acero::TableSourceNodeOptions(table)},
      {"aggregate", arrow::acero::AggregateNodeOptions({agg}, {"keys", "values"})}});
-  auto result = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
+  auto result =
+    ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
   // Note: Left nullable here as true - not sure there is a way to know in advance if it should
   // be nullable or not. The safe option is to set it true always.
-  return LogicalColumn::empty_like(to_cudf_type(result->column(2)->type()), /* nullable = */ true);
+  return LogicalColumn::empty_like(result->column(2)->type(), /* nullable = */ true);
 }
 }  // namespace
 

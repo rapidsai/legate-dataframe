@@ -236,4 +236,82 @@ legate::Type to_legate_type(cudf::type_id dtype)
   }
 }
 
+std::shared_ptr<arrow::DataType> to_arrow_type(cudf::type_id code)
+{
+  switch (code) {
+    case cudf::type_id::INT8: {
+      return arrow::int8();
+    }
+    case cudf::type_id::INT16: {
+      return arrow::int16();
+    }
+    case cudf::type_id::INT32: {
+      return arrow::int32();
+    }
+    case cudf::type_id::INT64: {
+      return arrow::int64();
+    }
+    case cudf::type_id::UINT8: {
+      return arrow::uint8();
+    }
+    case cudf::type_id::UINT16: {
+      return arrow::uint16();
+    }
+    case cudf::type_id::UINT32: {
+      return arrow::uint32();
+    }
+    case cudf::type_id::UINT64: {
+      return arrow::uint64();
+    }
+    case cudf::type_id::FLOAT32: {
+      return arrow::float32();
+    }
+    case cudf::type_id::FLOAT64: {
+      return arrow::float64();
+    }
+    case cudf::type_id::BOOL8: {
+      return arrow::boolean();
+    }
+    case cudf::type_id::STRING: {
+      return arrow::utf8();
+    }
+    case cudf::type_id::TIMESTAMP_SECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::SECOND);
+    }
+    case cudf::type_id::TIMESTAMP_MILLISECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::MILLI);
+    }
+    case cudf::type_id::TIMESTAMP_MICROSECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::MICRO);
+    }
+    case cudf::type_id::TIMESTAMP_NANOSECONDS: {
+      return arrow::timestamp(arrow::TimeUnit::NANO);
+    }
+    case cudf::type_id::TIMESTAMP_DAYS: {
+      return arrow::date32();
+    }
+    case cudf::type_id::DURATION_SECONDS: {
+      return arrow::duration(arrow::TimeUnit::SECOND);
+    }
+    case cudf::type_id::DURATION_MILLISECONDS: {
+      return arrow::duration(arrow::TimeUnit::MILLI);
+    }
+    case cudf::type_id::DURATION_MICROSECONDS: {
+      return arrow::duration(arrow::TimeUnit::MICRO);
+    }
+    case cudf::type_id::DURATION_NANOSECONDS: {
+      return arrow::duration(arrow::TimeUnit::NANO);
+    }
+    case cudf::type_id::DICTIONARY32:
+    case cudf::type_id::DECIMAL32:
+    case cudf::type_id::DECIMAL64:
+    case cudf::type_id::DECIMAL128:
+    case cudf::type_id::LIST:
+    case cudf::type_id::STRUCT:
+    default:
+      throw std::invalid_argument(
+        "unsupported cudf datatype: " +
+        std::to_string(static_cast<std::underlying_type_t<cudf::type_id>>(code)));
+  }
+}
 }  // namespace legate::dataframe

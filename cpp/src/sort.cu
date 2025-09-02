@@ -291,8 +291,10 @@ static std::unique_ptr<cudf::table> apply_limit(std::unique_ptr<cudf::table> tbl
 {
   TaskContext ctx{context};
 
-  const auto tbl            = argument::get_next_input<PhysicalTable>(ctx);
-  const auto keys_idx       = argument::get_next_scalar_vector<cudf::size_type>(ctx);
+  const auto tbl       = argument::get_next_input<PhysicalTable>(ctx);
+  const auto keys_idx_ = argument::get_next_scalar_vector<std::size_t>(ctx);
+  std::vector<cudf::size_type> keys_idx(keys_idx_.begin(),
+                                        keys_idx_.end());  // Change to cudf size type
   const auto sort_ascending = argument::get_next_scalar_vector<bool>(ctx);
   const auto nulls_at_end   = argument::get_next_scalar<bool>(ctx);
   const auto stable         = argument::get_next_scalar<bool>(ctx);

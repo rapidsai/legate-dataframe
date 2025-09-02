@@ -52,7 +52,7 @@ namespace task {
 LogicalColumn sequence(size_t size, int64_t init)
 {
   auto runtime = legate::Runtime::get_runtime();
-  auto ret     = LogicalColumn::empty_like(cudf::data_type{cudf::type_id::INT64}, false);
+  auto ret     = LogicalColumn::empty_like(arrow::int64(), false);
   legate::AutoTask task =
     runtime->create_task(get_library(), task::SequenceTask::TASK_CONFIG.task_id());
   argument::add_next_scalar(task, size);

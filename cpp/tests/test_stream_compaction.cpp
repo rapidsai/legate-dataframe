@@ -14,48 +14,35 @@
  * limitations under the License.
  */
 
-#include <cudf/column/column_view.hpp>
-#include <cudf/stream_compaction.hpp>
-
-#include <cudf_test/base_fixture.hpp>
-#include <cudf_test/column_wrapper.hpp>
-#include <cudf_test/table_utilities.hpp>
-#include <cudf_test/type_lists.hpp>
-
+#include <arrow/compute/api.h>
+#include <gtest/gtest.h>
 #include <legate_dataframe/stream_compaction.hpp>
 
 using namespace legate::dataframe;
-template <typename T>
-using column_wrapper = cudf::test::fixed_width_column_wrapper<T>;
-using strcol_wrapper = cudf::test::strings_column_wrapper;
-using CVector        = std::vector<std::unique_ptr<cudf::column>>;
 
 TEST(StreamCompactionTest, ApplyBooleanMask)
 {
-  column_wrapper<int32_t> col_0{{5, 4, 3, 1, 2, 0}};
-  strcol_wrapper col_1({"this", "is", "a", "string", "column", "!"});
-  column_wrapper<double> col_2{{0, 1, 2, 3, 4, 5}};
+  LogicalColumn col_0(std::vector<int32_t>{5, 4, 3, 1, 2, 0});
+  LogicalColumn col_1(std::vector<std::string>{"this", "is", "a", "string", "column", "!"});
+  LogicalColumn col_2(std::vector<double>{0, 1, 2, 3, 4, 5});
 
-  column_wrapper<bool> boolean_mask{{true, false, true, true, false, false}};
+  LogicalColumn boolean_mask(std::vector<bool>{true, false, true, true, false, false});
 
-  CVector cols;
-  cols.push_back(col_0.release());
-  cols.push_back(col_1.release());
-  cols.push_back(col_2.release());
+  LogicalTable tbl{{col_0, col_1, col_2}, {"a", "b", "c"}};
 
-  cudf::table tbl(std::move(cols));
-
-  LogicalTable lg_tbl{tbl.view(), {"a", "b", "c"}};
-
-  auto expect = cudf::apply_boolean_mask(tbl, boolean_mask);
-  auto result = apply_boolean_mask(lg_tbl, LogicalColumn{boolean_mask});
-  CUDF_TEST_EXPECT_TABLES_EQUIVALENT(*expect, result.get_cudf()->view());
+  auto result   = apply_boolean_mask(tbl, boolean_mask);
+  auto expected = ARROW_RESULT(arrow::compute::CallFunction(
+                                 "filter", {tbl.get_arrow(), boolean_mask.get_arrow()}))
+                    .table();
+  EXPECT_TRUE(result.get_arrow()->Equals(*expected));
 
   // Additionally, check that a null mask is honored by legate-dataframe
-  column_wrapper<bool> boolean_mask_nulls{{true, false, true, true, false, false},
-                                          {true, true, true, false, false, true}};
+  LogicalColumn boolean_mask_nulls(std::vector<bool>{true, false, true, true, false, false},
+                                   {true, true, true, false, false, true});
 
-  expect = cudf::apply_boolean_mask(tbl, boolean_mask_nulls);
-  result = apply_boolean_mask(lg_tbl, LogicalColumn{boolean_mask_nulls});
-  CUDF_TEST_EXPECT_TABLES_EQUIVALENT(*expect, result.get_cudf()->view());
+  result   = apply_boolean_mask(tbl, boolean_mask_nulls);
+  expected = ARROW_RESULT(arrow::compute::CallFunction(
+                            "filter", {tbl.get_arrow(), boolean_mask_nulls.get_arrow()}))
+               .table();
+  EXPECT_TRUE(result.get_arrow()->Equals(*expected));
 }

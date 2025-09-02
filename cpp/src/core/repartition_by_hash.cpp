@@ -187,8 +187,9 @@ std::vector<std::shared_ptr<arrow::Table>> partition_arrow_table(
     {{"table_source", arrow::acero::TableSourceNodeOptions(table_with_hash)},
      {"aggregate", arrow::acero::AggregateNodeOptions(aggregations, {hash_column_name})}});
   // Each row of the 'lists' table contains a table for the group
-  auto lists = ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan)));
-  auto keys  = lists->GetColumnByName(hash_column_name);
+  auto lists =
+    ARROW_RESULT(arrow::acero::DeclarationToTable(std::move(plan), false /*use_threads*/));
+  auto keys = lists->GetColumnByName(hash_column_name);
 
   // Fill with empty table in case no keys for a rank
   std::vector<std::shared_ptr<arrow::Table>> result(

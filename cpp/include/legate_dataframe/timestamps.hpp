@@ -18,8 +18,10 @@
 
 #include <string>
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <cudf/datetime.hpp>
 #include <cudf/types.hpp>
+#endif
 
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/library.hpp>
@@ -29,14 +31,18 @@ namespace task {
 class ToTimestampsTask : public Task<ToTimestampsTask, OpCode::ToTimestamps> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 class ExtractTimestampComponentTask
   : public Task<ExtractTimestampComponentTask, OpCode::ExtractTimestampComponent> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 }  // namespace task
 

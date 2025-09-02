@@ -29,19 +29,25 @@ namespace task {
 class CSVRead : public Task<CSVRead, OpCode::CSVRead> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 class CSVWrite : public Task<CSVWrite, OpCode::CSVWrite> {
  public:
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static constexpr auto GPU_VARIANT_OPTIONS = legate::VariantOptions{}
                                                 .with_has_allocations(true)
                                                 .with_elide_device_ctx_sync(true)
                                                 .with_has_side_effect(true);
+#endif
   static constexpr auto CPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(true).with_has_side_effect(true);
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 }  // namespace task
 /**

@@ -21,8 +21,10 @@
 #include <vector>
 
 #include <arrow/api.h>
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
+#endif
 
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/task_argument.hpp>
@@ -69,6 +71,7 @@ class LogicalTable {
    */
   LogicalTable(std::vector<LogicalColumn> columns, const std::vector<std::string>& column_names);
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Create a table from a local cudf table
    *
@@ -82,6 +85,7 @@ class LogicalTable {
   LogicalTable(cudf::table_view cudf_table,
                const std::vector<std::string>& column_names,
                rmm::cuda_stream_view stream = cudf::get_default_stream());
+#endif
 
   /**
    * @brief Create a new unbounded table from an existing table
@@ -99,6 +103,7 @@ class LogicalTable {
     return LogicalTable(std::move(columns), other.get_column_names());
   }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Create a new unbounded table from an existing cudf table
    *
@@ -116,6 +121,7 @@ class LogicalTable {
     }
     return LogicalTable(std::move(columns), column_names);
   }
+#endif
 
  public:
   LogicalTable(const LogicalTable& other)            = default;
@@ -303,6 +309,7 @@ class LogicalTable {
    */
   [[nodiscard]] bool unbound() const;
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy the logical table into a local cudf table
 
@@ -316,6 +323,7 @@ class LogicalTable {
   std::unique_ptr<cudf::table> get_cudf(
     rmm::cuda_stream_view stream        = cudf::get_default_stream(),
     rmm::mr::device_memory_resource* mr = rmm::mr::get_current_device_resource()) const;
+#endif
 
   /**
    * @brief Copy the logical table into a local arrow table
@@ -363,6 +371,7 @@ class PhysicalTable {
    */
   [[nodiscard]] int32_t num_columns() const { return columns_.size(); }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Return a cudf table view of this physical table
    *
@@ -381,6 +390,7 @@ class PhysicalTable {
     }
     return cudf::table_view(std::move(cols));
   }
+#endif
 
   /**
    * @brief Creates an Arrow Table view using the specified column names.
@@ -411,11 +421,12 @@ class PhysicalTable {
     for (std::size_t i = 0; i < columns_.size(); i++) {
       const auto& col = columns_[i];
       cols.push_back(col.arrow_array_view());
-      fields.push_back(arrow::field(column_names[i], col.arrow_type()));
+      fields.push_back(arrow::field(column_names[i], cols.back()->type()));
     }
     return arrow::Table::Make(arrow::schema(fields), std::move(cols));
   }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy local cudf columns into this bound physical table
    *
@@ -434,6 +445,7 @@ class PhysicalTable {
       columns_[i].copy_into(std::move(columns[i]));
     }
   }
+#endif
 
   /**
    * @brief Copy a local arrow table into this bound physical table
@@ -459,6 +471,7 @@ class PhysicalTable {
     }
   }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy local cudf table into this bound physical table
    *
@@ -467,7 +480,9 @@ class PhysicalTable {
    * @param table The cudf table to copy
    */
   void copy_into(std::unique_ptr<cudf::table> table) { copy_into(table->release()); }
+#endif
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Move local cudf columns into this unbound physical table
    *
@@ -484,6 +499,7 @@ class PhysicalTable {
       columns_[i].move_into(std::move(columns[i]));
     }
   }
+#endif
 
   /**
    * @brief Move local arrow arrays into this unbound physical table
@@ -510,12 +526,14 @@ class PhysicalTable {
     }
   }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Move local cudf table into this unbound physical table
    *
    * @param table The cudf table to move
    */
   void move_into(std::unique_ptr<cudf::table> table) { move_into(table->release()); }
+#endif
 
   /**
    * @brief Makes the unbound table empty. Valid only when the table is unbound.
@@ -552,6 +570,7 @@ class PhysicalTable {
    */
   std::vector<PhysicalColumn> release() { return std::move(columns_); }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Returns the column dtypes
    *
@@ -566,6 +585,7 @@ class PhysicalTable {
     }
     return dtypes;
   }
+#endif
 
   [[nodiscard]] std::vector<std::shared_ptr<arrow::DataType>> arrow_types() const
   {

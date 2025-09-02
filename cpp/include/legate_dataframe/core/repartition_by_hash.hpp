@@ -26,11 +26,13 @@ namespace legate::dataframe::task {
 std::vector<std::shared_ptr<arrow::Table>> shuffle(
   TaskContext& ctx, const std::vector<std::shared_ptr<arrow::Table>>& tbl_partitioned);
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 std::pair<std::vector<cudf::table_view>,
           std::unique_ptr<std::pair<std::map<int, rmm::device_buffer>, cudf::table>>>
 shuffle(TaskContext& ctx,
         std::vector<cudf::table_view>& tbl_partitioned,
         std::unique_ptr<cudf::table> owning_table);
+#endif
 
 /**
  * @brief Repartition the table into hash table buckets for each rank/node.
@@ -47,10 +49,12 @@ shuffle(TaskContext& ctx,
  * @param columns_to_hash Indices of input columns to hash
  * @return The repartitioned table where the partition of each task hashes to the same
  */
+#ifdef LEGATE_DATAFRAME_USE_CUDA
 std::unique_ptr<cudf::table> repartition_by_hash(
   TaskContext& ctx,
   const cudf::table_view& table,
   const std::vector<cudf::size_type>& columns_to_hash);
+#endif
 
 std::shared_ptr<arrow::Table> repartition_by_hash(TaskContext& ctx,
                                                   std::shared_ptr<arrow::Table> table,
