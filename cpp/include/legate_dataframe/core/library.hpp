@@ -34,6 +34,7 @@ enum : int {
   CopyIfElse,
   Copy,
   CopyOffsets,  // can apply an offset to ranges
+  Contains,
   ParquetWrite,
   ParquetRead,
   ParquetReadArray,
