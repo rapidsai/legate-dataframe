@@ -182,14 +182,15 @@ def test_numeric_aggregations(value_type, key_type, aggregation):
         # "tdigest",
     ],
 )
-def test_polars_basic(agg):
+@pytest.mark.parametrize("dtype", ["float64", "int32", "int64"])
+def test_polars_basic(agg, dtype):
     pl = pytest.importorskip("polars")
 
     mask = np.random.randint(2, size=10_000, dtype=bool)
     q = pl.DataFrame(
         {
             "a": pa.array(np.random.random(10_000), mask=mask),
-            "b": np.random.randint(100, size=10_000),
+            "b": np.random.randint(100, size=10_000).astype(dtype),
         }
     ).lazy()
 
