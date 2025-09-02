@@ -421,7 +421,7 @@ class PhysicalTable {
     for (std::size_t i = 0; i < columns_.size(); i++) {
       const auto& col = columns_[i];
       cols.push_back(col.arrow_array_view());
-      fields.push_back(arrow::field(column_names[i], col.arrow_type()));
+      fields.push_back(arrow::field(column_names[i], cols.back()->type()));
     }
     return arrow::Table::Make(arrow::schema(fields), std::move(cols));
   }
