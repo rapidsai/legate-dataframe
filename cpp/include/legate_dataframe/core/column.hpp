@@ -632,7 +632,11 @@ class PhysicalColumn {
    *
    * @return true if data is partitioned.
    */
-  [[nodiscard]] bool is_partitioned() const { return array_.data().is_partitioned(); }
+  [[nodiscard]] bool is_partitioned() const
+  {
+    if (!array_.nested()) { return array_.data().is_partitioned(); }
+    return array_.as_string_array().ranges().data().is_partitioned();
+  }
 
 #ifdef LEGATE_DATAFRAME_USE_CUDA
   /**

@@ -9,7 +9,6 @@ import itertools
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-import polars as pl
 import pylibcudf as plc
 
 from legate_dataframe.ldf_polars.dsl import expr, ir
@@ -134,7 +133,7 @@ def decompose_single_agg(
             )
         elif agg.name == "sum":
             col = (
-                expr.Cast(agg.dtype, expr.Col(pl.datatypes.Int64(), name))
+                expr.Cast(agg.dtype, expr.Col(plc.DataType(plc.TypeId.INT64), name))
                 if (
                     plc.traits.is_integral(agg.dtype)
                     and agg.dtype.id() != plc.TypeId.INT64
