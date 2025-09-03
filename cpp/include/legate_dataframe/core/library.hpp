@@ -51,7 +51,8 @@ enum : int {
   ReduceLocal,
   Sequence,
   Sort,
-  GroupByAggregation
+  GroupByAggregation,
+  StringMatches
 };
 }
 
