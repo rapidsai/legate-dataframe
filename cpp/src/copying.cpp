@@ -32,6 +32,11 @@ namespace legate::dataframe::task {
   const auto rhs  = argument::get_next_input<PhysicalColumn>(ctx);
   auto output     = argument::get_next_output<PhysicalColumn>(ctx);
 
+  if (cond.num_rows() <= 0) {
+    output.bind_empty_data();
+    return;
+  }
+
   std::vector<arrow::Datum> args;
   args.reserve(3);
   for (auto& column : {&cond, &lhs, &rhs}) {
@@ -84,6 +89,10 @@ struct copy_store_fn {
   const auto input = ctx.get_next_input_arg();
   auto output      = ctx.get_next_output_arg();
 
+  if (input.shape<1>().volume() <= 0) {
+    return;  // Nothing to do, but e.g. pointer getting might fail.
+  }
+
   auto in_store  = input.data();
   auto out_store = output.data();
   legate::type_dispatch(input.type().code(), copy_store_fn{}, in_store, out_store);
@@ -103,6 +112,10 @@ struct copy_store_fn {
   const auto input = ctx.get_next_input_arg();
   auto output      = ctx.get_next_output_arg();
   auto offset      = argument::get_next_scalar<int64_t>(ctx);
+
+  if (input.shape<1>().volume() <= 0) {
+    return;  // Nothing to do, but e.g. pointer getting might fail.
+  }
 
   auto in_store  = input.data();
   auto out_store = output.data();
