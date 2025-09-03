@@ -382,6 +382,15 @@ void PhysicalColumn::copy_into(std::unique_ptr<cudf::column> column)
   from_cudf(array_, column->view(), ctx_->stream(), ctx_->mr(), scalar_out_);
 }
 
+void PhysicalColumn::copy_into(const cudf::column_view& column)
+{
+  // String columns seem tricky, so only check their data for being unbound.
+  if (unbound()) {
+    throw std::invalid_argument("Cannot call `.copy_into()` on an unbound column.");
+  }
+  from_cudf(array_, column, ctx_->stream(), ctx_->mr(), scalar_out_);
+}
+
 void PhysicalColumn::copy_into(std::unique_ptr<cudf::scalar> scalar)
 {
   // NOTE: this goes via a column-view.  Moving data more directly may be

@@ -32,6 +32,26 @@ class CopyIfElseTask : public Task<CopyIfElseTask, OpCode::CopyIfElse> {
 #endif
 };
 
+class CopyTask : public Task<CopyTask, OpCode::Copy> {
+ public:
+  static constexpr auto GPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(false).with_elide_device_ctx_sync(true);
+  static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(false);
+
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+class CopyOffsetsTask : public Task<CopyOffsetsTask, OpCode::CopyOffsets> {
+ public:
+  static constexpr auto GPU_VARIANT_OPTIONS =
+    legate::VariantOptions{}.with_has_allocations(false).with_elide_device_ctx_sync(true);
+  static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(false);
+
+  static void cpu_variant(legate::TaskContext context);
+  static void gpu_variant(legate::TaskContext context);
+};
+
 }  // namespace task
 /**
  * @brief Performs a ternary assignment operation along the columns.
@@ -50,5 +70,13 @@ class CopyIfElseTask : public Task<CopyIfElseTask, OpCode::CopyIfElse> {
 LogicalColumn copy_if_else(const LogicalColumn& cond,
                            const LogicalColumn& lhs,
                            const LogicalColumn& rhs);
+
+/**
+ * @brief Concatenates columns into a single long column.
+ *
+ * @param input The columns to concatenate
+ * @return The result of the concatenate operation.
+ */
+LogicalColumn concatenate(const std::vector<LogicalColumn>& input);
 
 }  // namespace legate::dataframe

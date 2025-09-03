@@ -418,7 +418,9 @@ def _(node: pl_ir.MapFunction, translator: Translator, schema: Schema) -> ir.IR:
 
 @_translate_ir.register
 def _(node: pl_ir.Union, translator: Translator, schema: Schema) -> ir.IR:
-    raise NotImplementedError("Union not supported")
+    return ir.Union(
+        schema, node.options, *(translator.translate_ir(n=n) for n in node.inputs)
+    )
 
 
 @_translate_ir.register

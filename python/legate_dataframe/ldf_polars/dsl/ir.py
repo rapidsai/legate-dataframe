@@ -25,7 +25,7 @@ from legate_dataframe import LogicalTable
 from legate_dataframe.ldf_polars.containers import Column, DataFrame
 from legate_dataframe.ldf_polars.dsl.nodebase import Node
 from legate_dataframe.ldf_polars.utils.versions import POLARS_VERSION_LT_128
-from legate_dataframe.lib import csv, groupby_aggregation, join, parquet, sort
+from legate_dataframe.lib import copying, csv, groupby_aggregation, join, parquet, sort
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, MutableMapping, Sequence
@@ -56,7 +56,7 @@ __all__ = [
     "Select",
     "Slice",
     "Sort",
-    # "Union",
+    "Union",
 ]
 
 
@@ -788,6 +788,32 @@ class Reduce(IR):
         columns = broadcast(*(e.evaluate(df) for e in exprs))
         assert all(column.size == 1 for column in columns)
         return DataFrame(columns)
+
+
+class Union(IR):
+    """Concatenate dataframes vertically."""
+
+    __slots__ = ("zlice",)
+    _non_child = ("schema", "zlice")
+    zlice: Zlice | None
+    """Optional slice to apply to the result."""
+
+    def __init__(self, schema: Schema, zlice: Zlice | None, *children: IR):
+        self.schema = schema
+        self.zlice = zlice
+        self._non_child_args = (zlice,)
+        self.children = children
+        schema = self.children[0].schema
+
+    @classmethod
+    def do_evaluate(cls, zlice: Zlice | None, *dfs: DataFrame) -> DataFrame:
+        """Evaluate and return a dataframe."""
+        # TODO: only evaluate what we need if we have a slice?
+        columns = []
+        for name in dfs[0].column_names:
+            new_column = copying.concatenate([df.table.get_column(name) for df in dfs])
+            columns.append(Column(new_column, name=name))
+        return DataFrame(columns).slice(zlice)
 
 
 class HStack(IR):

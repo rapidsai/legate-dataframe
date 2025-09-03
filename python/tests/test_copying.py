@@ -17,8 +17,9 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from legate_dataframe import LogicalColumn
-from legate_dataframe.lib.copying import copy_if_else
+from legate_dataframe import LogicalColumn, LogicalTable
+from legate_dataframe.lib.copying import concatenate, copy_if_else
+from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import (
     assert_matches_polars,
     gen_random_series,
@@ -61,6 +62,8 @@ def test_copy_if_else_string():
         (pa.scalar(42), pa.array([1, 2, 3]), pa.array([True, False, True])),
         (pa.scalar(42), pa.scalar(1), pa.array([True, False, True])),
         (pa.scalar(42), pa.scalar(1), pa.scalar(True)),
+        # Also test empty (could be it's own test)
+        (pa.scalar(42), pa.scalar(1), pa.array([], "bool")),
     ],
 )
 def test_copy_if_else_scalar(lhs, rhs, cond):
@@ -110,4 +113,51 @@ def test_polars_ternary_copy_if_else():
     q = pl.LazyFrame({"a": a_s, "b": b_s, "c": c_s}).with_columns(
         result=pl.when("c").then(pl.col("a")).otherwise(42)
     )
+    assert_matches_polars(q)
+
+
+@pytest.mark.parametrize("dtype", ["int32", "float32", "int64", "bool", "string"])
+@pytest.mark.parametrize("repeats", [1, 2, 10])
+@pytest.mark.parametrize("nulls", [False, True])
+def test_concatenate(dtype, repeats, nulls):
+    arrs = []
+    cols = []
+
+    for i in range(repeats):
+        # make one of them not null to test mixing nullable/non-nullable
+        use_nulls = nulls and i != 1
+        arr = next(get_pyarrow_column_set([dtype], nulls=use_nulls)).values[0]
+        arrs.append(arr)
+        cols.append(LogicalColumn.from_arrow(arr))
+
+    expected = pa.concat_arrays(arrs)
+    result = concatenate(cols)
+    assert expected == result.to_arrow()
+    assert result.get_logical_array().nullable == nulls
+
+
+def test_concatenate_empty():
+    # Do the worst, use masks (but only sometimes) to hopefully get all the
+    # weird corner cases where a task is launched with empty inputs.
+    arr1 = pa.array([1, 2, 3, 4], "int64", mask=[True, False, True, False])
+    arr2 = pa.array([], "int64")
+    col1 = LogicalColumn.from_arrow(arr1)
+    col2 = LogicalColumn.from_arrow(arr2)
+    # Boolean masking creates an unbound empty store, otherwise there may not even be a task.
+    tbl = LogicalTable.from_arrow(pa.table({"a": arr1}))
+    col3 = apply_boolean_mask(tbl, LogicalColumn.from_arrow(pa.array([False] * 4)))["a"]
+    result = concatenate([col1, col2, col3])
+    assert result.to_arrow() == arr1
+
+
+@pytest.mark.parametrize(
+    "arr", get_pyarrow_column_set(["int32", "float32", "int64", "bool", "string"])
+)
+def test_polars_concatenate(arr):
+    pl = pytest.importorskip("polars")
+
+    df1 = pl.DataFrame({"a": arr}).lazy()
+    df2 = pl.DataFrame({"a": arr[::-1]}).lazy()
+
+    q = pl.concat([df1, df2])
     assert_matches_polars(q)

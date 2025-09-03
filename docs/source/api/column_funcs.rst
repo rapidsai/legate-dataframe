@@ -17,6 +17,9 @@ Column functions
     legate_dataframe.lib.copying.copy_if_else
 
 .. autofunction::
+    legate_dataframe.lib.copying.concatenate
+
+.. autofunction::
     legate_dataframe.lib.timestamps.to_timestamps
 
 .. autofunction::

@@ -686,6 +686,7 @@ class PhysicalColumn {
    * @param column The cudf column to copy
    */
   void copy_into(std::unique_ptr<cudf::column> column);
+  void copy_into(const cudf::column_view& column);
 
   /**
    * @brief Copy local cudf scalar into this bound physical column
