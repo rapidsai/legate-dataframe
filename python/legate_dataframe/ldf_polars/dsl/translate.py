@@ -480,7 +480,13 @@ def _(
     name, *options = node.function_data
     options = tuple(options)
     if isinstance(name, pl_expr.StringFunction):
-        raise NotImplementedError("StringFunction not supported")
+        # Note: Additional logic may be needed for Stripping functions
+        return expr.StringFunction(
+            dtype,
+            expr.StringFunction.Name.from_polars(name),
+            options,
+            *(translator.translate_expr(n=n, schema=schema) for n in node.input),
+        )
     elif isinstance(name, pl_expr.BooleanFunction):
         if name == pl_expr.BooleanFunction.IsBetween:
             column, lo, hi = (
