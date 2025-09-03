@@ -24,7 +24,9 @@ namespace task {
 class ContainsTask : public Task<ContainsTask, OpCode::Contains> {
  public:
   static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 }  // namespace task

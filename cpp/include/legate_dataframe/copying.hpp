@@ -34,22 +34,26 @@ class CopyIfElseTask : public Task<CopyIfElseTask, OpCode::CopyIfElse> {
 
 class CopyTask : public Task<CopyTask, OpCode::Copy> {
  public:
+  static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(false);
+  static void cpu_variant(legate::TaskContext context);
+
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static constexpr auto GPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(false).with_elide_device_ctx_sync(true);
-  static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(false);
-
-  static void cpu_variant(legate::TaskContext context);
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 class CopyOffsetsTask : public Task<CopyOffsetsTask, OpCode::CopyOffsets> {
  public:
+  static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(false);
+  static void cpu_variant(legate::TaskContext context);
+
+#ifdef LEGATE_DATAFRAME_USE_CUDA
   static constexpr auto GPU_VARIANT_OPTIONS =
     legate::VariantOptions{}.with_has_allocations(false).with_elide_device_ctx_sync(true);
-  static constexpr auto CPU_VARIANT_OPTIONS = legate::VariantOptions{}.with_has_allocations(false);
-
-  static void cpu_variant(legate::TaskContext context);
   static void gpu_variant(legate::TaskContext context);
+#endif
 };
 
 }  // namespace task
