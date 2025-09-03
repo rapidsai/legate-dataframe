@@ -25,8 +25,7 @@ from legate_dataframe.ldf_polars.dsl.expressions.base import (
     NamedExpr,
 )
 from legate_dataframe.ldf_polars.dsl.expressions.binaryop import BinOp
-
-# from legate_dataframe.ldf_polars.dsl.expressions.boolean import BooleanFunction
+from legate_dataframe.ldf_polars.dsl.expressions.boolean import BooleanFunction
 from legate_dataframe.ldf_polars.dsl.expressions.datetime import TemporalFunction
 from legate_dataframe.ldf_polars.dsl.expressions.literal import Literal, LiteralColumn
 
@@ -43,7 +42,7 @@ __all__ = [
     "Agg",
     "AggInfo",
     "BinOp",
-    # "BooleanFunction",
+    "BooleanFunction",
     "Cast",
     "Col",
     "ColRef",

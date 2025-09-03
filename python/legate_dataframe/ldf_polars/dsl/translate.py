@@ -503,8 +503,11 @@ def _(
                 expr.BinOp(dtype, lop, column, lo),
                 expr.BinOp(dtype, rop, column, hi),
             )
-        raise NotImplementedError(
-            f"BooleanFunction {name} not supported (only IsBetween is)"
+        return expr.BooleanFunction(
+            dtype,
+            expr.BooleanFunction.Name.from_polars(name),
+            options,
+            *(translator.translate_expr(n=n, schema=schema) for n in node.input),
         )
     elif isinstance(name, pl_expr.TemporalFunction):
         # functions for which evaluation of the expression may not return

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, NoReturn
 
-import cudf
 import pyarrow as pa
 import pylibcudf as plc
 
@@ -84,9 +83,8 @@ class LiteralColumn(Expr):
         *,
         context: ExecutionContext = ExecutionContext.FRAME,
     ) -> Column:
-        """Evaluate this expression given a dataframe for context."""
-        # TODO: Going via pyarrow (as cud-polars even does) will be the future.
-        return Column(cudf.Series(self.value, dtype=self.dtype)._column)
+        array = pa.array(self.value)
+        return Column(LogicalColumn.from_arrow(array)).astype(self.dtype)
 
     @property
     def agg_request(self) -> NoReturn:  # noqa: D102
