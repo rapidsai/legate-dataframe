@@ -236,7 +236,7 @@ struct ParquetReadInfo {
   std::vector<std::shared_ptr<arrow::DataType>> column_types;
   std::vector<bool> column_nullable;
   std::vector<size_t> nrow_groups;
-  std::vector<legate::Rect<1>> row_group_ranges_vec;
+  std::shared_ptr<std::vector<legate::Rect<1>>> row_group_ranges_vec;
   LogicalArray row_group_ranges;
   size_t nrow_groups_total;
   size_t nrows_total;
@@ -304,7 +304,7 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
   size_t nrows_total       = 0;
   size_t nrow_groups_total = 0;
   std::vector<size_t> nrow_groups;
-  std::vector<legate::Rect<1>> row_group_ranges;
+  auto row_group_ranges = std::make_shared<std::vector<legate::Rect<1>>>();
   for (const auto& path : file_paths) {
     auto reader         = ARROW_RESULT(arrow::io::ReadableFile::Open(path));
     auto parquet_reader = parquet::ParquetFileReader::Open(reader);
@@ -320,28 +320,29 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
       // NOTE: For array reading legate limitations required us to use 2D rects
       // but it doesn't work either way (As of legate 25.07).  For table reading
       // 1-D rects can be used (and are for eager mode).
-      row_group_ranges.emplace_back(
+      row_group_ranges->emplace_back(
         legate::Rect<1>({static_cast<int64_t>(nrows_total)},
                         {static_cast<int64_t>(nrows_total + nrows_in_group - 1)}));
       nrows_total += nrows_in_group;
     }
   }
 
+  // Bind the vector allocation to avoid using `get_physical_store`
   auto runtime = legate::Runtime::get_runtime();
-  auto row_group_ranges_arr =
-    runtime->create_array({row_group_ranges.size()}, legate::rect_type(1));
-  auto ptr = row_group_ranges_arr.get_physical_array()
-               .data()
-               .write_accessor<legate::Rect<1>, 1, false>()
-               .ptr(0);
-  std::copy(row_group_ranges.begin(), row_group_ranges.end(), ptr);
+  auto alloc   = legate::ExternalAllocation::create_sysmem(
+    row_group_ranges->data(),
+    row_group_ranges->size() * sizeof(legate::Rect<1>),
+    [row_group_ranges](void* ptr) {}  // use closure to keep vector alive
+  );
+  auto store = runtime->create_store({row_group_ranges->size()}, legate::rect_type(1), alloc);
+  legate::LogicalArray row_group_ranges_arr(store);
 
   return {std::move(column_names),
           std::move(column_indices),
           std::move(column_types),
           std::move(column_nullable),
           std::move(nrow_groups),
-          std::move(row_group_ranges),
+          row_group_ranges,
           row_group_ranges_arr,
           nrow_groups_total,
           nrows_total};
@@ -462,7 +463,7 @@ legate::LogicalArray parquet_read_array(const std::vector<std::string>& files,
   argument::add_next_scalar_vector(task, info.column_names);
   argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
-  argument::add_next_scalar_vector(task, info.row_group_ranges_vec);
+  argument::add_next_scalar_vector(task, *info.row_group_ranges_vec);
   argument::add_next_scalar(task, info.nrow_groups_total);
   argument::add_next_scalar(task, null_value);
 
