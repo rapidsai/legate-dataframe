@@ -610,6 +610,25 @@ class PhysicalTable {
     return columns_.front().unbound();
   }
 
+  /**
+   * @brief Returns the number of rows
+   *
+   * @throw std::runtime_error if table is unbound.
+   * @return The number of rows
+   */
+  [[nodiscard]] size_t num_rows() const { return columns_.at(0).num_rows(); }
+
+  /**
+   * @brief Returns the row offset relative to the logical column this physical column is part of.
+   *
+   * The physical column `x` represent the following rows of the logical column given as task input:
+   *   `x.global_row_offset()` .. `x.global_row_offset() + x.num_rows()`.
+   *
+   * @throw std::runtime_error if column is unbound.
+   * @return The row offset in number of rows (inclusive)
+   */
+  [[nodiscard]] int64_t global_row_offset() const { return columns_.at(0).global_row_offset(); }
+
  private:
   std::vector<PhysicalColumn> columns_;
 };

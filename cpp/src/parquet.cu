@@ -98,6 +98,64 @@ namespace legate::dataframe::task {
   }
 }
 
+/*static*/ void ParquetReadByRows::gpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+
+  const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto columns          = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto column_indices   = argument::get_next_scalar_vector<int>(ctx);  // Unused by cudf
+  const auto ngroups_per_file = argument::get_next_scalar_vector<size_t>(ctx);
+  const auto nrows_per_group  = argument::get_next_scalar_vector<size_t>(ctx);
+  const auto nrows_total      = argument::get_next_scalar<size_t>(ctx);
+  PhysicalTable tbl_arg       = argument::get_next_output<PhysicalTable>(ctx);
+
+  size_t my_row_offset{};
+  size_t my_nrows{};
+
+  if (!get_prefer_eager_allocations()) {
+    /* Infer ranges from number of ranks */
+    argument::get_parallel_launch_task(ctx);
+    std::tie(my_row_offset, my_nrows) = evenly_partition_work(nrows_total, ctx.rank, ctx.nranks);
+  } else {
+    /* Infer ranges from constraint array assigned to us */
+    my_row_offset = tbl_arg.global_row_offset();
+    my_nrows      = tbl_arg.num_rows();
+  }
+
+  if (my_nrows == 0) {
+    if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
+    return;
+  }
+
+  if (file_paths.size() != ngroups_per_file.size()) {
+    throw std::runtime_error("internal error: file path and nrows size mismatch");
+  }
+
+  // In principle, we know the exact row groups already, but the cudf reader supports row skipping
+  // directly, so hope that is better.  It is not possible to combine both (as of 25.06 at least).
+  // (We could also use a chunked reader on 25.08+.)
+  auto src = cudf::io::source_info(file_paths);
+  auto opt = cudf::io::parquet_reader_options::builder(src);
+  opt.columns(columns);
+  opt.skip_rows(my_row_offset);
+  opt.num_rows(my_nrows);
+  // If pandas metadata is read, libcudf may read index columns without this.
+  opt.use_pandas_metadata(false);
+  auto res = cudf::io::read_parquet(opt, ctx.stream(), ctx.mr()).tbl;
+
+  if (res->num_rows() == 0) {
+    if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
+    return;
+  }
+
+  if (get_prefer_eager_allocations()) {
+    tbl_arg.copy_into(std::move(res));
+  } else {
+    tbl_arg.move_into(std::move(res));
+  }
+}
+
 /*static*/ void ParquetReadArray::gpu_variant(legate::TaskContext context)
 {
   TaskContext ctx{context};

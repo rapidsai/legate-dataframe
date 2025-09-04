@@ -48,6 +48,27 @@ TYPED_TEST(NumericParquetTest, ReadWrite)
   EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
 }
 
+TYPED_TEST(NumericParquetTest, ReadByRowsWrite)
+{
+  TempDir tmp_dir;
+  auto filepath = tmp_dir.path() / "parquet_file";
+  LogicalColumn a(narrow<TypeParam>({0, 1, 2, 3}));
+  LogicalColumn b(narrow<TypeParam>({4, 5, 6, 7}));
+  const std::vector<std::string> column_names({"a", "b"});
+  LogicalTable tbl_a({a, b}, column_names);
+
+  parquet_write(tbl_a, tmp_dir);
+
+  // NB: since Legate execute tasks lazily, we issue a blocking fence
+  //     in order to wait until all files has been written to disk.
+  legate::Runtime::get_runtime()->issue_execution_fence(true);
+
+  auto files         = parse_glob(tmp_dir.path() / "*.parquet");
+  LogicalTable tbl_b = parquet_read(files, std::nullopt, /* chunk_by_row_groups */ false);
+
+  EXPECT_TRUE(tbl_a.get_arrow()->Equals(*tbl_b.get_arrow()));
+}
+
 TYPED_TEST(NumericParquetTest, ReadColumnSubset)
 {
   TempDir tmp_dir;

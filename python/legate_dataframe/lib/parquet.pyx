@@ -7,6 +7,7 @@
 from cython.operator import dereference
 
 from libc.stdint cimport uintptr_t
+from libcpp cimport bool as cpp_bool
 from libcpp.optional cimport optional
 from libcpp.string cimport string
 from libcpp.vector cimport vector
@@ -23,6 +24,10 @@ from legate.core import LogicalArray, Scalar, Type
 from legate_dataframe.utils import _track_provenance
 
 
+cdef extern from "<legate_dataframe/core/library.hpp>" nogil:
+    cpp_bool get_prefer_eager_allocations \
+        "legate::dataframe::get_prefer_eager_allocations"()
+
 cdef extern from "<legate_dataframe/parquet.hpp>" nogil:
     void cpp_parquet_write "legate::dataframe::parquet_write"(
         cpp_LogicalTable& tbl, const string& dirpath
@@ -30,6 +35,7 @@ cdef extern from "<legate_dataframe/parquet.hpp>" nogil:
     cpp_LogicalTable cpp_parquet_read "legate::dataframe::parquet_read"(
         const vector[string]& files,
         optional[vector[string]]& columns,
+        cpp_bool chunk_by_rows,
     ) except +
     cpp_LogicalArray cpp_parquet_read_array "legate::dataframe::parquet_read_array"(
         const vector[string]& files,
@@ -70,7 +76,7 @@ def parquet_write(LogicalTable tbl, path: pathlib.Path | str) -> None:
 
 
 @_track_provenance
-def parquet_read(files, *, columns=None) -> LogicalTable:
+def parquet_read(files, *, columns=None, chunk_by_rows = None) -> LogicalTable:
     """Read Parquet files into a logical table
 
     Parameters
@@ -80,6 +86,13 @@ def parquet_read(files, *, columns=None) -> LogicalTable:
         otherwise must be a path or an iterable of paths (or strings).
     columns
         List of strings selecting a subset of columns to read.
+    chunk_by_rows
+        If set to ``True`` the read operation will not be chunked into row groups.
+        This may be better when row-groups are large.
+
+        .. note::
+            The Python side default is currently set to ``True`` when
+            ``LDF_PREFER_EAGER_ALLOCATIONS`` is used.
 
     Returns
     -------
@@ -92,6 +105,11 @@ def parquet_read(files, *, columns=None) -> LogicalTable:
     cdef vector[string] cpp_files
     cdef vector[string] cpp_columns
     cdef optional[vector[string]] cpp_columns_opt
+    cdef cpp_bool cpp_chunk_by_rows
+    if chunk_by_rows is None:
+        cpp_chunk_by_rows = get_prefer_eager_allocations()
+    else:
+        cpp_chunk_by_rows = chunk_by_rows
 
     if isinstance(files, str):
         files = sorted(glob.glob(files))
@@ -108,7 +126,7 @@ def parquet_read(files, *, columns=None) -> LogicalTable:
         cpp_columns_opt = cpp_columns
 
     return LogicalTable.from_handle(
-        cpp_parquet_read(cpp_files, cpp_columns_opt)
+        cpp_parquet_read(cpp_files, cpp_columns_opt, cpp_chunk_by_rows)
     )
 
 
