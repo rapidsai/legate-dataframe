@@ -67,13 +67,20 @@ namespace legate::dataframe::task {
   }
 }
 
-cudf::unary_operator arrow_to_cudf_unary_op(std::string op)
+/*static*/ void UnaryOpTask::gpu_variant(legate::TaskContext context)
 {
+  TaskContext ctx{context};
+
+  auto op               = argument::get_next_scalar<std::string>(ctx);
+  const auto input      = argument::get_next_input<PhysicalColumn>(ctx);
+  auto output           = argument::get_next_output<PhysicalColumn>(ctx);
+  cudf::column_view col = input.column_view();
+
   // Arrow unary operators taken from the below list,
   // where an equivalent cudf unary operator exists.
   // https://arrow.apache.org/docs/cpp/compute.html#element-wise-scalar-functions
   // https://docs.rapids.ai/api/libcudf/stable/group__transformation__unaryops
-  std::unordered_map<std::string, cudf::unary_operator> arrow_to_cudf_ops = {
+  static const std::unordered_map<std::string, cudf::unary_operator> arrow_to_cudf_ops = {
     {"sin", cudf::unary_operator::SIN},       {"cos", cudf::unary_operator::COS},
     {"tan", cudf::unary_operator::TAN},       {"asin", cudf::unary_operator::ARCSIN},
     {"acos", cudf::unary_operator::ARCCOS},   {"atan", cudf::unary_operator::ARCTAN},
@@ -86,21 +93,25 @@ cudf::unary_operator arrow_to_cudf_unary_op(std::string op)
     {"round", cudf::unary_operator::RINT},    {"bit_wise_not", cudf::unary_operator::BIT_INVERT},
     {"invert", cudf::unary_operator::NOT},    {"negate", cudf::unary_operator::NEGATE}};
 
-  if (arrow_to_cudf_ops.find(op) != arrow_to_cudf_ops.end()) { return arrow_to_cudf_ops[op]; }
-  throw std::invalid_argument("Could not find cudf binary operator matching: " + op);
-  return cudf::unary_operator::ABS;
-}
+  std::unique_ptr<cudf::column> ret;
+  auto it = arrow_to_cudf_ops.find(op);
+  if (it != arrow_to_cudf_ops.end()) {
+    ret = cudf::unary_operation(col, it->second, ctx.stream(), ctx.mr());
+  } else if (op == "is_nan") {
+    ret = cudf::is_nan(col, ctx.stream(), ctx.mr());
+    // As of 25.06 does not propagate nulls (historic reasons with pandas likely)
+    if (col.has_nulls()) {
+      auto null_mask = cudf::copy_bitmask(col, ctx.stream(), ctx.mr());
+      ret->set_null_mask(std::move(null_mask), col.null_count());
+    }
+  } else if (op == "is_null") {
+    ret = cudf::is_null(col, ctx.stream(), ctx.mr());
+  } else if (op == "is_valid") {
+    ret = cudf::is_valid(col, ctx.stream(), ctx.mr());
+  } else {
+    throw std::invalid_argument("Could not find cudf binary operator matching: " + op);
+  }
 
-/*static*/ void UnaryOpTask::gpu_variant(legate::TaskContext context)
-{
-  TaskContext ctx{context};
-
-  auto op               = argument::get_next_scalar<std::string>(ctx);
-  const auto input      = argument::get_next_input<PhysicalColumn>(ctx);
-  auto output           = argument::get_next_output<PhysicalColumn>(ctx);
-  cudf::column_view col = input.column_view();
-  std::unique_ptr<cudf::column> ret =
-    cudf::unary_operation(col, arrow_to_cudf_unary_op(op), ctx.stream(), ctx.mr());
   if (get_prefer_eager_allocations()) {
     output.copy_into(std::move(ret));
   } else {

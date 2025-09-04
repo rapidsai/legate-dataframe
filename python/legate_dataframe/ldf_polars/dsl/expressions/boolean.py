@@ -14,7 +14,7 @@ import pylibcudf as plc
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl import expr
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
-from legate_dataframe.lib import search
+from legate_dataframe.lib import search, unaryop
 
 if TYPE_CHECKING:
     from cudf_polars.containers import DataFrame
@@ -83,6 +83,11 @@ class BooleanFunction(Expr):
         )
         if self.name not in {
             BooleanFunction.Name.IsIn,
+            BooleanFunction.Name.IsNull,
+            BooleanFunction.Name.IsNotNull,
+            BooleanFunction.Name.IsNan,
+            # BooleanFunction.Name.IsNotNan,  # seems not directly in arrow
+            BooleanFunction.Name.Not,
         }:
             raise NotImplementedError(
                 f"Boolean function {self.name}"
@@ -121,6 +126,18 @@ class BooleanFunction(Expr):
                 )
 
             return Column(search.contains(haystack.obj, needles.obj))
+        if self.name is BooleanFunction.Name.IsNull:
+            col = self.children[0].evaluate(df, context=context)
+            return Column(unaryop.unary_operation(col.obj, "is_null"))
+        if self.name is BooleanFunction.Name.IsNotNull:
+            col = self.children[0].evaluate(df, context=context)
+            return Column(unaryop.unary_operation(col.obj, "is_valid"))
+        if self.name is BooleanFunction.Name.IsNan:
+            col = self.children[0].evaluate(df, context=context)
+            return Column(unaryop.unary_operation(col.obj, "is_nan"))
+        if self.name is BooleanFunction.Name.Not:
+            col = self.children[0].evaluate(df, context=context)
+            return Column(unaryop.unary_operation(col.obj, "invert"))
         else:
             raise NotImplementedError(
                 f"BooleanFunction {self.name}"

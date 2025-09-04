@@ -131,10 +131,14 @@ LogicalColumn unary_operation(const LogicalColumn& col, std::string op)
   legate::AutoTask task =
     runtime->create_task(get_library(), task::UnaryOpTask::TASK_CONFIG.task_id());
 
+  const std::unordered_set<std::string> bool_ops = {"invert", "is_nan", "is_null", "is_valid"};
+  auto result_type = bool_ops.count(op) ? arrow::boolean() : col.arrow_type();
+
+  // Check if the op is valid before we enter the task
   std::optional<size_t> size{};
   if (get_prefer_eager_allocations()) { size = col.num_rows(); }
   // Unary ops can return a scalar column for a scalar column input.
-  auto ret = LogicalColumn::empty_like(col.arrow_type(), col.nullable(), col.is_scalar(), size);
+  auto ret = LogicalColumn::empty_like(result_type, col.nullable(), col.is_scalar(), size);
 
   argument::add_next_scalar(task, op);
   argument::add_next_input(task, col);
