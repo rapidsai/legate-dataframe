@@ -498,12 +498,23 @@ class LogicalColumn {
    */
   [[nodiscard]] LogicalColumn slice(const legate::Slice& slice) const;
 
+  /*
+   * allow holding on to an array (e.g. constraint). This is a work-around
+   * only right now.  (A similar pattern could be useful for a pre-partitioned
+   * column, w.r.t. joins or so, but here it's just to help out legate.)
+   */
+  void set_constraint_keep_alive(legate::LogicalArray constraint)
+  {
+    constraint_keep_alive_ = std::move(constraint);
+  }
+
  private:
   // In order to support a default ctor and assignment (used by Cython),
   // we make the legate array optional and the rest non-const.
   std::optional<legate::LogicalArray> array_;
   std::shared_ptr<arrow::DataType> arrow_type_;
   bool scalar_{false};
+  std::optional<legate::LogicalArray> constraint_keep_alive_;
 };
 
 namespace task {
