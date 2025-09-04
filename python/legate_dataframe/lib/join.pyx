@@ -37,8 +37,8 @@ cdef extern from "<legate_dataframe/join.hpp>" nogil:
     cpp_LogicalTable cpp_join "legate::dataframe::join"(
         const cpp_LogicalTable& lhs,
         const cpp_LogicalTable& rhs,
-        const cpp_set[string]& lhs_keys,
-        const cpp_set[string]& rhs_keys,
+        const vector[string]& lhs_keys,
+        const vector[string]& rhs_keys,
         JoinType join_type,
         const vector[string]& lhs_out_columns,
         const vector[string]& rhs_out_columns,
@@ -111,12 +111,12 @@ def join(
     if rhs_out_columns is None:
         rhs_out_columns = rhs.get_column_names()
 
-    cdef cpp_set[string] lhs_key_set
-    cdef cpp_set[string] rhs_key_set
+    cdef vector[string] lhs_key_vector
+    cdef vector[string] rhs_key_vector
     for k in lhs_keys:
-        lhs_key_set.insert(k.encode('UTF-8'))
+        lhs_key_vector.push_back(k.encode('UTF-8'))
     for k in rhs_keys:
-        rhs_key_set.insert(k.encode('UTF-8'))
+        rhs_key_vector.push_back(k.encode('UTF-8'))
 
     cdef vector[string] lhs_out_columns_vector
     cdef vector[string] rhs_out_columns_vector
@@ -129,8 +129,8 @@ def join(
         cpp_join(
             lhs._handle,
             rhs._handle,
-            lhs_key_set,
-            rhs_key_set,
+            lhs_key_vector,
+            rhs_key_vector,
             join_type,
             lhs_out_columns_vector,
             rhs_out_columns_vector,
