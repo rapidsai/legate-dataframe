@@ -99,6 +99,11 @@ namespace legate::dataframe::task {
     ret = cudf::unary_operation(col, it->second, ctx.stream(), ctx.mr());
   } else if (op == "is_nan") {
     ret = cudf::is_nan(col, ctx.stream(), ctx.mr());
+    // As of 25.06 does not propagate nulls (historic reasons with pandas likely)
+    if (col.has_nulls()) {
+      auto null_mask = cudf::copy_bitmask(col, ctx.stream(), ctx.mr());
+      ret->set_null_mask(std::move(null_mask), col.null_count());
+    }
   } else if (op == "is_null") {
     ret = cudf::is_null(col, ctx.stream(), ctx.mr());
   } else if (op == "is_valid") {
