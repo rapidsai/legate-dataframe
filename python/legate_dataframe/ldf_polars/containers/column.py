@@ -82,7 +82,7 @@ class Column:
         This only produces a copy if the requested dtype doesn't match
         the current one.
         """
-        if self.obj.type() == dtype:
+        if self.obj.cudf_type() == dtype:
             return self
 
         # TODO: Not all casts are supported by direct casts here.  E.g. for

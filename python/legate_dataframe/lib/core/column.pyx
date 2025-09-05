@@ -8,16 +8,14 @@ import pyarrow as pa
 
 from cython.operator cimport dereference
 from libc.stdint cimport uintptr_t
-from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
-from libcpp.utility cimport move
 
-import cudf
-
-from pyarrow.lib cimport pyarrow_unwrap_array, pyarrow_unwrap_scalar, pyarrow_wrap_array
-from pylibcudf.column cimport Column as PylibcudfColumn
-from pylibcudf.libcudf.column.column cimport column
-from pylibcudf.scalar cimport Scalar as PylibcudfScalar
+from pyarrow.lib cimport (
+    pyarrow_unwrap_array,
+    pyarrow_unwrap_scalar,
+    pyarrow_wrap_array,
+    pyarrow_wrap_data_type,
+)
 
 from legate_dataframe.lib.core.legate cimport cpp_StoreTarget, from_python_slice
 from legate_dataframe.lib.core.legate_task cimport get_auto_task_handle
@@ -25,14 +23,9 @@ from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
 
 from typing import Any
 
-from cudf._typing import DtypeObj
 from legate.core import AutoTask, Field, LogicalArray
 
-from legate_dataframe.lib.core.data_type cimport (
-    DataType,
-    cpp_cudf_type_to_cudf_dtype,
-    is_legate_compatible,
-)
+from legate_dataframe.lib.core.data_type cimport is_legate_compatible
 
 from legate_dataframe.utils import get_logical_array
 
@@ -97,27 +90,8 @@ cdef class LogicalColumn:
         -------
             New logical column
         """
-        cdef PylibcudfColumn col
-        cdef PylibcudfScalar scalar
-        if isinstance(col_or_scalar, cudf.Series):
-            col_or_scalar = col_or_scalar._column.to_pylibcudf("read")
-        elif isinstance(col_or_scalar, cudf.core.column.column.ColumnBase):
-            col_or_scalar = col_or_scalar.to_pylibcudf("read")
-        elif isinstance(col_or_scalar, cudf.Scalar):
-            col_or_scalar = col_or_scalar.device_value
-
-        if isinstance(col_or_scalar, PylibcudfColumn):
-            col = <PylibcudfColumn>col_or_scalar
-            return LogicalColumn.from_handle(cpp_LogicalColumn(col.view()))
-        elif isinstance(col_or_scalar, PylibcudfScalar):
-            scalar = <PylibcudfScalar>col_or_scalar
-            return LogicalColumn.from_handle(
-                cpp_LogicalColumn(dereference(scalar.get()))
-            )
-        else:
-            raise TypeError(
-                "from_cudf() only supports cudf columns and device scalars."
-            )
+        from .column_cu import from_cudf
+        return from_cudf(col_or_scalar)
 
     @staticmethod
     def from_arrow(array_or_scalar) -> LogicalColumn:
@@ -180,19 +154,20 @@ cdef class LogicalColumn:
         """
         return self._handle.num_rows()
 
-    def type(self) -> DataType:
-        """Return the low-level data type.
+    def cudf_type(self) -> Any:
+        """Return the cudf data type.
         """
-        return DataType.from_libcudf(self._handle.cudf_type())
+        from .column_cu import cudf_dtype
+        return cudf_dtype(self)
 
-    def dtype(self) -> DtypeObj:
-        """Returns the cudf data type of the row elements
+    def dtype(self) -> pa.DataType:
+        """Returns the arrow data type of the row elements
 
         Returns
         -------
-            The cudf data type
+            The arrow data type
         """
-        return cpp_cudf_type_to_cudf_dtype(self._handle.cudf_type())
+        return pyarrow_wrap_data_type(self._handle.arrow_type())
 
     def is_scalar(self):
         return self._handle.is_scalar()
@@ -215,7 +190,7 @@ cdef class LogicalColumn:
             If ``check_dtype=True`` and the column dtype is not a native legate
             data type.
         """
-        if check_dtype and not is_legate_compatible(self._handle.cudf_type()):
+        if check_dtype and not is_legate_compatible(self.dtype()):
             raise TypeError(
                 f"column datatype {self.dtype} not a basic legate type. "
                 "Use `col.get_logical_array()` to get the underlying raw array."
@@ -315,9 +290,8 @@ cdef class LogicalColumn:
             A cudf series that owns its data.
 
         """
-        cdef unique_ptr[column] col = self._handle.get_cudf()
-        pylibcudf_col = PylibcudfColumn.from_libcudf(move(col))
-        return cudf.core.column.column.ColumnBase.from_pylibcudf(pylibcudf_col)
+        from .column_cu import to_cudf
+        return to_cudf(self)
 
     def to_cudf_scalar(self):
         """Copy the logical column into a local cudf scalar
@@ -336,9 +310,8 @@ cdef class LogicalColumn:
         ValueError
             If the column is not length 1 (scalar columns always are).
         """
-        cdef unique_ptr[scalar] scalar = self._handle.get_cudf_scalar()
-        pylibcudf_scalar = PylibcudfScalar.from_libcudf(move(scalar))
-        return cudf.Scalar.from_pylibcudf(pylibcudf_scalar)
+        from .column_cu import to_cudf_scalar
+        return to_cudf_scalar(self)
 
     def __getitem__(self, slice_):
         if not isinstance(slice_, slice):

@@ -8,7 +8,7 @@ from libcpp cimport bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string
 
-from pyarrow.lib cimport CArray, CScalar
+from pyarrow.lib cimport CArray, CDataType, CScalar
 from pylibcudf.libcudf.column.column cimport column, column_view
 from pylibcudf.libcudf.scalar.scalar cimport scalar
 from pylibcudf.types cimport data_type
@@ -38,6 +38,7 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         string repr(size_t max_num_items) except +
         bool is_scalar() noexcept
         data_type cudf_type() except +
+        shared_ptr[CDataType] arrow_type() except +
         void offload_to(cpp_StoreTarget target_mem) except +
         cpp_LogicalColumn slice(cpp_Slice slice) except +
 

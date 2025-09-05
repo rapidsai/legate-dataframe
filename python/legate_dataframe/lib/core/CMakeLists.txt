@@ -13,11 +13,15 @@
 # =============================================================================
 
 # Set the list of Cython files to build
-set(cython_sources column.pyx data_type.pyx legate.pyx legate_task.pyx scalar.pyx table.pyx)
+file(
+  GLOB CYTHON_SOURCES
+  RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+  "*.pyx"
+)
 
 rapids_cython_create_modules(
   CXX
-  SOURCE_FILES "${cython_sources}"
+  SOURCE_FILES "${CYTHON_SOURCES}"
   LINKED_LIBRARIES LegateDataframe::LegateDataframe
 )
 

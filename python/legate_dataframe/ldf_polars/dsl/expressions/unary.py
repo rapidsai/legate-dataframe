@@ -195,7 +195,7 @@ class UnaryFunction(Expr):
             return Column(replace.replace_nulls(column.obj, arg))
         elif self.name in self._OP_MAPPING:
             column = self.children[0].evaluate(df, context=context)
-            if column.obj.type().id() != self.dtype.id():
+            if column.obj.cudf_type().id() != self.dtype.id():
                 arg = unaryop.cast(column.obj, self.dtype)
             else:
                 arg = column.obj
