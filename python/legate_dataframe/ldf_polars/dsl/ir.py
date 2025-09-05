@@ -713,7 +713,7 @@ class DataFrameScan(IR):
             df = df.select(projection)
         df = DataFrame.from_polars(df)
         assert all(
-            c.obj.type() == dtype
+            c.obj.cudf_type() == dtype
             for c, dtype in zip(df.columns, schema.values(), strict=True)
         )
         return df
