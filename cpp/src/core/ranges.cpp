@@ -42,18 +42,34 @@ std::shared_ptr<arrow::Buffer> global_ranges_to_arrow_offsets(const legate::Phys
 
 void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect<1>* ranges_acc)
 {
-  for (size_t i = 0; i < array.length(); ++i) {
-    ranges_acc[i].lo[0] = array.value_offset(i);
-    ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1;
+  auto first_offset = array.value_offset(0);
+  if (first_offset == 0) {
+    for (size_t i = 0; i < array.length(); ++i) {
+      ranges_acc[i].lo[0] = array.value_offset(i);
+      ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1;
+    }
+  } else {
+    for (size_t i = 0; i < array.length(); ++i) {
+      ranges_acc[i].lo[0] = array.value_offset(i) - first_offset;
+      ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1 - first_offset;
+    }
   }
 }
 
 void arrow_offsets_to_local_ranges(const arrow::LargeStringArray& array,
                                    legate::Rect<1>* ranges_acc)
 {
-  for (size_t i = 0; i < array.length(); ++i) {
-    ranges_acc[i].lo[0] = array.value_offset(i);
-    ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1;
+  auto first_offset = array.value_offset(0);
+  if (first_offset == 0) {
+    for (size_t i = 0; i < array.length(); ++i) {
+      ranges_acc[i].lo[0] = array.value_offset(i);
+      ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1;
+    }
+  } else {
+    for (size_t i = 0; i < array.length(); ++i) {
+      ranges_acc[i].lo[0] = array.value_offset(i) - first_offset;
+      ranges_acc[i].hi[0] = array.value_offset(i + 1) - 1 - first_offset;
+    }
   }
 }
 

@@ -462,7 +462,7 @@ class PhysicalTable {
                                " != " + std::to_string(table->num_columns()));
     }
     // Component chunked arrays must be converted to contiguous arrays
-    auto combined = table->CombineChunks().ValueOrDie();
+    auto combined = ARROW_RESULT(table->CombineChunks());
     for (int i = 0; i < combined->num_columns(); ++i) {
       auto chunked_array = combined->column(i);
       std::shared_ptr<arrow::Array> contiguous_array;
@@ -514,7 +514,7 @@ class PhysicalTable {
                                " != " + std::to_string(table->num_columns()));
     }
     // Component chunked arrays must be converted to contiguous arrays
-    auto combined = table->CombineChunks().ValueOrDie();
+    auto combined = ARROW_RESULT(table->CombineChunks());
     for (int i = 0; i < combined->num_columns(); ++i) {
       auto chunked_array = combined->column(i);
       std::shared_ptr<arrow::Array> contiguous_array;

@@ -216,6 +216,24 @@ def test_read_array_cast(tmp_path, npartitions=2, glob_string="/*"):
     assert cn.array_equal(arr[:, 1], cn.arange(1, 10001, dtype="float32"))
 
 
+@pytest.mark.parametrize("chunk_by_rows", [True, False])
+def test_read_large(tmp_path, chunk_by_rows, npartitions=1, glob_string="/*"):
+    pytest.importorskip("cupynumeric")
+
+    # Create an array so large, that we should chunk (should be fine for testing)
+    df = pa.table(
+        {"a": np.ones(2**26, dtype="uint8")},
+        schema=pa.schema([("a", pa.uint8(), False)]),
+    )
+    pq.write_table(df, str(tmp_path) + "/test.parquet")
+    del df
+
+    tbl = parquet_read(
+        str(tmp_path) + glob_string, columns=["a"], chunk_by_rows=chunk_by_rows
+    )
+    assert tbl["a"].to_array().sum() == 2**26
+
+
 def test_read_array_large(tmp_path, npartitions=1, glob_string="/*"):
     cn = pytest.importorskip("cupynumeric")
 

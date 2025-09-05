@@ -97,7 +97,6 @@ struct FileRowGroupInfo {
   std::vector<std::string> files;
   std::vector<std::vector<int>> row_groups;
   size_t initial_rows_to_skip;
-  size_t final_rows_to_skip;
 };
 
 FileRowGroupInfo find_files_and_row_groups_by_rows(const std::vector<std::string>& file_paths,
@@ -109,7 +108,6 @@ FileRowGroupInfo find_files_and_row_groups_by_rows(const std::vector<std::string
   std::vector<std::string> files;
   std::vector<std::vector<int>> row_groups;
   size_t initial_rows_to_skip = 0;
-  size_t final_rows_to_skip   = 0;
 
   size_t total_rows_seen   = 0;
   size_t total_groups_seen = 0;
@@ -136,8 +134,7 @@ FileRowGroupInfo find_files_and_row_groups_by_rows(const std::vector<std::string
       total_rows_seen += group_rows;
 
       if (total_rows_seen >= from_row + num_rows) {
-        found_end          = true;
-        final_rows_to_skip = total_rows_seen - (from_row + num_rows);
+        found_end = true;
         break;
       }
     }
@@ -150,7 +147,7 @@ FileRowGroupInfo find_files_and_row_groups_by_rows(const std::vector<std::string
     total_groups_seen += file_groups;
   }
 
-  return {std::move(files), std::move(row_groups), initial_rows_to_skip, final_rows_to_skip};
+  return {std::move(files), std::move(row_groups), initial_rows_to_skip};
 }
 
 /* static */ void ParquetRead::cpu_variant(legate::TaskContext context)
@@ -247,7 +244,8 @@ FileRowGroupInfo find_files_and_row_groups_by_rows(const std::vector<std::string
   std::vector<std::shared_ptr<arrow::RecordBatch>> batches;
 
   // Iterate over files and read them into batches.
-  for (int i = 0; i < info.files.size(); i++) {
+  size_t rows_read = 0;
+  for (int i = 0; i < info.files.size(), rows_read < my_nrows; i++) {
     auto input        = ARROW_RESULT(arrow::io::ReadableFile::Open(info.files[i]));
     auto arrow_reader = ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
     auto batch_reader =
@@ -266,34 +264,25 @@ FileRowGroupInfo find_files_and_row_groups_by_rows(const std::vector<std::string
           batch->Slice(info.initial_rows_to_skip, batch->num_rows() - info.initial_rows_to_skip);
         info.initial_rows_to_skip = 0;
       }
+      rows_read += batch->num_rows();
       batches.push_back(std::move(batch));
+      if (rows_read >= my_nrows) { break; }
     }
   }
 
-  // Now remove batches from the end and slice the last one if needed.
-  while (batches.size() > 0 && info.final_rows_to_skip > 0) {
-    auto batch = batches.back();
-    if (batch->num_rows() <= info.final_rows_to_skip) {
-      info.final_rows_to_skip -= batch->num_rows();
-      batches.pop_back();
-      continue;
-    }
-    batch                   = batch->Slice(0, batch->num_rows() - info.final_rows_to_skip);
-    info.final_rows_to_skip = 0;
-    batches.back()          = std::move(batch);
-    break;
+  if (rows_read > my_nrows) {
+    auto additional_rows = rows_read - my_nrows;
+    auto nrows_keep      = batches.back()->num_rows() - additional_rows;
+    batches.back()       = batches.back()->Slice(0, nrows_keep);
   }
 
   // Concatenate all batches and write out the result.
-  auto table = ARROW_RESULT(arrow::Table::FromRecordBatches(batches));
-  if (table->num_rows() == 0) {
-    if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
+  auto table = ARROW_RESULT(arrow::Table::FromRecordBatches(std::move(batches)));
+  assert(table->num_rows() == my_nrows);
+  if (get_prefer_eager_allocations()) {
+    tbl_arg.copy_into(table);
   } else {
-    if (get_prefer_eager_allocations()) {
-      tbl_arg.copy_into(std::move(table));
-    } else {
-      tbl_arg.move_into(std::move(table));
-    }
+    tbl_arg.move_into(table);
   }
 }
 
