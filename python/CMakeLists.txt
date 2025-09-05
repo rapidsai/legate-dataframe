@@ -45,6 +45,10 @@ option(
   "Search for existing legate dataframe C++ installations before defaulting to local files" OFF
 )
 
+if(Legion_USE_CUDA)
+  add_definitions(-DLEGATE_DATAFRAME_USE_CUDA)
+endif()
+
 if(FIND_LegateDataframe)
   find_package(LegateDataframe ${PyLegateDataframe_version})
 else()
