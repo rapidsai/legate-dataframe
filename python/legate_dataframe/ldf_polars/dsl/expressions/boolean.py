@@ -120,7 +120,7 @@ class BooleanFunction(Expr):
 
             needles = self.children[0].evaluate(df, context=context)
             # We don't support list type yet, but keep check for now anyway
-            if haystack.obj.type().id() == plc.TypeId.LIST:
+            if haystack.obj.cudf_type().id() == plc.TypeId.LIST:
                 raise NotImplementedError(
                     "IsIn with list type not supported (should unwrap)"
                 )

@@ -96,7 +96,7 @@ class BinOp(Expr):
         # Use divide, but cast one of the inputs to the output dtype
         # to ensure the right type is used (with some logic to prefer
         # casting a scalar).
-        if left.obj.type() != self.dtype and right.obj.type() != self.dtype:
+        if left.obj.cudf_type() != self.dtype and right.obj.cudf_type() != self.dtype:
             if left.is_scalar:
                 left = left.astype(self.dtype)
             else:

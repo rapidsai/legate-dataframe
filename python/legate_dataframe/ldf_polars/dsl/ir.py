@@ -606,7 +606,7 @@ class Scan(IR):
         if row_index is not None:
             raise NotImplementedError("Row index not implemented, please avoid it.")
 
-        assert all(df.table[n].type() == schema[n] for n in df.column_names)
+        assert all(df.table[n].cudf_type() == schema[n] for n in df.column_names)
         if predicate is None:
             return df
         else:

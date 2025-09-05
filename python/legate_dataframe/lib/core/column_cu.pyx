@@ -15,6 +15,7 @@ from pylibcudf.column cimport Column as PylibcudfColumn
 from pylibcudf.libcudf.column.column cimport column
 from pylibcudf.libcudf.scalar.scalar cimport scalar
 from pylibcudf.scalar cimport Scalar as PylibcudfScalar
+from pylibcudf.types cimport DataType
 
 from .column cimport *
 
@@ -53,3 +54,7 @@ def to_cudf_scalar(LogicalColumn col):
     cdef unique_ptr[scalar] scal = col._handle.get_cudf_scalar()
     pylibcudf_scalar = PylibcudfScalar.from_libcudf(move(scal))
     return cudf.Scalar.from_pylibcudf(pylibcudf_scalar)
+
+
+def cudf_dtype(LogicalColumn col):
+    return DataType.from_libcudf(col._handle.cudf_type())

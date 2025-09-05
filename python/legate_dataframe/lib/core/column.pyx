@@ -154,6 +154,12 @@ cdef class LogicalColumn:
         """
         return self._handle.num_rows()
 
+    def cudf_type(self) -> Any:
+        """Return the cudf data type.
+        """
+        from .column_cu import cudf_dtype
+        return cudf_dtype(self)
+
     def dtype(self) -> pa.DataType:
         """Returns the arrow data type of the row elements
 
