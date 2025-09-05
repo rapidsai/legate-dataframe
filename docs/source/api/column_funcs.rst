@@ -30,3 +30,9 @@ Column functions
 
 .. autofunction::
     legate_dataframe.lib.replace.replace_nulls
+
+.. autofunction::
+    legate_dataframe.lib.search.contains
+
+.. autofunction::
+    legate_dataframe.lib.strings.match

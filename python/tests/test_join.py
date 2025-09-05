@@ -58,6 +58,13 @@ def make_param():
         ["a"],
         ["b"],
     )
+    # column and alphabetical order not join order (regression test)
+    yield (
+        pa.table({"a_a": [1, 2, 3, 4, 5], "b_a": [5, 4, 3, 2, 1]}),
+        pa.table({"a_b": [5, 4, 3, 2, 1], "b_b": [1, 2, 3, 4, 5]}),
+        ["a_a", "b_a"],
+        ["b_b", "a_b"],
+    )
 
 
 @pytest.mark.parametrize(

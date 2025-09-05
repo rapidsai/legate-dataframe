@@ -152,6 +152,11 @@ polars_ops = [
     "floor",
     "abs",
     # bit_invert, "not" not attributes, but also not on floats
+    "not_",  # logical not, maps to a BooleanFunction in the IR
+    "is_null",
+    "is_not_null",
+    "is_nan",
+    # "is_not_nan",  # easy, but seems not directly available in arrow
 ]
 
 
@@ -161,13 +166,19 @@ def test_unary_operation_polars(op):
     import legate_dataframe.ldf_polars  # noqa: F401
 
     a = gen_random_series(nelem=1000, num_nans=10)
-    q = pl.LazyFrame({"a": a}).with_columns(res=getattr(pl.col("a"), op)())
+    q = pl.LazyFrame({"a": a})
+    if op == "not_":
+        q = q.with_columns(a=pl.col("a") > 0.5)
 
-    # Need to use approximate equality here
-    res_pl = np.asarray(q.collect().to_arrow())
-    res_ldf = np.asarray(q.legate.collect().to_arrow())
+    q = q.with_columns(res=getattr(pl.col("a"), op)())
+    if op in {"ceil", "floor", "abs", "not_", "is_null", "is_not_null", "is_nan"}:
+        assert_matches_polars(q)
+    else:
+        # Need to use approximate equality here
+        res_pl = np.asarray(q.collect().to_arrow())
+        res_ldf = np.asarray(q.legate.collect().to_arrow())
 
-    np.testing.assert_array_almost_equal(res_pl, res_ldf)
+        np.testing.assert_array_almost_equal(res_pl, res_ldf)
 
 
 @pytest.mark.parametrize("mode", ["half_away_from_zero", "half_to_even"])

@@ -42,7 +42,7 @@ namespace legate::dataframe::task {
   auto output     = argument::get_next_output<PhysicalColumn>(ctx);
 
   if (cond.num_rows() <= 0) {
-    output.bind_empty_data();
+    if (!get_prefer_eager_allocations()) { output.bind_empty_data(); }
     return;
   }
 
