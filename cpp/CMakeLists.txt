@@ -45,8 +45,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_SHARED_LIBS "Build legate-dataframe shared library" ON)
 option(BUILD_EXAMPLES "Configure CMake to build examples" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
-option(LEGATE_DATAFRAME_USE_CUDA "Build library with gpu_tasks" ON)
-if(LEGATE_DATAFRAME_USE_CUDA)
+if(Legion_USE_CUDA)
   add_definitions(-DLEGATE_DATAFRAME_USE_CUDA)
 endif()
 
@@ -62,7 +61,7 @@ rapids_cmake_support_conda_env(conda_env MODIFY_PREFIX_PATH)
 # ##################################################################################################
 # * compiler options ------------------------------------------------------------------------------
 
-if(LEGATE_DATAFRAME_USE_CUDA)
+if(Legion_USE_CUDA)
   rapids_find_package(
     CUDAToolkit REQUIRED
     BUILD_EXPORT_SET LegateDataframe-exports
@@ -77,14 +76,14 @@ endif()
 # add third party dependencies using CPM
 rapids_cpm_init()
 
-if(LEGATE_DATAFRAME_USE_CUDA)
+if(Legion_USE_CUDA)
   # If CCCL versions don't get picked up correctly, we may need to add them early on here (right now
   # it seems fetching rmm/cudf manage to ensure we ge the right one.)
   include("${rapids-cmake-dir}/cpm/cccl.cmake")
   rapids_cpm_cccl()
 endif()
 
-if(LEGATE_DATAFRAME_USE_CUDA)
+if(Legion_USE_CUDA)
   include(rapids-cuda)
   rapids_cuda_init_architectures(LegateDataframe)
   include(cmake/thirdparty/get_rmm.cmake)
@@ -132,7 +131,7 @@ endif()
 # ##################################################################################################
 # * library targets -------------------------------------------------------------------------------
 
-if(LEGATE_DATAFRAME_USE_CUDA)
+if(Legion_USE_CUDA)
   file(GLOB SOURCES "src/*.cpp" "src/*.cu" "src/core/*.cpp" "src/core/*.cu")
 else()
   file(GLOB SOURCES "src/*.cpp" "src/core/*.cpp")
@@ -156,7 +155,7 @@ set_target_properties(
              INTERFACE_POSITION_INDEPENDENT_CODE ON
 )
 
-if(LEGATE_DATAFRAME_USE_CUDA)
+if(Legion_USE_CUDA)
   set_target_properties(LegateDataframe PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
 endif()
 
@@ -184,7 +183,7 @@ target_link_libraries(
   PUBLIC legate::legate Arrow::arrow_shared
   PRIVATE ArrowAcero::arrow_acero_shared Parquet::parquet_shared
 )
-if(LEGATE_DATAFRAME_USE_CUDA)
+if(Legion_USE_CUDA)
   target_link_libraries(
     LegateDataframe
     PUBLIC rmm::rmm cudf::cudf

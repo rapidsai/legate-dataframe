@@ -35,7 +35,6 @@ cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
         shared_ptr[CArray] get_arrow() except +
         unique_ptr[column] get_cudf() except +
         unique_ptr[scalar] get_cudf_scalar() except +
-        string repr(size_t max_num_items) except +
         bool is_scalar() noexcept
         data_type cudf_type() except +
         void offload_to(cpp_StoreTarget target_mem) except +
