@@ -37,6 +37,7 @@ enum : int {
   Contains,
   ParquetWrite,
   ParquetRead,
+  ParquetReadByRows,
   ParquetReadArray,
   ReplaceNullsWithScalar,
   Round,

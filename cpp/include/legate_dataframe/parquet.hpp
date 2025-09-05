@@ -69,6 +69,13 @@ class ParquetRead : public Task<ParquetRead, OpCode::ParquetRead> {
   static void gpu_variant(legate::TaskContext context);
 #endif
 };
+class ParquetReadByRows : public Task<ParquetReadByRows, OpCode::ParquetReadByRows> {
+ public:
+  static void cpu_variant(legate::TaskContext context);
+#ifdef LEGATE_DATAFRAME_USE_CUDA
+  static void gpu_variant(legate::TaskContext context);
+#endif
+};
 class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray> {
  public:
   static void cpu_variant(legate::TaskContext context);
@@ -104,15 +111,18 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath);
  * same number of row-groups (possibly over multiple files).
  * If the number of row-groups does not split evenly, the first partitions will
  * contain one additional row-group.
+ * (When `ignore_row_groups` is used the same logic is applied on the row level.)
  *
  * Note that file order is currently glob/string sorted.
  *
  * @param files The parquet files to read.
  * @param columns The columns names to read.
+ * @param ignore_row_groups If true do not read in row-group sized chunks.
  * @return The read LogicalTable
  */
 LogicalTable parquet_read(const std::vector<std::string>& files,
-                          const std::optional<std::vector<std::string>>& columns = std::nullopt);
+                          const std::optional<std::vector<std::string>>& columns = std::nullopt,
+                          bool ignore_row_groups                                 = false);
 
 /**
  * @brief Read Parquet files into a legate Array

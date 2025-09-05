@@ -67,15 +67,24 @@ def test_write(tmp_path, df):
 
 @pytest.mark.parametrize("columns", [None, ["b"], ["a", "b"], ["b", "a"], []])
 @pytest.mark.parametrize("df", std_dataframe_set_cpu())
-def test_read(tmp_path, df, columns, glob_string="/*"):
+@pytest.mark.parametrize("ignore_row_groups", [True, False])
+def test_read(tmp_path, df, columns, ignore_row_groups, glob_string="/*"):
     pq.write_table(df, str(tmp_path) + "/test.parquet")
 
     has_cols = columns is None or all(c in df.column_names for c in columns)
     if not has_cols:
         with pytest.raises(ValueError):
-            parquet_read(str(tmp_path) + glob_string, columns=columns)
+            parquet_read(
+                str(tmp_path) + glob_string,
+                columns=columns,
+                ignore_row_groups=ignore_row_groups,
+            )
     else:
-        tbl = parquet_read(str(tmp_path) + glob_string, columns=columns)
+        tbl = parquet_read(
+            str(tmp_path) + glob_string,
+            columns=columns,
+            ignore_row_groups=ignore_row_groups,
+        )
         if columns is not None:
             df = df.select(columns)
 
@@ -86,20 +95,22 @@ def test_read(tmp_path, df, columns, glob_string="/*"):
             assert len(df.column_names) == 0
 
 
-def test_read_single_rows(tmp_path, glob_string="/*"):
+@pytest.mark.parametrize("ignore_row_groups", [True, False])
+def test_read_single_rows(tmp_path, ignore_row_groups, glob_string="/*"):
     df = pa.table({"a": np.arange(1, dtype="int64")})
     pq.write_table(df, str(tmp_path) + "/test.parquet")
-    tbl = parquet_read(str(tmp_path) + glob_string)
+    tbl = parquet_read(str(tmp_path) + glob_string, ignore_row_groups=ignore_row_groups)
     assert_arrow_table_equal(tbl.to_arrow(), df)
 
 
-def test_read_many_files_per_rank(tmp_path, glob_string="/*"):
+@pytest.mark.parametrize("ignore_row_groups", [True, False])
+def test_read_many_files_per_rank(tmp_path, ignore_row_groups, glob_string="/*"):
     # Use uneven number to test splitting
     df = pa.table({"a": np.arange(983, dtype="int64")})
     npartitions = 100
     write_partitioned_parquet(df, tmp_path, npartitions=npartitions)
     assert len(glob.glob(str(tmp_path) + glob_string)) == npartitions
-    tbl = parquet_read(str(tmp_path) + glob_string)
+    tbl = parquet_read(str(tmp_path) + glob_string, ignore_row_groups=ignore_row_groups)
 
     # NOTE: Right now the C-code does not attempt to "natural" sort parquet
     #       files.  So more with more than 10 files the order of rows is not
@@ -205,6 +216,24 @@ def test_read_array_cast(tmp_path, npartitions=2, glob_string="/*"):
     assert arr.dtype == "float32"
     assert cn.array_equal(arr[:, 0], cn.arange(10000, dtype="float32"))
     assert cn.array_equal(arr[:, 1], cn.arange(1, 10001, dtype="float32"))
+
+
+@pytest.mark.parametrize("ignore_row_groups", [True, False])
+def test_read_large(tmp_path, ignore_row_groups, npartitions=1, glob_string="/*"):
+    pytest.importorskip("cupynumeric")
+
+    # Create an array so large, that we should chunk (should be fine for testing)
+    df = pa.table(
+        {"a": np.ones(2**26, dtype="uint8")},
+        schema=pa.schema([("a", pa.uint8(), False)]),
+    )
+    pq.write_table(df, str(tmp_path) + "/test.parquet")
+    del df
+
+    tbl = parquet_read(
+        str(tmp_path) + glob_string, columns=["a"], ignore_row_groups=ignore_row_groups
+    )
+    assert tbl["a"].to_array().sum() == 2**26
 
 
 def test_read_array_large(tmp_path, npartitions=1, glob_string="/*"):
