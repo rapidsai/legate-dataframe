@@ -190,7 +190,7 @@ cdef class LogicalColumn:
             If ``check_dtype=True`` and the column dtype is not a native legate
             data type.
         """
-        if check_dtype and not is_legate_compatible(self._handle.cudf_type()):
+        if check_dtype and not is_legate_compatible(self.dtype()):
             raise TypeError(
                 f"column datatype {self.dtype} not a basic legate type. "
                 "Use `col.get_logical_array()` to get the underlying raw array."
