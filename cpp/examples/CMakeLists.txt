@@ -17,7 +17,7 @@ set(TEST_NAME hello_world)
 
 add_executable(hello_world hello.cpp)
 set_target_properties(hello_world PROPERTIES INSTALL_RPATH "\$ORIGIN/..")
-target_link_libraries(hello_world PRIVATE LegateDataframe::LegateDataframe CUDA::cudart)
+target_link_libraries(hello_world PRIVATE LegateDataframe::LegateDataframe)
 
 if(CMAKE_COMPILER_IS_GNUCXX)
   set(LegateDataframe_CXX_FLAGS "-Wall;-Werror;-Wno-unknown-pragmas")
