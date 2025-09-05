@@ -16,6 +16,7 @@ def parquet_read(
     files: pathlib.Path | str | Iterable[pathlib.Path | str],
     *,
     columns: Iterable[str] | None,
+    ignore_row_groups: bool | None = None,
 ) -> LogicalTable: ...
 def parquet_read_array(
     files: pathlib.Path | str | Iterable[pathlib.Path | str],

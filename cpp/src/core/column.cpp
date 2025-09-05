@@ -61,7 +61,9 @@ struct ArrowToPhysicalArrayVisitor {
     arrow_offsets_to_local_ranges(array, ranges);
     auto nbytes = array.total_values_length();
     auto chars  = maybe_bind_buffer<int8_t>(legate_string_array.chars().data(), nbytes);
-    std::memcpy(chars, array.value_data()->data(), nbytes);
+    auto orig_chars =
+      array.value_data()->data() + array.value_offset(0);  // account for first offset
+    std::memcpy(chars, orig_chars, nbytes);
     return arrow::Status::OK();
   }
   arrow::Status Visit(const arrow::BooleanArray& array)

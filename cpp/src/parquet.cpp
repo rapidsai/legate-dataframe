@@ -93,6 +93,63 @@ std::pair<std::vector<std::string>, std::vector<std::vector<int>>> find_files_an
   return {std::move(files), std::move(row_groups)};
 }
 
+struct FileRowGroupInfo {
+  std::vector<std::string> files;
+  std::vector<std::vector<int>> row_groups;
+  size_t initial_rows_to_skip;
+};
+
+FileRowGroupInfo find_files_and_row_groups_by_rows(const std::vector<std::string>& file_paths,
+                                                   const std::vector<size_t>& ngroups_per_file,
+                                                   const std::vector<size_t>& nrows_per_group,
+                                                   size_t from_row,
+                                                   size_t num_rows)
+{
+  std::vector<std::string> files;
+  std::vector<std::vector<int>> row_groups;
+  size_t initial_rows_to_skip = 0;
+
+  size_t total_rows_seen   = 0;
+  size_t total_groups_seen = 0;
+  bool found_start         = false;
+  bool found_end           = false;
+
+  for (size_t i = 0; i < file_paths.size() && !found_end; i++) {
+    size_t file_groups = ngroups_per_file[i];
+    std::vector<int> file_row_groups;
+
+    for (size_t j = 0; j < file_groups && num_rows > 0; j++) {
+      size_t group_rows = nrows_per_group[total_groups_seen + j];
+
+      if (!found_start) {
+        if (total_rows_seen + group_rows <= from_row) {
+          total_rows_seen += group_rows;
+          continue;
+        }
+        found_start          = true;
+        initial_rows_to_skip = from_row - total_rows_seen;
+      }
+
+      file_row_groups.push_back(j);
+      total_rows_seen += group_rows;
+
+      if (total_rows_seen >= from_row + num_rows) {
+        found_end = true;
+        break;
+      }
+    }
+
+    if (!file_row_groups.empty()) {
+      files.push_back(file_paths[i]);
+      row_groups.push_back(std::move(file_row_groups));
+    }
+
+    total_groups_seen += file_groups;
+  }
+
+  return {std::move(files), std::move(row_groups), initial_rows_to_skip};
+}
+
 /* static */ void ParquetRead::cpu_variant(legate::TaskContext context)
 {
   TaskContext ctx{context};
@@ -147,6 +204,85 @@ std::pair<std::vector<std::string>, std::vector<std::vector<int>>> find_files_an
     } else {
       tbl_arg.move_into(std::move(ARROW_RESULT(arrow::ConcatenateTables(tables))));
     }
+  }
+}
+
+/* static */ void ParquetReadByRows::cpu_variant(legate::TaskContext context)
+{
+  TaskContext ctx{context};
+  const auto file_paths       = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto columns          = argument::get_next_scalar_vector<std::string>(ctx);
+  const auto column_indices   = argument::get_next_scalar_vector<int>(ctx);
+  const auto ngroups_per_file = argument::get_next_scalar_vector<size_t>(ctx);
+  const auto nrows_per_group  = argument::get_next_scalar_vector<size_t>(ctx);
+  const auto nrows_total      = argument::get_next_scalar<size_t>(ctx);
+  PhysicalTable tbl_arg       = argument::get_next_output<PhysicalTable>(ctx);
+
+  size_t my_row_offset{};
+  size_t my_nrows{};
+
+  if (!get_prefer_eager_allocations()) {
+    /* Infer ranges from number of ranks */
+    argument::get_parallel_launch_task(ctx);
+    std::tie(my_row_offset, my_nrows) = evenly_partition_work(nrows_total, ctx.rank, ctx.nranks);
+  } else {
+    my_row_offset = tbl_arg.global_row_offset();
+    my_nrows      = tbl_arg.num_rows();
+  }
+
+  if (file_paths.size() != ngroups_per_file.size()) {
+    throw std::runtime_error("internal error: file path and nrows size mismatch");
+  }
+
+  if (my_nrows == 0) {
+    if (!get_prefer_eager_allocations()) { tbl_arg.bind_empty_data(); }
+    return;
+  }
+
+  auto info = find_files_and_row_groups_by_rows(
+    file_paths, ngroups_per_file, nrows_per_group, my_row_offset, my_nrows);
+  std::vector<std::shared_ptr<arrow::RecordBatch>> batches;
+
+  // Iterate over files and read them into batches.
+  size_t rows_read = 0;
+  for (int i = 0; i < info.files.size(), rows_read < my_nrows; i++) {
+    auto input        = ARROW_RESULT(arrow::io::ReadableFile::Open(info.files[i]));
+    auto arrow_reader = ARROW_RESULT(parquet::arrow::OpenFile(input, arrow::default_memory_pool()));
+    auto batch_reader =
+      ARROW_RESULT(arrow_reader->GetRecordBatchReader(info.row_groups[i], column_indices));
+    while (true) {
+      auto batch = ARROW_RESULT(batch_reader->Next());
+      if (!batch) { break; }
+
+      // If we have initial rows to skip deal with it now.
+      if (info.initial_rows_to_skip > 0) {
+        if (info.initial_rows_to_skip > batch->num_rows()) {
+          info.initial_rows_to_skip -= batch->num_rows();
+          continue;
+        }
+        batch =
+          batch->Slice(info.initial_rows_to_skip, batch->num_rows() - info.initial_rows_to_skip);
+        info.initial_rows_to_skip = 0;
+      }
+      rows_read += batch->num_rows();
+      batches.push_back(std::move(batch));
+      if (rows_read >= my_nrows) { break; }
+    }
+  }
+
+  if (rows_read > my_nrows) {
+    auto additional_rows = rows_read - my_nrows;
+    auto nrows_keep      = batches.back()->num_rows() - additional_rows;
+    batches.back()       = batches.back()->Slice(0, nrows_keep);
+  }
+
+  // Concatenate all batches and write out the result.
+  auto table = ARROW_RESULT(arrow::Table::FromRecordBatches(std::move(batches)));
+  assert(table->num_rows() == my_nrows);
+  if (get_prefer_eager_allocations()) {
+    tbl_arg.copy_into(table);
+  } else {
+    tbl_arg.move_into(table);
   }
 }
 
@@ -227,6 +363,7 @@ void __attribute__((constructor)) register_tasks()
 {
   legate::dataframe::task::ParquetWrite::register_variants();
   legate::dataframe::task::ParquetRead::register_variants();
+  legate::dataframe::task::ParquetReadByRows::register_variants();
   legate::dataframe::task::ParquetReadArray::register_variants();
 }
 
@@ -236,10 +373,24 @@ struct ParquetReadInfo {
   std::vector<std::shared_ptr<arrow::DataType>> column_types;
   std::vector<bool> column_nullable;
   std::vector<size_t> nrow_groups;
-  std::vector<legate::Rect<1>> row_group_ranges_vec;
-  LogicalArray row_group_ranges;
+  const std::shared_ptr<std::vector<legate::Rect<1>>> row_group_ranges_vec;
   size_t nrow_groups_total;
   size_t nrows_total;
+
+  LogicalArray get_row_group_ranges_array() const
+  {
+    // Bind the vector allocation to avoid using `get_physical_store`
+    auto runtime = legate::Runtime::get_runtime();
+    auto vec     = row_group_ranges_vec;
+    auto alloc   = legate::ExternalAllocation::create_sysmem(
+      vec->data(), vec->size() * sizeof(legate::Rect<1>), [vec](void* ptr) {}
+      // use closure to keep vector alive
+    );
+    auto store = runtime->create_store({vec->size()}, legate::rect_type(1), alloc);
+    legate::LogicalArray row_group_ranges_arr(store);
+
+    return row_group_ranges_arr;
+  }
 };
 
 ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
@@ -327,22 +478,12 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
     }
   }
 
-  auto runtime = legate::Runtime::get_runtime();
-  auto row_group_ranges_arr =
-    runtime->create_array({row_group_ranges.size()}, legate::rect_type(1));
-  auto ptr = row_group_ranges_arr.get_physical_array()
-               .data()
-               .write_accessor<legate::Rect<1>, 1, false>()
-               .ptr(0);
-  std::copy(row_group_ranges.begin(), row_group_ranges.end(), ptr);
-
   return {std::move(column_names),
           std::move(column_indices),
           std::move(column_types),
           std::move(column_nullable),
           std::move(nrow_groups),
-          std::move(row_group_ranges),
-          row_group_ranges_arr,
+          std::make_shared<std::vector<legate::Rect<1>>>(std::move(row_group_ranges)),
           nrow_groups_total,
           nrows_total};
 }
@@ -364,8 +505,8 @@ void parquet_write(LogicalTable& tbl, const std::string& dirpath)
   runtime->submit(std::move(task));
 }
 
-LogicalTable parquet_read(const std::vector<std::string>& files,
-                          const std::optional<std::vector<std::string>>& columns)
+LogicalTable parquet_read_by_group(const std::vector<std::string>& files,
+                                   const std::optional<std::vector<std::string>>& columns)
 {
   auto info = get_parquet_info(files, columns);
 
@@ -393,7 +534,7 @@ LogicalTable parquet_read(const std::vector<std::string>& files,
   if (!size.has_value()) {
     argument::add_parallel_launch_task(task);
   } else {
-    auto constraint_var = task.add_input(info.row_group_ranges);
+    auto constraint_var = task.add_input(info.get_row_group_ranges_array());
     // As of 25.08.dev image constraints don't work properly so need to set them
     // on all column arrays.
     // It should be sufficient to only set it on the first `var` here.
@@ -411,6 +552,58 @@ LogicalTable parquet_read(const std::vector<std::string>& files,
   }
   runtime->submit(std::move(task));
   return ret;
+}
+
+LogicalTable parquet_read_by_rows(const std::vector<std::string>& files,
+                                  const std::optional<std::vector<std::string>>& columns)
+{
+  auto info = get_parquet_info(files, columns);
+
+  std::vector<std::size_t> nrows_per_group(info.row_group_ranges_vec->size());
+  for (int i = 0; i < info.row_group_ranges_vec->size(); i++) {
+    auto& elem         = info.row_group_ranges_vec->at(i);
+    nrows_per_group[i] = elem.hi[0] - elem.lo[0] + 1;
+  }
+
+  std::vector<LogicalColumn> logical_columns;
+  logical_columns.reserve(info.column_types.size());
+
+  std::optional<size_t> size{};
+  if (get_prefer_eager_allocations()) { size = info.nrows_total; }
+  for (int i = 0; i < info.column_types.size(); i++) {
+    logical_columns.emplace_back(
+      LogicalColumn::empty_like(info.column_types.at(i), info.column_nullable.at(i), false, size));
+  }
+  auto ret = LogicalTable(std::move(logical_columns), info.column_names);
+  if (info.column_names.size() == 0 && size.has_value()) {
+    return ret;  // Task launch fails, can probably always skip but not sure.
+  }
+
+  auto runtime = legate::Runtime::get_runtime();
+  legate::AutoTask task =
+    runtime->create_task(get_library(), task::ParquetReadByRows::TASK_CONFIG.task_id());
+  argument::add_next_scalar_vector(task, files);
+  argument::add_next_scalar_vector(task, info.column_names);
+  argument::add_next_scalar_vector(task, info.column_indices);
+  argument::add_next_scalar_vector(task, info.nrow_groups);
+  argument::add_next_scalar_vector(task, nrows_per_group);
+  argument::add_next_scalar(task, info.nrows_total);
+  auto vars = argument::add_next_output(task, ret);
+
+  if (!size.has_value()) { argument::add_parallel_launch_task(task); }
+  runtime->submit(std::move(task));
+  return ret;
+}
+
+LogicalTable parquet_read(const std::vector<std::string>& files,
+                          const std::optional<std::vector<std::string>>& columns,
+                          bool ignore_row_groups)
+{
+  if (ignore_row_groups) {
+    return parquet_read_by_rows(files, columns);
+  } else {
+    return parquet_read_by_group(files, columns);
+  }
 }
 
 legate::LogicalArray parquet_read_array(const std::vector<std::string>& files,
@@ -462,7 +655,7 @@ legate::LogicalArray parquet_read_array(const std::vector<std::string>& files,
   argument::add_next_scalar_vector(task, info.column_names);
   argument::add_next_scalar_vector(task, info.column_indices);
   argument::add_next_scalar_vector(task, info.nrow_groups);
-  argument::add_next_scalar_vector(task, info.row_group_ranges_vec);
+  argument::add_next_scalar_vector(task, *info.row_group_ranges_vec);
   argument::add_next_scalar(task, info.nrow_groups_total);
   argument::add_next_scalar(task, null_value);
 

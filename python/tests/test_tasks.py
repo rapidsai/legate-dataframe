@@ -44,7 +44,7 @@ def test_python_launched_tasks():
 
     # Then, we can create the task and provide the task arguments using the
     # exact same order as in the task implementation ("unaryop.cpp").
-    task = runtime.create_auto_task(lib, 13)
+    task = runtime.create_auto_task(lib, 14)
     task.add_scalar_arg("abs", dtype=lg_type.string_type)
     col.add_as_next_task_input(task)
     result = LogicalColumn.empty_like_logical_column(col)

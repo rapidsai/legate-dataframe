@@ -52,6 +52,8 @@ namespace legate::dataframe {
 /**
  * @brief Converts the offsets from an Arrow StringArray into local ranges.
  *
+ * This function accounts for slicing and always returns an offset of 0 for the first string.
+ *
  * @param array The Arrow StringArray containing the string data and offsets.
  * @param ranges_acc Pointer to an array of legate::Rect<1> where the computed ranges will be
  * stored.
@@ -60,6 +62,8 @@ void arrow_offsets_to_local_ranges(const arrow::StringArray& array, legate::Rect
 
 /**
  * @brief Converts the offsets from an Arrow LargeStringArray into local ranges.
+ *
+ * This function accounts for slicing and always returns an offset of 0 for the first string.
  *
  * @param array The Arrow LargeStringArray containing the string data and offsets.
  * @param ranges_acc Pointer to an array of legate::Rect<1> where the computed ranges will be
