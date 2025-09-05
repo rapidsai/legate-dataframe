@@ -62,8 +62,8 @@ auto make_string_array_with_nulls(const std::vector<std::string>& values,
 
 std::shared_ptr<arrow::Table> arrow_join(const legate::dataframe::LogicalTable& lhs,
                                          const legate::dataframe::LogicalTable& rhs,
-                                         const std::set<std::size_t>& left_keys,
-                                         const std::set<std::size_t>& right_keys,
+                                         const std::vector<std::size_t>& left_keys,
+                                         const std::vector<std::size_t>& right_keys,
                                          legate::dataframe::JoinType join_type,
                                          bool nulls_equal = true)
 {
@@ -130,8 +130,8 @@ auto sort_table(std::shared_ptr<arrow::Table> table)
 
 void test_join(const LogicalTable& a,
                const LogicalTable& b,
-               std::set<std::size_t> keys_a,
-               std::set<std::size_t> keys_b,
+               std::vector<std::size_t> keys_a,
+               std::vector<std::size_t> keys_b,
                JoinType join_type,
                bool nulls_equal         = true,
                BroadcastInput broadcast = BroadcastInput::AUTO)

@@ -323,8 +323,8 @@ void append_empty_like_columns_force_nullable(std::vector<LogicalColumn>& output
 
 LogicalTable join(const LogicalTable& lhs,
                   const LogicalTable& rhs,
-                  const std::set<size_t>& lhs_keys,
-                  const std::set<size_t>& rhs_keys,
+                  const std::vector<size_t>& lhs_keys,
+                  const std::vector<size_t>& rhs_keys,
                   JoinType join_type,
                   const std::vector<size_t>& lhs_out_columns,
                   const std::vector<size_t>& rhs_out_columns,
@@ -426,8 +426,8 @@ LogicalTable join(const LogicalTable& lhs,
 
 LogicalTable join(const LogicalTable& lhs,
                   const LogicalTable& rhs,
-                  const std::set<std::string>& lhs_keys,
-                  const std::set<std::string>& rhs_keys,
+                  const std::vector<std::string>& lhs_keys,
+                  const std::vector<std::string>& rhs_keys,
                   JoinType join_type,
                   const std::vector<std::string>& lhs_out_columns,
                   const std::vector<std::string>& rhs_out_columns,
@@ -435,17 +435,17 @@ LogicalTable join(const LogicalTable& lhs,
                   BroadcastInput broadcast)
 {
   // Convert column names to indices
-  std::set<size_t> lhs_keys_idx;
-  std::set<size_t> rhs_keys_idx;
+  std::vector<size_t> lhs_keys_idx;
+  std::vector<size_t> rhs_keys_idx;
   std::vector<size_t> lhs_out_columns_idx;
   std::vector<size_t> rhs_out_columns_idx;
   const auto& lhs_name_to_idx = lhs.get_column_names();
   const auto& rhs_name_to_idx = rhs.get_column_names();
   for (const auto& name : lhs_keys) {
-    lhs_keys_idx.insert(lhs_name_to_idx.at(name));
+    lhs_keys_idx.push_back(lhs_name_to_idx.at(name));
   }
   for (const auto& name : rhs_keys) {
-    rhs_keys_idx.insert(rhs_name_to_idx.at(name));
+    rhs_keys_idx.push_back(rhs_name_to_idx.at(name));
   }
   for (const auto& name : lhs_out_columns) {
     lhs_out_columns_idx.push_back(lhs_name_to_idx.at(name));
@@ -466,8 +466,8 @@ LogicalTable join(const LogicalTable& lhs,
 
 LogicalTable join(const LogicalTable& lhs,
                   const LogicalTable& rhs,
-                  const std::set<size_t>& lhs_keys,
-                  const std::set<size_t>& rhs_keys,
+                  const std::vector<size_t>& lhs_keys,
+                  const std::vector<size_t>& rhs_keys,
                   JoinType join_type,
                   bool nulls_equal,
                   BroadcastInput broadcast)
