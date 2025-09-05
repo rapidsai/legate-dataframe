@@ -4,7 +4,6 @@
 # distutils: language = c++
 # cython: language_level=3
 
-from pylibcudf.interop import to_arrow
 
 from libcpp.memory cimport shared_ptr
 
@@ -30,7 +29,8 @@ cdef shared_ptr[CDataType] as_arrow_data_type(data_type_like):
     if isinstance(data_type_like, pa.DataType):
         d_type = pyarrow_unwrap_data_type(data_type_like)
         return d_type
-    if isinstance(data_type_like, DataType):
+    if "cudf" in type(data_type_like).__name__:
+        from pylibcudf.interop import to_arrow
         data_type_like = to_arrow(data_type_like)
         d_type = pyarrow_unwrap_data_type(data_type_like)
         return d_type
