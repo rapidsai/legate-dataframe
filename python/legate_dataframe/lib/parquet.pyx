@@ -35,7 +35,7 @@ cdef extern from "<legate_dataframe/parquet.hpp>" nogil:
     cpp_LogicalTable cpp_parquet_read "legate::dataframe::parquet_read"(
         const vector[string]& files,
         optional[vector[string]]& columns,
-        cpp_bool chunk_by_rows,
+        cpp_bool ignore_row_groups,
     ) except +
     cpp_LogicalArray cpp_parquet_read_array "legate::dataframe::parquet_read_array"(
         const vector[string]& files,
@@ -76,7 +76,7 @@ def parquet_write(LogicalTable tbl, path: pathlib.Path | str) -> None:
 
 
 @_track_provenance
-def parquet_read(files, *, columns=None, chunk_by_rows = None) -> LogicalTable:
+def parquet_read(files, *, columns=None, ignore_row_groups=None) -> LogicalTable:
     """Read Parquet files into a logical table
 
     Parameters
@@ -86,13 +86,17 @@ def parquet_read(files, *, columns=None, chunk_by_rows = None) -> LogicalTable:
         otherwise must be a path or an iterable of paths (or strings).
     columns
         List of strings selecting a subset of columns to read.
-    chunk_by_rows
+    ignore_row_groups
         If set to ``True`` the read operation will not be chunked into row groups.
-        This may be better when row-groups are large.
+        When row groups are large, this may lead to better resource use and more
+        efficient reads. Note that temporary resource use may be higher due to the
+        different approaches to reading the data.
 
         .. note::
             The Python side default is currently set to ``True`` when
-            ``LDF_PREFER_EAGER_ALLOCATIONS`` is used.
+            ``LDF_PREFER_EAGER_ALLOCATIONS`` is used as it helps with streaming.
+            We expect future improvements when ``ignore_row_groups``, as of now
+            at least on the CPU it may not be beneficial even with large row groups.
 
     Returns
     -------
@@ -105,11 +109,11 @@ def parquet_read(files, *, columns=None, chunk_by_rows = None) -> LogicalTable:
     cdef vector[string] cpp_files
     cdef vector[string] cpp_columns
     cdef optional[vector[string]] cpp_columns_opt
-    cdef cpp_bool cpp_chunk_by_rows
-    if chunk_by_rows is None:
-        cpp_chunk_by_rows = get_prefer_eager_allocations()
+    cdef cpp_bool cpp_ignore_row_groups
+    if ignore_row_groups is None:
+        cpp_ignore_row_groups = get_prefer_eager_allocations()
     else:
-        cpp_chunk_by_rows = chunk_by_rows
+        cpp_ignore_row_groups = ignore_row_groups
 
     if isinstance(files, str):
         files = sorted(glob.glob(files))
@@ -126,7 +130,7 @@ def parquet_read(files, *, columns=None, chunk_by_rows = None) -> LogicalTable:
         cpp_columns_opt = cpp_columns
 
     return LogicalTable.from_handle(
-        cpp_parquet_read(cpp_files, cpp_columns_opt, cpp_chunk_by_rows)
+        cpp_parquet_read(cpp_files, cpp_columns_opt, cpp_ignore_row_groups)
     )
 
 

@@ -597,9 +597,9 @@ LogicalTable parquet_read_by_rows(const std::vector<std::string>& files,
 
 LogicalTable parquet_read(const std::vector<std::string>& files,
                           const std::optional<std::vector<std::string>>& columns,
-                          bool chunk_by_rows)
+                          bool ignore_row_groups)
 {
-  if (chunk_by_rows) {
+  if (ignore_row_groups) {
     return parquet_read_by_rows(files, columns);
   } else {
     return parquet_read_by_group(files, columns);
