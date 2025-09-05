@@ -91,18 +91,6 @@ std::shared_ptr<arrow::Table> LogicalTable::get_arrow() const
   return arrow::Table::Make(arrow::schema(fields), std::move(cols));
 }
 
-std::string LogicalTable::repr(size_t max_num_items_ptr_column) const
-{
-  std::stringstream ss;
-  const auto names = get_column_name_vector();
-  ss << "LogicalTable(columns={";
-  for (size_t i = 0; i < columns_.size(); ++i) {
-    ss << names.at(i) + ": " + columns_.at(i).repr(max_num_items_ptr_column) << ", ";
-  }
-  ss << "\b\b})";  // use two ANSI backspace characters '\b' to overwrite the final ','
-  return ss.str();
-}
-
 namespace argument {
 std::vector<legate::Variable> add_next_input(legate::AutoTask& task,
                                              const LogicalTable& tbl,

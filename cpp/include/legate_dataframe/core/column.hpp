@@ -103,8 +103,8 @@ class LogicalColumn {
    * check could be blocking.
    */
   LogicalColumn(legate::LogicalArray array,
-                std::shared_ptr<arrow::DataType> data_type,
-                bool scalar = false)
+                std::shared_ptr<arrow::DataType> data_type = nullptr,
+                bool scalar                                = false)
     : array_{std::move(array)}, scalar_{scalar}
   {
     if (array_->dim() != 1) { throw std::invalid_argument("array must be 1-D"); }
@@ -482,14 +482,6 @@ class LogicalColumn {
   bool is_scalar() const { return scalar_; };
 
   /**
-   * @brief Return a printable representational string
-   *
-   * @param max_num_items Maximum number of items to include before items are abbreviated.
-   * @return Printable representational string
-   */
-  std::string repr(size_t max_num_items = 30) const;
-
-  /**
    * @brief Slice the column
    *
    * @param slice The Legate slice into the column.  Supports negative values,
@@ -667,19 +659,7 @@ class PhysicalColumn {
    * @return A new cudf scalar.
    */
   std::unique_ptr<cudf::scalar> cudf_scalar() const;
-#endif
 
-  /**
-   * @brief Return a printable representational string
-   *
-   * @param max_num_items Maximum number of items to include before items are abbreviated.
-   * @return Printable representational string
-   */
-  std::string repr(legate::Memory::Kind mem_kind,
-                   cudaStream_t stream,
-                   size_t max_num_items = 30) const;
-
-#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy local cudf column into this unbound physical column
    *

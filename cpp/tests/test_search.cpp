@@ -41,8 +41,9 @@ void CompareArrow(const LogicalColumn& haystack, const LogicalColumn& needles)
   auto result = contains(haystack, needles).get_arrow();
 
   EXPECT_TRUE(expected->Equals(*result))
-    << "Failed contains: haystack: " << haystack.repr() << " needles: " << needles.repr()
-    << " Expected: " << expected->ToString() << " Result: " << result->ToString();
+    << "Failed contains: haystack: " << haystack.get_arrow()->ToString()
+    << " needles: " << needles.get_arrow()->ToString() << " Expected: " << expected->ToString()
+    << " Result: " << result->ToString();
 }
 
 TYPED_TEST_SUITE(ContainsTest, ContainsTypes);
