@@ -29,7 +29,7 @@ cdef shared_ptr[CDataType] as_arrow_data_type(data_type_like):
     if isinstance(data_type_like, pa.DataType):
         d_type = pyarrow_unwrap_data_type(data_type_like)
         return d_type
-    if "cudf" in type(data_type_like).__name__:
+    if type(data_type_like).__module__ == "pylibcudf.types":
         from pylibcudf.interop import to_arrow
         data_type_like = to_arrow(data_type_like)
         d_type = pyarrow_unwrap_data_type(data_type_like)
