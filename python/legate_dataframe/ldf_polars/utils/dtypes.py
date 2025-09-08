@@ -24,7 +24,6 @@ __all__ = [
     "to_polars",
 ]
 import pylibcudf as plc
-from cudf.utils.dtypes import dtype_to_pylibcudf_type
 
 
 def downcast_arrow_lists(typ: pa.DataType) -> pa.DataType:
@@ -237,7 +236,7 @@ def to_polars(dtype) -> pl.DataType:
     NotImplementedError
         For unsupported conversions.
     """
-    type_id = dtype_to_pylibcudf_type(dtype).id()
+    type_id = dtype.id()
 
     if type_id == plc.TypeId.BOOL8:
         return pl.Boolean
