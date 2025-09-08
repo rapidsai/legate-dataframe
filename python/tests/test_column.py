@@ -11,7 +11,7 @@ from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.unaryop import unary_operation
 from legate_dataframe.testing import (
     assert_frame_equal,
-    get_column_set,
+    get_pyarrow_column_set,
     guess_available_mem,
 )
 
@@ -51,12 +51,12 @@ def test_column_name_by_string():
 
 
 @pytest.mark.parametrize(
-    "cudf_column",
-    get_column_set(["int32", "float32", "M8[s]", "int64"]),
+    "array",
+    get_pyarrow_column_set(["int32", "float32", "timestamp[s]", "int64"]),
 )
-def test_column_dtype(cudf_column):
-    col = LogicalColumn.from_cudf(cudf_column)
-    assert col.dtype() == cudf_column.dtype
+def test_column_dtype(array):
+    col = LogicalColumn.from_arrow(array)
+    assert col.dtype() == array.type
 
 
 @pytest.mark.skip(reason="Test is fairly slow and requires a lot of GPU memory.")
