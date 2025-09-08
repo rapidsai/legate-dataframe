@@ -25,7 +25,6 @@
 
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/null_mask.hpp>
-#include <legate_dataframe/core/print.hpp>
 #include <legate_dataframe/core/ranges.hpp>
 #include <legate_dataframe/utils.hpp>
 
