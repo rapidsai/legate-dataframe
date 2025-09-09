@@ -92,11 +92,11 @@ void CompareArrow(const LogicalColumn& col, const std::vector<std::string>& unar
     if (float_types.count(col.type().code())) {
       arrow::EqualOptions options;
       EXPECT_TRUE(expected->ApproxEquals(*result, options.nans_equal(true)))
-        << "Failed for operation: " << op << " Input: " << col.repr()
+        << "Failed for operation: " << op << " Input: " << col.get_arrow()->ToString()
         << " Expected: " << expected->ToString() << " Result: " << result->ToString();
     } else {
       EXPECT_TRUE(expected->Equals(*result))
-        << "Failed for operation: " << op << " Input: " << col.repr()
+        << "Failed for operation: " << op << " Input: " << col.get_arrow()->ToString()
         << " Expected: " << expected->ToString() << " Result: " << result->ToString();
     }
   }

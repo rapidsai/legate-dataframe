@@ -149,7 +149,7 @@ if (( NUMARGS == 0 )) || hasArg liblegate_dataframe; then
     cmake --build "${LIBLEGATE_DATAFRAME_BUILD_DIR}" -j${PARALLEL_LEVEL} ${VERBOSE_FLAG}
     if [[ ${INSTALL_TARGET} != "" ]]; then
         echo "installing liblegate_dataframe..."
-        cmake --build "${LIBLEGATE_DATAFRAME_BUILD_DIR}" --target install ${VERBOSE_FLAG}
+        cmake --build "${LIBLEGATE_DATAFRAME_BUILD_DIR}" -j${PARALLEL_LEVEL} --target install ${VERBOSE_FLAG}
     fi
 fi
 

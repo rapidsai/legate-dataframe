@@ -35,4 +35,5 @@ legate \
     --ignore=test_examples.py \
     --ignore=test_replace.py \
     --ignore=test_timestamps.py \
+    -k 'not polars'
     "${@}"

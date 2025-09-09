@@ -115,8 +115,7 @@ void check_global_row_offset(LogicalTable& input)
   auto task = runtime->create_task(get_test_library(), GlobalRowOffsetTask::TASK_CONFIG.task_id());
 
   // Launch task
-  LogicalColumn res =
-    LogicalColumn::empty_like(cudf::data_type{cudf::type_id::INT64}, /* nullable = */ false);
+  LogicalColumn res = LogicalColumn::empty_like(arrow::int64(), /* nullable = */ false);
   argument::add_next_input(task, input);
   argument::add_next_output(task, res);
   argument::add_next_scalar(task, input.num_rows());

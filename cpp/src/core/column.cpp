@@ -25,7 +25,6 @@
 
 #include <legate_dataframe/core/column.hpp>
 #include <legate_dataframe/core/null_mask.hpp>
-#include <legate_dataframe/core/print.hpp>
 #include <legate_dataframe/core/ranges.hpp>
 #include <legate_dataframe/utils.hpp>
 
@@ -226,37 +225,7 @@ LogicalColumn LogicalColumn::slice(const legate::Slice& slice) const
   return LogicalColumn(array_->slice(0, slice), arrow_type_);
 }
 
-std::string LogicalColumn::repr(size_t max_num_items) const
-{
-  std::stringstream ss;
-  ss << "LogicalColumn(";
-  if (unbound()) {
-    ss << "data=unbound, ";
-    if (array_->nullable()) { ss << "null_mask=unbound, "; }
-    ss << "dtype=" << array_->type();
-  } else {
-    legate::PhysicalArray ary = array_->get_physical_array();
-
-    // Notice, `get_physical_array()` returns host memory always
-    ss << legate::dataframe::repr(
-      ary, max_num_items, legate::Memory::Kind::SYSTEM_MEM, cudaStream_t{0});
-  }
-  if (unbound() || num_rows() == 1) { ss << ", is_scalar=" << (is_scalar() ? "True" : "False"); }
-  ss << ")";
-  return ss.str();
-}
-
 namespace task {
-
-std::string PhysicalColumn::repr(legate::Memory::Kind mem_kind,
-                                 cudaStream_t stream,
-                                 size_t max_num_items) const
-{
-  std::stringstream ss;
-  ss << "PhysicalColumn(";
-  ss << legate::dataframe::repr(array_, max_num_items, mem_kind, stream) << ")";
-  return ss.str();
-}
 
 std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
 {

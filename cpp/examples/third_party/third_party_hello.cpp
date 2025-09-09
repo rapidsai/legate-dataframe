@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.
+ * Copyright (c) 2024-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,6 @@ int main(int argc, char** argv)
   legate::dataframe::LogicalColumn col_b = unary_operation(col_a, cudf::unary_operator::ABS);
 
   // And print
-  std::cout << col_b.repr() << std::endl;
+  std::cout << col_b.get_arrow()->ToString() << std::endl;
   return 0;
 }

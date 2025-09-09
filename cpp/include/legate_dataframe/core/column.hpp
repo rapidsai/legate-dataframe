@@ -75,20 +75,12 @@ class LogicalColumn {
    * it is the callers responsibility to ensure the array is length 1 as this
    * check could be blocking.
    */
-  LogicalColumn(legate::LogicalArray array,
-                cudf::data_type cudf_type = cudf::data_type{cudf::type_id::EMPTY},
-                bool scalar               = false)
-    : array_{std::move(array)}, scalar_{scalar}
+  LogicalColumn(legate::LogicalArray array, cudf::data_type cudf_type, bool scalar = false)
+    : LogicalColumn(
+        std::move(array),
+        cudf_type.id() == cudf::type_id::EMPTY ? nullptr : to_arrow_type(cudf_type.id()),
+        scalar)
   {
-    if (array_->dim() != 1) { throw std::invalid_argument("array must be 1-D"); }
-    // Note: Checking the volume could be blocking, so assume that this is fine.
-    assert(!scalar || array_->unbound() || array_->volume() == 1);
-
-    if (cudf_type.id() == cudf::type_id::EMPTY) {
-      arrow_type_ = to_arrow_type(array_->type().code());
-    } else {
-      arrow_type_ = to_arrow_type(cudf_type.id());
-    }
   }
 #endif
 
@@ -103,8 +95,8 @@ class LogicalColumn {
    * check could be blocking.
    */
   LogicalColumn(legate::LogicalArray array,
-                std::shared_ptr<arrow::DataType> data_type,
-                bool scalar = false)
+                std::shared_ptr<arrow::DataType> data_type = nullptr,
+                bool scalar                                = false)
     : array_{std::move(array)}, scalar_{scalar}
   {
     if (array_->dim() != 1) { throw std::invalid_argument("array must be 1-D"); }
@@ -259,49 +251,6 @@ class LogicalColumn {
                          other.arrow_type(),
                          false);
   }
-
-#ifdef LEGATE_DATAFRAME_USE_CUDA
-  /**
-   * @brief Create a new unbounded column from an existing local cuDF column
-   *
-   * @param other The prototype column
-   * @return The new unbounded column with the type and nullable equal `other`
-   */
-  static LogicalColumn empty_like(const cudf::column_view& other)
-  {
-    return LogicalColumn(legate::Runtime::get_runtime()->create_array(
-                           to_legate_type(other.type().id()), 1, other.nullable()),
-                         other.type());
-  }
-#endif
-
-#ifdef LEGATE_DATAFRAME_USE_CUDA
-  /**
-   * @brief Create a new unbounded column from dtype and nullable
-   *
-   * @param dtype The data type of the new column
-   * @param nullable The nullable of the new column
-   * @param scalar Whether the result is a scalar column.
-   * @return The new unbounded column
-   */
-  static LogicalColumn empty_like(cudf::data_type dtype,
-                                  bool nullable,
-                                  bool scalar                = false,
-                                  std::optional<size_t> size = std::nullopt)
-  {
-    if (!size.has_value()) {
-      return LogicalColumn(
-        legate::Runtime::get_runtime()->create_array(to_legate_type(dtype.id()), 1, nullable),
-        dtype,
-        scalar);
-    } else {
-      return LogicalColumn(legate::Runtime::get_runtime()->create_array(
-                             Shape{size.value()}, to_legate_type(dtype.id()), nullable),
-                           dtype,
-                           scalar);
-    }
-  }
-#endif
 
   /**
    * @brief Create a new unbounded column from dtype and nullable
@@ -482,14 +431,6 @@ class LogicalColumn {
   bool is_scalar() const { return scalar_; };
 
   /**
-   * @brief Return a printable representational string
-   *
-   * @param max_num_items Maximum number of items to include before items are abbreviated.
-   * @return Printable representational string
-   */
-  std::string repr(size_t max_num_items = 30) const;
-
-  /**
    * @brief Slice the column
    *
    * @param slice The Legate slice into the column.  Supports negative values,
@@ -667,19 +608,7 @@ class PhysicalColumn {
    * @return A new cudf scalar.
    */
   std::unique_ptr<cudf::scalar> cudf_scalar() const;
-#endif
 
-  /**
-   * @brief Return a printable representational string
-   *
-   * @param max_num_items Maximum number of items to include before items are abbreviated.
-   * @return Printable representational string
-   */
-  std::string repr(legate::Memory::Kind mem_kind,
-                   cudaStream_t stream,
-                   size_t max_num_items = 30) const;
-
-#ifdef LEGATE_DATAFRAME_USE_CUDA
   /**
    * @brief Copy local cudf column into this unbound physical column
    *
