@@ -27,8 +27,7 @@ else()
 endif()
 
 include(../cpp/cmake/fetch_rapids.cmake)
-include(rapids-cuda)
-rapids_cuda_init_architectures(PyLegateDataframe)
+include(rapids-find)
 
 project(
   PyLegateDataframe
@@ -37,7 +36,7 @@ project(
             # language to be enabled here. The test project that is built in scikit-build to verify
             # various linking options for the python library is hardcoded to build with C, so until
             # that is fixed we need to keep C.
-            C CXX CUDA
+            C CXX
 )
 
 option(
@@ -45,7 +44,11 @@ option(
   "Search for existing legate dataframe C++ installations before defaulting to local files" OFF
 )
 
+rapids_find_package(legate REQUIRED Legion LegionRuntime)
+
 if(Legion_USE_CUDA)
+  include(rapids-cuda)
+  rapids_cuda_init_architectures(PyLegateDataframe)
   add_definitions(-DLEGATE_DATAFRAME_USE_CUDA)
 endif()
 

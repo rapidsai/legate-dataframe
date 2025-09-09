@@ -88,9 +88,6 @@ if(Legion_USE_CUDA)
   # it seems fetching rmm/cudf manage to ensure we ge the right one.)
   include("${rapids-cmake-dir}/cpm/cccl.cmake")
   rapids_cpm_cccl()
-endif()
-
-if(Legion_USE_CUDA)
   include(rapids-cuda)
   rapids_cuda_init_architectures(LegateDataframe)
   include(cmake/thirdparty/get_rmm.cmake)
@@ -150,20 +147,17 @@ set_target_properties(
              CXX_STANDARD_REQUIRED ON
              # For std:: support of __int128_t. Can be removed once using cuda::std
              CXX_EXTENSIONS ON
-             CUDA_STANDARD 17
-             CUDA_STANDARD_REQUIRED ON
              POSITION_INDEPENDENT_CODE ON
              INTERFACE_POSITION_INDEPENDENT_CODE ON
 )
 
 if(Legion_USE_CUDA)
   set_target_properties(LegateDataframe PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+  # Need to add this define, as is done in legate CMakeLists.txt as well for __half support.  If
+  # __half support fails elsewhere it may be needed there. This may be a CCCL 2.7.0 issue and become
+  # unnecessary in the future.
+  target_compile_definitions("LegateDataframe" PUBLIC _LIBCUDACXX_HAS_NVFP16=1)
 endif()
-
-# Need to add this define, as is done in legate CMakeLists.txt as well for __half support.  If
-# __half support fails elsewhere it may be needed there. This may be a CCCL 2.7.0 issue and become
-# unnecessary in the future.
-target_compile_definitions("LegateDataframe" PUBLIC _LIBCUDACXX_HAS_NVFP16=1)
 
 list(APPEND LDF_CUDA_FLAGS --expt-extended-lambda)
 list(APPEND LDF_CUDA_FLAGS --expt-relaxed-constexpr)

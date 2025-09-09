@@ -16,7 +16,7 @@
 file(
   GLOB CYTHON_SOURCES
   RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-  "*.pyx"
+  "*[!_cu].pyx"
 )
 
 rapids_cython_create_modules(
