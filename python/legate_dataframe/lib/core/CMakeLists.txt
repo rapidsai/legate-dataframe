@@ -13,11 +13,23 @@
 # =============================================================================
 
 # Set the list of Cython files to build
-file(
-  GLOB CYTHON_SOURCES
-  RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-  "*[!_cu].pyx"
-)
+
+if(Legion_USE_CUDA)
+  file(
+    GLOB CYTHON_SOURCES
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    "*.pyx"
+  )
+else()
+  file(
+    GLOB CYTHON_SOURCES
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    "*[!_cu].pyx"
+  )
+endif()
+
+# rapids_cython_create_modules passes CYTHON_FLAGS to the cython command line
+set(CYTHON_FLAGS "${CYTHON_FLAGS} -E LEGATE_DATAFRAME_USE_CUDA=${Legion_USE_CUDA}")
 
 rapids_cython_create_modules(
   CXX
