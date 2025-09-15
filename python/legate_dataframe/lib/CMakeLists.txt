@@ -13,11 +13,13 @@
 # =============================================================================
 
 # Set the list of Cython files to build
-file(
-  GLOB CYTHON_SOURCES
-  RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-  "*.pyx"
+set(cython_sources
+    binaryop.pyx copying.pyx csv.pyx groupby_aggregation.pyx join.pyx parquet.pyx reduction.pyx
+    replace.pyx search.pyx sort.pyx stream_compaction.pyx strings.pyx timestamps.pyx unaryop.pyx
 )
+
+# rapids_cython_create_modules passes CYTHON_FLAGS to the cython command line
+set(CYTHON_FLAGS "${CYTHON_FLAGS} -E LEGATE_DATAFRAME_USE_CUDA=${Legion_USE_CUDA}")
 
 rapids_cython_create_modules(
   CXX
