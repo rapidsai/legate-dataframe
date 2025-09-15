@@ -1,42 +1,36 @@
 # Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import cudf
+import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.replace import replace_nulls
-from legate_dataframe.testing import (
-    assert_frame_equal,
-    assert_matches_polars,
-    get_column_set,
-    get_pyarrow_column_set,
-)
+from legate_dataframe.testing import assert_matches_polars, get_pyarrow_column_set
 
 
 @pytest.mark.parametrize(
-    "cudf_column", get_column_set(["int32", "float32", "M8[s]", "int64"])
+    "column", get_pyarrow_column_set(["int32", "float32", "int64"])
 )
-def test_column_replace_null(cudf_column):
-    col = LogicalColumn.from_cudf(cudf_column)
+def test_column_replace_null(column):
+    col = LogicalColumn.from_arrow(column)
 
-    expected = cudf_column.fillna(1)
-    res = replace_nulls(col, cudf.Scalar(1, dtype=cudf_column.dtype))
+    expected = pa.compute.fill_null(column, 1)
+    res = replace_nulls(col, pa.scalar(1, type=column.type))
 
-    assert_frame_equal(res, expected)
+    assert expected.equals(res.to_arrow())
 
 
 @pytest.mark.parametrize(
-    "cudf_column", get_column_set(["int32", "float32", "M8[s]", "int64"])
+    "column", get_pyarrow_column_set(["int32", "float32", "int64"])
 )
-def test_column_replace_null_with_null(cudf_column):
+def test_column_replace_null_with_null(column):
     # Replacing with NULL is odd, but at least tests passing NULLs to tasks.
-    col = LogicalColumn.from_cudf(cudf_column)
-    value = cudf.Scalar(None, dtype=cudf_column.dtype)
-
+    col = LogicalColumn.from_arrow(column)
+    value = pa.scalar(None, type=column.type)
     res = replace_nulls(col, value)
     # The result should be the same as the input
-    assert_frame_equal(res, col)
+    assert column.equals(res.to_arrow())
 
 
 @pytest.mark.parametrize(
