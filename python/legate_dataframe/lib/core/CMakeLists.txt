@@ -29,7 +29,11 @@ else()
 endif()
 
 # rapids_cython_create_modules passes CYTHON_FLAGS to the cython command line
-set(CYTHON_FLAGS "${CYTHON_FLAGS} -E LEGATE_DATAFRAME_USE_CUDA=${Legion_USE_CUDA}")
+if(Legion_USE_CUDA)
+  set(CYTHON_FLAGS "${CYTHON_FLAGS} -E LEGATE_DATAFRAME_USE_CUDA=1")
+else()
+  set(CYTHON_FLAGS "${CYTHON_FLAGS} -E LEGATE_DATAFRAME_USE_CUDA=0")
+endif()
 
 rapids_cython_create_modules(
   CXX

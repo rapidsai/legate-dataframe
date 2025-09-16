@@ -61,7 +61,7 @@ def cast(LogicalColumn col, dtype) -> LogicalColumn:
     col
         Logical column as input
     dtype
-        The cudf data type of the result.
+        The data type of the result.
 
     Returns
     -------
