@@ -5,17 +5,18 @@
 # cython: language_level=3
 
 import pyarrow as pa
+
 from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
+
+from typing import Any
 
 from legate_dataframe.lib.core.column cimport LogicalColumn, cpp_LogicalColumn
 from legate_dataframe.lib.core.legate cimport cpp_StoreTarget, from_python_slice
 from legate_dataframe.lib.core.table cimport cpp_LogicalTable
 
 from typing import Iterable
-
-import cudf
 
 
 cdef cpp_LogicalColumn get_logical_column_handle(col: LogicalColumn):
@@ -74,7 +75,7 @@ cdef class LogicalTable:
         return ret
 
     @staticmethod
-    def from_cudf(df: cudf.DataFrame) -> LogicalTable:
+    def from_cudf(df: Any) -> LogicalTable:
         """Create a logical table from a local cudf dataframe
 
         This call blocks the client's control flow and scatter
@@ -332,6 +333,7 @@ cdef class LogicalTable:
         cudf.DataFrame
             A local cudf dataframe copy.
         """
+        import cudf
         ret = cudf.DataFrame()
         for i, name in enumerate(self.get_column_names()):
             ret[name] = self.get_column(i).to_cudf()
