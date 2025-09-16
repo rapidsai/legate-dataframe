@@ -55,7 +55,7 @@ jobs:
             CUDA_VER: "12.5.1"
             PY_VER: "3.12"
     # NOTE: Try going back to "latest" runners once we bump RAPIDS 25.04
-    runs-on: linux-${{ matrix.ARCH }}-gpu-v100-earliest-1
+    runs-on: linux-${{ matrix.ARCH }}-cpu16
     container:
       image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu22.04-py${{ matrix.PY_VER }}"
     steps:
