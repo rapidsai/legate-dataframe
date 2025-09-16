@@ -144,6 +144,8 @@ outputs:
         # that if legate-dataframe builds against, say, legate=24.09.0 and then a legate=24.09.1 is
         # released, a new legate-dataframe would be required.
         - legate
+        - pyarrow
+        - libarrow-acero
         - numpy >=1.23,<3.0.0a0
     ignore_run_exports_from:
       - cupynumeric  # only a build dependency to help resolver
