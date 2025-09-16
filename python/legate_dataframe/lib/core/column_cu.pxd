@@ -19,19 +19,19 @@ from .column cimport cpp_LogicalColumn
 cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
     """
     using namespace legate::dataframe;
-    LogicalColumn column_from_cudf(cudf::column_view cudf_col){
+    inline LogicalColumn column_from_cudf(cudf::column_view cudf_col){
         return LogicalColumn(cudf_col);
     }
-    LogicalColumn column_from_cudf_scalar(const cudf::scalar &cudf_scalar){
+    inline LogicalColumn column_from_cudf_scalar(const cudf::scalar &cudf_scalar){
         return LogicalColumn(cudf_scalar);
     }
-    cudf::data_type cudf_type(const LogicalColumn& col){
+    inline cudf::data_type cudf_type(const LogicalColumn& col){
         return col.cudf_type();
     }
-    std::unique_ptr<cudf::column> get_cudf(const LogicalColumn& col){
+    inline std::unique_ptr<cudf::column> get_cudf(const LogicalColumn& col){
         return col.get_cudf();
     }
-    std::unique_ptr<cudf::scalar> get_cudf_scalar(const LogicalColumn& col){
+    inline std::unique_ptr<cudf::scalar> get_cudf_scalar(const LogicalColumn& col){
         return col.get_cudf_scalar();
     }
     """
