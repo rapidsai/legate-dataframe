@@ -18,13 +18,6 @@ set(cython_sources
     replace.pyx search.pyx sort.pyx stream_compaction.pyx strings.pyx timestamps.pyx unaryop.pyx
 )
 
-# rapids_cython_create_modules passes CYTHON_FLAGS to the cython command line
-if(Legion_USE_CUDA)
-  set(CYTHON_FLAGS "${CYTHON_FLAGS} -E LEGATE_DATAFRAME_USE_CUDA=1")
-else()
-  set(CYTHON_FLAGS "${CYTHON_FLAGS} -E LEGATE_DATAFRAME_USE_CUDA=0")
-endif()
-
 rapids_cython_create_modules(
   CXX
   SOURCE_FILES "${cython_sources}"
