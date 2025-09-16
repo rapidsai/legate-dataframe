@@ -37,7 +37,7 @@ void CompareArrow(const std::string& match_func,
   auto result = strings::match(match_func, column, pattern).get_arrow();
 
   EXPECT_TRUE(expected->Equals(*result))
-    << "Failed " << match_func << ": " << column.repr() << " pattern: " << pattern
+    << "Failed " << match_func << ": " << column.get_arrow()->ToString() << " pattern: " << pattern
     << " Expected: " << expected->ToString() << " Result: " << result->ToString();
 }
 

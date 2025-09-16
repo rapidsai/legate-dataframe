@@ -335,14 +335,6 @@ class LogicalTable {
    */
   std::shared_ptr<arrow::Table> get_arrow() const;
 
-  /**
-   * @brief Return a printable representational string
-   *
-   * @param max_num_items Maximum number of items to include before items are abbreviated.
-   * @return Printable representational string
-   */
-  std::string repr(size_t max_num_items_ptr_column = 30) const;
-
  private:
   std::vector<LogicalColumn> columns_;
   std::map<std::string, size_t> column_names_;

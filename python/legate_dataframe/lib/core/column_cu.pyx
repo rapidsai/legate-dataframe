@@ -32,11 +32,11 @@ def from_cudf(col_or_scalar):
 
     if isinstance(col_or_scalar, PylibcudfColumn):
         col = <PylibcudfColumn>col_or_scalar
-        return LogicalColumn.from_handle(cpp_LogicalColumn(col.view()))
+        return LogicalColumn.from_handle(column_from_cudf(col.view()))
     elif isinstance(col_or_scalar, PylibcudfScalar):
         sca = <PylibcudfScalar>col_or_scalar
         return LogicalColumn.from_handle(
-            cpp_LogicalColumn(dereference(sca.get()))
+            column_from_cudf_scalar(dereference(sca.get()))
         )
     else:
         raise TypeError(
@@ -45,16 +45,16 @@ def from_cudf(col_or_scalar):
 
 
 def to_cudf(LogicalColumn col):
-    cdef unique_ptr[column] cudf_col = col._handle.get_cudf()
+    cdef unique_ptr[column] cudf_col = get_cudf(col._handle)
     pylibcudf_col = PylibcudfColumn.from_libcudf(move(cudf_col))
     return cudf.core.column.column.ColumnBase.from_pylibcudf(pylibcudf_col)
 
 
 def to_cudf_scalar(LogicalColumn col):
-    cdef unique_ptr[scalar] scal = col._handle.get_cudf_scalar()
+    cdef unique_ptr[scalar] scal = get_cudf_scalar(col._handle)
     pylibcudf_scalar = PylibcudfScalar.from_libcudf(move(scal))
     return cudf.Scalar.from_pylibcudf(pylibcudf_scalar)
 
 
 def cudf_dtype(LogicalColumn col):
-    return DataType.from_libcudf(col._handle.cudf_type())
+    return DataType.from_libcudf(cudf_type(col._handle))

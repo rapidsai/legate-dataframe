@@ -8,7 +8,6 @@ import pyarrow as pa
 
 from cython.operator cimport dereference
 from libc.stdint cimport uintptr_t
-from libcpp.string cimport string
 
 from pyarrow.lib cimport (
     pyarrow_unwrap_array,
@@ -335,23 +334,8 @@ cdef class LogicalColumn:
         """
         return self[slice_]
 
-    def repr(self, size_t max_num_items=30) -> str:
-        """Return a printable representational string
-
-        Parameters
-        ----------
-        max_num_items : int
-            Maximum number of items to include before items are abbreviated.
-
-        Returns
-        -------
-            Printable representational string
-        """
-        cdef string ret = self._handle.repr(max_num_items)
-        return ret.decode('UTF-8')
-
     def __repr__(self) -> str:
-        return self.repr()
+        return object.__repr__(self) + "\n" + self.to_arrow().__str__()
 
     def add_as_next_task_input(self, task: AutoTask) -> None:
         """Add a logical column to the next input task argument

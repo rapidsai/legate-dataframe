@@ -48,7 +48,8 @@ void CompareArrow(const LogicalColumn& cond, const LogicalColumn& lhs, const Log
   auto result   = copy_if_else(cond, lhs, rhs).get_arrow();
 
   EXPECT_TRUE(expected->Equals(*result))
-    << "Failed copy_if_else: " << cond.repr() << " LHS: " << lhs.repr() << " RHS: " << rhs.repr()
+    << "Failed copy_if_else: " << cond.get_arrow()->ToString()
+    << " LHS: " << lhs.get_arrow()->ToString() << " RHS: " << rhs.get_arrow()->ToString()
     << " Expected: " << expected->ToString() << " Result: " << result->ToString();
 }
 

@@ -344,20 +344,12 @@ cdef class LogicalTable:
         )
         return ret
 
-    def repr(self, size_t max_num_items=30) -> str:
-        """Return a printable representational string
-
-        Parameters
-        ----------
-        max_num_items : int
-            Maximum number of items to include before items are abbreviated.
-
-        Returns
-        -------
-            Printable representational string
-        """
-        cdef string ret = self._handle.repr(max_num_items)
-        return ret.decode('UTF-8')
-
     def __repr__(self) -> str:
-        return self.repr()
+        pyarrow_str = self.to_arrow().__str__()
+        # remove lines containing pyarrow
+        pyarrow_str = "\n".join(
+            line
+            for line in pyarrow_str.split("\n")
+            if not line.strip().startswith("pyarrow")
+        )
+        return object.__repr__(self) + "\n" + pyarrow_str

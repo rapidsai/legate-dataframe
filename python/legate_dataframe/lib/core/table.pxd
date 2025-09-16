@@ -29,7 +29,6 @@ cdef extern from "<legate_dataframe/core/table.hpp>" nogil:
         cpp_LogicalTable select(vector[size_t] columns) except +
         void offload_to(cpp_StoreTarget target_mem) except +
         cpp_LogicalTable slice(cpp_Slice slice) except +
-        string repr(size_t max_num_items) except +
 
 
 cdef class LogicalTable:

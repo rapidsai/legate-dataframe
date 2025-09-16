@@ -13,11 +13,20 @@
 # =============================================================================
 
 # Set the list of Cython files to build
-file(
-  GLOB CYTHON_SOURCES
-  RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-  "*.pyx"
-)
+
+if(Legion_USE_CUDA)
+  file(
+    GLOB CYTHON_SOURCES
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    "*.pyx"
+  )
+else()
+  file(
+    GLOB CYTHON_SOURCES
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    "*[!_cu].pyx"
+  )
+endif()
 
 rapids_cython_create_modules(
   CXX
