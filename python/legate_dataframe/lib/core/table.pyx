@@ -345,4 +345,11 @@ cdef class LogicalTable:
         return ret
 
     def __repr__(self) -> str:
-        return self.to_arrow().__repr__()
+        pyarrow_str = self.to_arrow().__str__()
+        # remove lines containing pyarrow
+        pyarrow_str = "\n".join(
+            line
+            for line in pyarrow_str.split("\n")
+            if not line.strip().startswith("pyarrow")
+        )
+        return object.__repr__(self) + "\n" + pyarrow_str

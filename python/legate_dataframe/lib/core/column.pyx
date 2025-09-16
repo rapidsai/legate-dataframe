@@ -335,7 +335,7 @@ cdef class LogicalColumn:
         return self[slice_]
 
     def __repr__(self) -> str:
-        return self.to_arrow().__repr__()
+        return object.__repr__(self) + "\n" + self.to_arrow().__str__()
 
     def add_as_next_task_input(self, task: AutoTask) -> None:
         """Add a logical column to the next input task argument
