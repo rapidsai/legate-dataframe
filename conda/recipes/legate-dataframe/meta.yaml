@@ -176,8 +176,10 @@ outputs:
         - cmake {{ cmake_version }}
       host:
         - {{ pin_subpackage('legate-dataframe') }}
+        - libarrow-acero
       run:
         - {{ pin_subpackage('legate-dataframe') }}
+        - libarrow-acero
 
 about:
   home: {{ project_urls["Homepage"] }}
