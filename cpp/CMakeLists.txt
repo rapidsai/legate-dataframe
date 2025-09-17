@@ -35,7 +35,7 @@ endif()
 project(
   LegateDataframe
   VERSION "${_legate_dataframe_version}"
-  LANGUAGES CXX CUDA
+  LANGUAGES CXX
 )
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -54,6 +54,7 @@ rapids_find_package(
 
 if(Legion_USE_CUDA)
   add_definitions(-DLEGATE_DATAFRAME_USE_CUDA)
+  enable_language(CUDA)
 endif()
 
 # Set a default build type if none was specified
