@@ -75,9 +75,11 @@ requirements:
     - ninja
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
+    - {{ stdlib("c") }}
+    {% if gpu_enabled_bool %}
     - {{ compiler('cuda') }}
     - cuda-version ={{ cuda_version }}
-    - {{ stdlib("c") }}
+    {% endif %}
   host:
     {% if gpu_enabled_bool %}
     - cuda-version ={{ cuda_version }}
