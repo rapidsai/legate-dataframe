@@ -175,9 +175,9 @@ outputs:
       build:
         - cmake {{ cmake_version }}
       host:
-        - {{ pin_subpackage('legate-dataframe', exact=True) }}
+        - {{ pin_subpackage('legate-dataframe') }}
       run:
-        - {{ pin_subpackage('legate-dataframe', exact=True) }}
+        - {{ pin_subpackage('legate-dataframe') }}
 
 about:
   home: {{ project_urls["Homepage"] }}
