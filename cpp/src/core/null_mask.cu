@@ -19,7 +19,6 @@
 #include <cuda_runtime_api.h>
 #include <cudf/null_mask.hpp>
 #include <cudf/utilities/bit.hpp>
-#include <legate/cuda/cuda.h>
 #include <legate_dataframe/core/null_mask.hpp>
 #include <legate_dataframe/utils.hpp>
 
@@ -68,23 +67,24 @@ __global__ void bools_to_bitmask(int64_t bools_size,
   if (bools_size == 0) { return bitmask; }
 
   // Launch one CUDA thread per bitmask word.
+  const int threads_per_block = 256;
   auto num_blocks =
-    (cudf::num_bitmask_words(bools_size) + LEGATE_THREADS_PER_BLOCK - 1) / LEGATE_THREADS_PER_BLOCK;
+    (cudf::num_bitmask_words(bools_size) + threads_per_block - 1) / threads_per_block;
   if (is_device_mem(mem_kind)) {
-    bools_to_bitmask<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
+    bools_to_bitmask<<<num_blocks, threads_per_block, 0, stream>>>(
       bools_size, bools_shape.lo, static_cast<cudf::bitmask_type*>(bitmask.data()), bools_acc);
   } else {
     auto tmp_dev_buf      = rmm::device_buffer(bools_size * sizeof(bool), stream, mr);
     auto bools_acc_on_dev = static_cast<bool*>(tmp_dev_buf.data());
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(bools_acc_on_dev,
-                                      bools_acc.ptr(0),
-                                      bools_size * sizeof(bool),
-                                      cudaMemcpyHostToDevice,
-                                      stream));
-    bools_to_bitmask<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
+    LDF_CUDA_TRY(cudaMemcpyAsync(bools_acc_on_dev,
+                                 bools_acc.ptr(0),
+                                 bools_size * sizeof(bool),
+                                 cudaMemcpyHostToDevice,
+                                 stream));
+    bools_to_bitmask<<<num_blocks, threads_per_block, 0, stream>>>(
       bools_size, 0, static_cast<cudf::bitmask_type*>(bitmask.data()), bools_acc_on_dev);
 
-    LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
+    LDF_CUDA_TRY(cudaStreamSynchronize(stream));
   }
   return bitmask;
 }
@@ -108,8 +108,9 @@ void null_mask_bits_to_bools(int64_t bools_size,
                              const cudf::bitmask_type* bitmask,
                              rmm::cuda_stream_view stream)
 {
-  auto num_blocks = (bools_size + LEGATE_THREADS_PER_BLOCK - 1) / LEGATE_THREADS_PER_BLOCK;
-  bitmask_to_bools<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(bools_size, bools, bitmask);
+  const int threads_per_block = 256;
+  auto num_blocks             = (bools_size + threads_per_block - 1) / threads_per_block;
+  bitmask_to_bools<<<num_blocks, threads_per_block, 0, stream>>>(bools_size, bools, bitmask);
 }
 
 }  // namespace legate::dataframe

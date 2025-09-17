@@ -24,7 +24,6 @@
 #include <cudf/copying.hpp>
 
 #include <legate.h>
-#include <legate/cuda/stream_pool.h>
 #include <legate_dataframe/utils.hpp>
 
 namespace legate::dataframe {

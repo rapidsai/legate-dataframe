@@ -15,7 +15,6 @@
  */
 
 #include <legate.h>
-#include <legate/cuda/cuda.h>
 
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
@@ -30,6 +29,7 @@
 #include <legate_dataframe/core/table.hpp>
 #include <legate_dataframe/core/task_argument.hpp>
 #include <legate_dataframe/core/task_context.hpp>
+#include <legate_dataframe/utils.hpp>
 
 namespace legate::dataframe::task {
 
@@ -89,11 +89,11 @@ struct copy_store_fn {
       output.write_accessor<value_type, 1>().ptr(output.shape<1>(), out_strides.data());
     assert(input.shape<1>().volume() == output.shape<1>().volume());
     assert(input.shape<1>().volume() <= 1 || (in_strides[0] == 1 && out_strides[0] == 1));
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(out_ptr,
-                                      in_ptr,
-                                      input.shape<1>().volume() * sizeof(value_type),
-                                      cudaMemcpyDeviceToDevice,
-                                      ctx.stream()));
+    LDF_CUDA_TRY(cudaMemcpyAsync(out_ptr,
+                                 in_ptr,
+                                 input.shape<1>().volume() * sizeof(value_type),
+                                 cudaMemcpyDeviceToDevice,
+                                 ctx.stream()));
   }
 };
 
@@ -117,10 +117,10 @@ struct copy_store_fn {
       ctx, null_mask_in_store, null_mask_out_store);
   } else if (output.nullable()) {
     auto out_acc = output.null_mask().write_accessor<bool, 1>();
-    LEGATE_CHECK_CUDA(cudaMemsetAsync(out_acc.ptr(output.shape<1>()),
-                                      true,
-                                      output.shape<1>().volume() * sizeof(bool),
-                                      ctx.stream()));
+    LDF_CUDA_TRY(cudaMemsetAsync(out_acc.ptr(output.shape<1>()),
+                                 true,
+                                 output.shape<1>().volume() * sizeof(bool),
+                                 ctx.stream()));
   }
 }
 
@@ -162,10 +162,10 @@ struct copy_store_fn {
       ctx, null_mask_in_store, null_mask_out_store);
   } else if (output.nullable()) {
     auto out_acc = output.null_mask().write_accessor<bool, 1>();
-    LEGATE_CHECK_CUDA(cudaMemsetAsync(out_acc.ptr(output.shape<1>()),
-                                      true,
-                                      output.shape<1>().volume() * sizeof(bool),
-                                      ctx.stream()));
+    LDF_CUDA_TRY(cudaMemsetAsync(out_acc.ptr(output.shape<1>()),
+                                 true,
+                                 output.shape<1>().volume() * sizeof(bool),
+                                 ctx.stream()));
   }
 }
 
