@@ -30,11 +30,11 @@
 #include <cudf/sorting.hpp>
 #include <cudf/table/table.hpp>
 #include <legate.h>
-#include <legate/cuda/cuda.h>
 #include <legate_dataframe/sort.hpp>
 
 #include <legate_dataframe/core/repartition_by_hash.hpp>
 #include <legate_dataframe/join.hpp>
+#include <legate_dataframe/utils.hpp>
 
 #define DEBUG_SPLITS 0
 #if DEBUG_SPLITS
@@ -50,12 +50,12 @@ std::unique_ptr<cudf::column> vector_to_column(const std::vector<std::size_t>& v
 {
   auto ncopy = vec.size();
   rmm::device_uvector<std::size_t> split_ind(ncopy, ctx.stream(), ctx.mr());
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(split_ind.data(),
-                                    vec.data(),
-                                    ncopy * sizeof(std::size_t),
-                                    cudaMemcpyHostToDevice,
-                                    ctx.stream()));
-  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
+  LDF_CUDA_TRY(cudaMemcpyAsync(split_ind.data(),
+                               vec.data(),
+                               ncopy * sizeof(std::size_t),
+                               cudaMemcpyHostToDevice,
+                               ctx.stream()));
+  LDF_CUDA_TRY(cudaStreamSynchronize(ctx.stream()));
 
   return std::make_unique<cudf::column>(std::move(split_ind), std::move(rmm::device_buffer()), 0);
 }
@@ -77,7 +77,7 @@ std::vector<T> column_to_vector(TaskContext& ctx, const cudf::column_view& col)
 {
   std::vector<T> ret(col.size());
   if (col.size() > 0) {
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
+    LDF_CUDA_TRY(cudaMemcpyAsync(
       ret.data(), col.data<T>(), col.size() * sizeof(T), cudaMemcpyDeviceToHost, ctx.stream()));
   }
   return ret;
@@ -199,7 +199,7 @@ std::vector<cudf::size_type> find_destination_ranks(
    * (we may have fewer than nranks split-points here and need to pad later.)
    */
   auto splits_indices_host = column_to_vector<cudf::size_type>(ctx, split_indices->view());
-  LEGATE_CHECK_CUDA(cudaStreamSynchronize(ctx.stream()));
+  LDF_CUDA_TRY(cudaStreamSynchronize(ctx.stream()));
   // In the obscure case where there is less data than ranks, pad split points.
   for (int i = splits_indices_host.size(); i < ctx.nranks - 1; i++) {
     splits_indices_host.push_back(sorted_table.num_rows());
