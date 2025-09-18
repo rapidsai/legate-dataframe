@@ -1,7 +1,6 @@
 # Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import cudf
 import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
@@ -17,6 +16,7 @@ from legate_dataframe.testing import (
 
 @pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
 def test_offload_to():
+    cudf = pytest.importorskip("cudf")
     # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
     available_mem_gpu, available_mem_cpu = guess_available_mem()
     if not available_mem_gpu or not available_mem_cpu:
@@ -124,8 +124,8 @@ def test_select_and_getitem_table_empty():
 @pytest.mark.parametrize("cols", [(1, 2), ["a", 1], [None]])
 def test_select_and_getitem_table_errors(cols):
     # Test type errors (via `[]` indexing, which also rejects non-lists).
-    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(cudf_df)
+    df = pa.table({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
     with pytest.raises(TypeError):
         tbl[cols]

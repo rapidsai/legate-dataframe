@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
@@ -15,8 +15,9 @@ benchmarks_path = Path(os.path.realpath(__file__)).parent / ".." / "benchmarks"
 def test_join(tmp_path, monkeypatch):
     """Test examples/hello_world.py"""
 
-    # join.py imports cupynumeric
+    # join.py imports cupynumeric/cudf
     pytest.importorskip("cupynumeric")
+    pytest.importorskip("cudf")
 
     monkeypatch.syspath_prepend(str(benchmarks_path))
     args = SimpleNamespace()
