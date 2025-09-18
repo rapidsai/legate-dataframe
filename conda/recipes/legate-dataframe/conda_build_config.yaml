@@ -32,6 +32,8 @@ cupynumeric_version:
 nccl_version:
   - ">=2.19"
 
+# this should be the same as whatever cudf needs
+# we need to enforce it however for the cpu builds when the cudf pin is absent
 arrow_version:
   - "19.0.*"
 
