@@ -95,7 +95,7 @@ requirements:
     - legate {{ legate_version }} =*_cpu*
     - cupynumeric {{ cupynumeric_version }} =*_cpu*
     {% endif %}
-    - pyarrow
+    - pyarrow {{ arrow_version }}
     - python
     - pip
     - cython >=3.0.3
@@ -128,6 +128,8 @@ outputs:
         {% endif %}
         - python
         - pip
+        - pyarrow {{ arrow_version }}
+        - libarrow-acero
       run:
         - python
         {% if gpu_enabled_bool %}
@@ -146,7 +148,7 @@ outputs:
         # that if legate-dataframe builds against, say, legate=24.09.0 and then a legate=24.09.1 is
         # released, a new legate-dataframe would be required.
         - legate
-        - pyarrow
+        - pyarrow {{ arrow_version }}
         - libarrow-acero
         - numpy >=1.23,<3.0.0a0
     ignore_run_exports_from:
@@ -176,10 +178,8 @@ outputs:
         - cmake {{ cmake_version }}
       host:
         - {{ pin_subpackage('legate-dataframe') }}
-        - libarrow-acero
       run:
         - {{ pin_subpackage('legate-dataframe') }}
-        - libarrow-acero
 
 about:
   home: {{ project_urls["Homepage"] }}
