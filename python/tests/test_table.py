@@ -10,7 +10,6 @@ from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import (
     assert_arrow_table_equal,
-    assert_frame_equal,
     assert_matches_polars,
     guess_available_mem,
 )
@@ -98,8 +97,8 @@ def test_table_slice_polars():
     "cols", [["a", "b"], ["c", "a"], ["c", "b"], ["c"], [2, 1], [2, 0], [1]]
 )
 def test_select_and_getitem_table(cols):
-    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(cudf_df)
+    df = pa.table({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
     if isinstance(cols[0], str):
         expected_names = cols
@@ -108,16 +107,16 @@ def test_select_and_getitem_table(cols):
 
     res = tbl.select(cols)
     assert res.get_column_names() == expected_names
-    assert_frame_equal(res, cudf_df[expected_names])
+    assert_arrow_table_equal(res.to_arrow(), df.select(expected_names))
 
     res = tbl[cols]
     assert res.get_column_names() == expected_names
-    assert_frame_equal(res, cudf_df[expected_names])
+    assert_arrow_table_equal(res.to_arrow(), df.select(expected_names))
 
 
 def test_select_and_getitem_table_empty():
-    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(cudf_df)
+    df = pa.table({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
     assert tbl[[]].num_columns() == 0
 

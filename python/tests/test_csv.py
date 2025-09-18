@@ -15,7 +15,6 @@
 import glob
 import math
 
-import cudf
 import numpy as np
 import pyarrow as pa
 import pytest
@@ -28,7 +27,7 @@ from legate_dataframe.testing import (
     assert_arrow_table_equal,
     assert_frame_equal,
     assert_matches_polars,
-    std_dataframe_set_cpu,
+    std_dataframe_set,
 )
 
 
@@ -48,7 +47,7 @@ def write_partitioned_csv(table, path, npartitions=1):
         csv.write_csv(partition, f"{path}/part-{i}.csv")
 
 
-@pytest.mark.parametrize("df", std_dataframe_set_cpu())
+@pytest.mark.parametrize("df", std_dataframe_set())
 def test_write(tmp_path, df):
     tbl = LogicalTable.from_arrow(df)
 
@@ -68,7 +67,7 @@ def test_write(tmp_path, df):
     assert_arrow_table_equal(combined_table, df)
 
 
-@pytest.mark.parametrize("df", std_dataframe_set_cpu())
+@pytest.mark.parametrize("df", std_dataframe_set())
 def test_read(tmp_path, df, npartitions=2):
     filenames = str(tmp_path) + "/*.csv"
     write_partitioned_csv(df, tmp_path, npartitions=npartitions)
@@ -116,11 +115,11 @@ def test_read_many_files_per_rank(tmp_path):
 
 @pytest.mark.parametrize("delimiter", [",", "|"])
 def test_readwrite_dates(tmp_path, delimiter):
-    df = cudf.DataFrame(
+    df = pa.table(
         {"a": ["2010-06-19T13:15", "2011-06-19T13:25", "2010-07-19T13:35"]}
-    ).astype("datetime64[ns]")
+    ).cast(pa.schema([("a", pa.timestamp("ns"))]))
 
-    tbl = LogicalTable.from_cudf(df)
+    tbl = LogicalTable.from_arrow(df)
     csv_write(tbl, tmp_path, delimiter=delimiter)
     get_legate_runtime().issue_execution_fence(block=True)
 
@@ -128,33 +127,34 @@ def test_readwrite_dates(tmp_path, delimiter):
         str(tmp_path) + "/*", dtypes=["datetime64[ns]"], delimiter=delimiter
     )
 
-    assert_frame_equal(read_tbl, df)
+    assert_arrow_table_equal(read_tbl.to_arrow(), df)
 
 
 def test_trailing_nulls(tmp_path):
     # If we read a large file where a chunk (or all) of rows end in nulls
     # then csv may not be clear about the number of columns contained, so
     # test that we ensure the correct number:
-    df = cudf.DataFrame(
-        {"a": list(range(100)), "b": cudf.Series([None] * 100, dtype="int64")}
+    df = pa.table({"a": list(range(100)), "b": [None] * 100}).cast(
+        pa.schema([("a", pa.int64()), ("b", pa.int64())])
     )
 
-    df.to_csv(tmp_path / "tmp.csv", index=False)
+    csv.write_csv(df, tmp_path / "tmp.csv")
 
     read_tbl = csv_read(str(tmp_path) + "/*", dtypes=["int64", "int64"])
-    assert_frame_equal(read_tbl, df)
+
+    assert_arrow_table_equal(read_tbl.to_arrow(), df)
 
 
 def test_wrong_number_of_dtypes(tmp_path):
-    df = cudf.DataFrame({"a": [1, 2, 3, 4]})
-    df.to_csv(tmp_path / "tmp.csv", index=False)
+    df = pa.table({"a": [1, 2, 3, 4]})
+    csv.write_csv(df, tmp_path / "tmp.csv")
     with pytest.raises(ValueError, match="number of columns in csv"):
         csv_read(str(tmp_path) + "/*", dtypes=["int64", "int64"])
 
 
 def test_usecols(tmp_path):
-    df = cudf.DataFrame({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
-    df.to_csv(tmp_path / "tmp.csv", index=False)
+    df = pa.table({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
+    csv.write_csv(df, tmp_path / "tmp.csv")
 
     with pytest.raises(ValueError, match="usecols, names, and dtypes"):
         csv_read(str(tmp_path) + "/*", dtypes=["int64", "int64"], usecols=["a"])
@@ -165,18 +165,20 @@ def test_usecols(tmp_path):
     read_tbl = csv_read(
         str(tmp_path) + "/*", dtypes=["int64", "float64"], usecols=["b", "c"]
     )
-    assert_frame_equal(read_tbl, df[["b", "c"]].astype({"c": "float64"}))
+    expected = pa.table({"b": [1, 2, 3], "c": [2.0, 3.0, 4.0]})
+    assert_arrow_table_equal(read_tbl.to_arrow(), expected)
 
     read_tbl = csv_read(
         str(tmp_path) + "/*", dtypes=["int64", "float64"], usecols=["c", "b"]
     )
-    assert_frame_equal(read_tbl, df[["b", "c"]].astype({"b": "float64"}))
+    expected = pa.table({"b": [1.0, 2.0, 3.0], "c": [2, 3, 4]})
+    assert_arrow_table_equal(read_tbl.to_arrow(), expected)
 
 
 def test_usecols_and_names_no_header(tmp_path):
-    df = cudf.DataFrame({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
+    df = pa.table({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
     file_path = tmp_path / "tmp.csv"
-    df.to_csv(file_path, index=False)
+    csv.write_csv(df, file_path)
 
     # Remove the header (first line):
     file_path.write_text("\n".join(file_path.read_text().split("\n")[1:]))
@@ -192,7 +194,8 @@ def test_usecols_and_names_no_header(tmp_path):
         usecols=[1, 2],
         names=["b", "c"],
     )
-    assert_frame_equal(read_tbl, df[["b", "c"]].astype({"c": "float64"}))
+    expected = pa.table({"b": [1, 2, 3], "c": [2.0, 3.0, 4.0]})
+    assert_arrow_table_equal(read_tbl.to_arrow(), expected)
 
     read_tbl = csv_read(
         str(tmp_path) + "/*",
@@ -200,14 +203,14 @@ def test_usecols_and_names_no_header(tmp_path):
         usecols=[2, 1],
         names=["c", "b"],
     )
-    assert_frame_equal(read_tbl, df[["b", "c"]].astype({"b": "float64"}))
+    expected = pa.table({"b": [1.0, 2.0, 3.0], "c": [2, 3, 4]})
+
+    assert_arrow_table_equal(read_tbl.to_arrow(), expected)
 
 
-@pytest.mark.skipif(
-    get_machine().count(TaskTarget.GPU) == 0,
-    reason="Arrow does not support this na_filter option",
-)
 def test_na_filter_false(tmp_path):
+    # arrow does not support na_filter=False
+    cudf = pytest.importorskip("cudf")
     df = cudf.DataFrame({"a": [1, 2, 3, 4]})
     df.to_csv(tmp_path / "tmp.csv", index=False)
     read_tbl = csv_read(str(tmp_path) + "/*", dtypes=["int64"], na_filter=False)
@@ -247,8 +250,8 @@ def test_read_polars(tmp_path):
     # Test basic polars csv reading.
     pl = pytest.importorskip("polars")
 
-    df = cudf.DataFrame({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
-    df.to_csv(tmp_path / "tmp.csv", index=False)
+    df = pa.table({"a": [0, 1, 2], "b": [1, 2, 3], "c": [2, 3, 4]})
+    csv.write_csv(df, tmp_path / "tmp.csv")
 
     q = pl.scan_csv(tmp_path / "tmp.csv")
     assert_matches_polars(q)

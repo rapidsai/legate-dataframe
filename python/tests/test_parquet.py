@@ -26,9 +26,8 @@ from legate_dataframe.lib.parquet import parquet_read, parquet_read_array, parqu
 from legate_dataframe.lib.replace import replace_nulls
 from legate_dataframe.testing import (
     assert_arrow_table_equal,
-    assert_frame_equal,
     assert_matches_polars,
-    std_dataframe_set_cpu,
+    std_dataframe_set,
 )
 
 
@@ -48,7 +47,7 @@ def write_partitioned_parquet(table, path, npartitions=1):
         pq.write_table(partition, f"{path}/part-{i}.parquet")
 
 
-@pytest.mark.parametrize("df", std_dataframe_set_cpu())
+@pytest.mark.parametrize("df", std_dataframe_set())
 def test_write(tmp_path, df):
     tbl = LogicalTable.from_arrow(df)
 
@@ -66,7 +65,7 @@ def test_write(tmp_path, df):
 
 
 @pytest.mark.parametrize("columns", [None, ["b"], ["a", "b"], ["b", "a"], []])
-@pytest.mark.parametrize("df", std_dataframe_set_cpu())
+@pytest.mark.parametrize("df", std_dataframe_set())
 @pytest.mark.parametrize("ignore_row_groups", [True, False])
 def test_read(tmp_path, df, columns, ignore_row_groups, glob_string="/*"):
     pq.write_table(df, str(tmp_path) + "/test.parquet")
@@ -170,7 +169,7 @@ def test_read_array(tmp_path, npartitions=2, glob_string="/*"):
     col_from_arr = LogicalColumn(arr.project(1, 0))
     col = parquet_read(str(tmp_path) + glob_string, columns=["c"])["c"]
 
-    assert_frame_equal(col_from_arr, col)
+    assert col_from_arr.to_arrow().equals(col.to_arrow())
 
 
 def test_read_array_boolean(tmp_path):
@@ -255,7 +254,7 @@ def test_read_array_large(tmp_path, npartitions=1, glob_string="/*"):
 
 
 @pytest.mark.parametrize("columns", [None, ["b"], ["a", "b"], ["b", "a"], []])
-@pytest.mark.parametrize("df", std_dataframe_set_cpu())
+@pytest.mark.parametrize("df", std_dataframe_set())
 def test_read_polars(tmp_path, df, columns):
     if len(df.column_names) == 0:
         return
