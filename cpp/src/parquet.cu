@@ -132,10 +132,31 @@ namespace legate::dataframe::task {
     throw std::runtime_error("internal error: file path and nrows size mismatch");
   }
 
+  /*
+   * Remove initial files that we definitely do not need, this avoids touching them
+   * and also works around a possible issue with libcudf 25.06 that is fixed in 25.08.
+   * (could pass the actual rows in the file in to simplify this.)
+   */
+  size_t skip_files   = 0;
+  size_t ngroups_seen = 0;
+  for (auto ngroups : ngroups_per_file) {
+    size_t file_rows = 0;
+    for (size_t group = 0; group < ngroups; group++) {
+      file_rows += nrows_per_group[ngroups_seen + group];
+    }
+    ngroups_seen += ngroups;
+    if (file_rows > my_row_offset) {
+      break;  // This file is used, we are done.
+    }
+    skip_files++;
+    my_row_offset -= file_rows;
+  }
+  auto files = std::vector<std::string>(file_paths.begin() + skip_files, file_paths.end());
+
   // In principle, we know the exact row groups already, but the cudf reader supports row skipping
   // directly, so hope that is better.  It is not possible to combine both (as of 25.06 at least).
   // (We could also use a chunked reader on 25.08+.)
-  auto src = cudf::io::source_info(file_paths);
+  auto src = cudf::io::source_info(files);
   auto opt = cudf::io::parquet_reader_options::builder(src);
   opt.columns(columns);
   opt.skip_rows(my_row_offset);
