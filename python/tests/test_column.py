@@ -1,30 +1,28 @@
 # Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import cudf
 import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
-from pylibcudf.unary import UnaryOperator
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.unaryop import unary_operation
 from legate_dataframe.testing import (
-    assert_frame_equal,
     get_pyarrow_column_set,
     guess_available_mem,
+    try_import_cudf,
 )
 
 
 def test_column_name_by_index():
-    df = cudf.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(df)
+    df = pa.table({"a": [1, 2, 3], "b": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
-    assert_frame_equal(df["a"]._column, tbl.get_column(0).to_cudf())
-    assert_frame_equal(df["b"]._column, tbl.get_column(1).to_cudf())
+    assert df["a"].combine_chunks().equals(tbl.get_column(0).to_arrow())
+    assert df["b"].combine_chunks().equals(tbl.get_column(1).to_arrow())
     assert tbl.get_column_names() == ["a", "b"]
-    assert_frame_equal(df["a"]._column, tbl[0].to_cudf())
-    assert_frame_equal(df["b"]._column, tbl[1].to_cudf())
+    assert df["a"].combine_chunks().equals(tbl[0].to_arrow())
+    assert df["b"].combine_chunks().equals(tbl[1].to_arrow())
 
     with pytest.raises(IndexError):
         tbl.get_column(2)
@@ -37,15 +35,13 @@ def test_column_name_by_index():
 
 
 def test_column_name_by_string():
-    df = cudf.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(df)
-
-    assert_frame_equal(df["a"]._column, tbl.get_column("a").to_cudf())
-    assert_frame_equal(df["b"]._column, tbl.get_column("b").to_cudf())
+    df = pa.table({"a": [1, 2, 3], "b": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
+    assert df["a"].combine_chunks().equals(tbl.get_column("a").to_arrow())
+    assert df["b"].combine_chunks().equals(tbl.get_column("b").to_arrow())
     assert tbl.get_column_names() == ["a", "b"]
-    assert_frame_equal(df["a"]._column, tbl["a"].to_cudf())
-    assert_frame_equal(df["b"]._column, tbl["b"].to_cudf())
-
+    assert df["a"].combine_chunks().equals(tbl["a"].to_arrow())
+    assert df["b"].combine_chunks().equals(tbl["b"].to_arrow())
     with pytest.raises(IndexError):
         tbl.get_column("c")
 
@@ -62,6 +58,7 @@ def test_column_dtype(array):
 @pytest.mark.skip(reason="Test is fairly slow and requires a lot of GPU memory.")
 @pytest.mark.parametrize("size", [2**31, 2**31 + 16])
 def test_huge_string_roundtrip(size):
+    cudf = try_import_cudf()
     # Sanity check that round-tripping huge string columns also works:
     col = cudf.Series([12345678, 23456789], dtype="int32").astype(str)
     # The above has a string size of more than 8 * 2 bytes. Repeat it to be
@@ -111,6 +108,7 @@ def test_column_slice(slice_):
 
 @pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
 def test_offload_to():
+    cudf = try_import_cudf()
     # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
     available_mem_gpu, available_mem_cpu = guess_available_mem()
     if not available_mem_gpu or not available_mem_cpu:
@@ -126,7 +124,7 @@ def test_offload_to():
     results = []
     for i in range(15):
         # Taking the negative 20 times can't possibly fit into GPU memory
-        res = unary_operation(col_lg, UnaryOperator.ABS)
+        res = unary_operation(col_lg, "abs")
         # but should work if we offload all results
         res.offload_to(StoreTarget.SYSMEM)
         results.append(res)

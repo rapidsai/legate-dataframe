@@ -1,7 +1,6 @@
 # Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import cudf
 import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
@@ -10,14 +9,15 @@ from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
 from legate_dataframe.testing import (
     assert_arrow_table_equal,
-    assert_frame_equal,
     assert_matches_polars,
     guess_available_mem,
+    try_import_cudf,
 )
 
 
 @pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
 def test_offload_to():
+    cudf = try_import_cudf()
     # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
     available_mem_gpu, available_mem_cpu = guess_available_mem()
     if not available_mem_gpu or not available_mem_cpu:
@@ -98,8 +98,8 @@ def test_table_slice_polars():
     "cols", [["a", "b"], ["c", "a"], ["c", "b"], ["c"], [2, 1], [2, 0], [1]]
 )
 def test_select_and_getitem_table(cols):
-    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(cudf_df)
+    df = pa.table({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
     if isinstance(cols[0], str):
         expected_names = cols
@@ -108,16 +108,16 @@ def test_select_and_getitem_table(cols):
 
     res = tbl.select(cols)
     assert res.get_column_names() == expected_names
-    assert_frame_equal(res, cudf_df[expected_names])
+    assert_arrow_table_equal(res.to_arrow(), df.select(expected_names))
 
     res = tbl[cols]
     assert res.get_column_names() == expected_names
-    assert_frame_equal(res, cudf_df[expected_names])
+    assert_arrow_table_equal(res.to_arrow(), df.select(expected_names))
 
 
 def test_select_and_getitem_table_empty():
-    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(cudf_df)
+    df = pa.table({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
     assert tbl[[]].num_columns() == 0
 
@@ -125,8 +125,8 @@ def test_select_and_getitem_table_empty():
 @pytest.mark.parametrize("cols", [(1, 2), ["a", 1], [None]])
 def test_select_and_getitem_table_errors(cols):
     # Test type errors (via `[]` indexing, which also rejects non-lists).
-    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(cudf_df)
+    df = pa.table({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
     with pytest.raises(TypeError):
         tbl[cols]

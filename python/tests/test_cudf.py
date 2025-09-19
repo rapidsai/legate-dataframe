@@ -1,12 +1,18 @@
 # Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import cudf
+import numpy as np
 import pytest
-from cudf.testing.testing import assert_column_equal
 
 from legate_dataframe import LogicalColumn, LogicalTable
-from legate_dataframe.testing import assert_frame_equal, std_dataframe_set
+from legate_dataframe.testing import (
+    assert_frame_equal,
+    get_empty_series,
+    try_import_cudf,
+)
+
+cudf = try_import_cudf()
+assert_column_equal = pytest.importorskip("cudf.testing.testing").assert_column_equal
 
 
 @pytest.mark.parametrize("cudf_col", [cudf.DataFrame({"a": range(10)})["a"]])
@@ -40,7 +46,25 @@ def test_non_scalar_column_error():
         col.to_cudf_scalar()
 
 
-@pytest.mark.parametrize("df", std_dataframe_set())
+@pytest.mark.parametrize(
+    "df",
+    [
+        cudf.DataFrame({"a": np.arange(10000, dtype="int64")}),
+        cudf.DataFrame(
+            {
+                "a": np.arange(10000, dtype="int32"),
+                "b": np.arange(-10000, 0, dtype="float64"),
+            }
+        ),
+        cudf.DataFrame({"a": ["a", "bb", "ccc"]}),
+        cudf.DataFrame(
+            {
+                "a": get_empty_series(dtype=int, nullable=True),
+                "b": get_empty_series(dtype=float, nullable=True),
+            }
+        ),
+    ],
+)
 def test_table_round_trip(df):
     tbl = LogicalTable.from_cudf(df)
     res = tbl.to_cudf()

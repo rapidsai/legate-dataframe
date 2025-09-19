@@ -5,10 +5,6 @@ import argparse
 import os
 from typing import Any, List
 
-import cudf
-import cudf.core.column
-import cudf.testing
-import cupy
 import legate.core
 import numpy as np
 import pyarrow as pa
@@ -18,7 +14,17 @@ from legate.core import TaskTarget, get_legate_runtime
 from legate_dataframe import LogicalColumn, LogicalTable
 
 
-def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> cudf.DataFrame:
+def try_import_cudf():
+    # cudf can exist but not be usable if the GPU driver is not available
+    cudf = None
+    try:
+        cudf = pytest.importorskip("cudf")
+    except Exception:
+        pytest.skip("cudf is not available")
+    return cudf
+
+
+def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> Any:
     """Convert an object to a cudf dataframe
 
     Parameters
@@ -37,6 +43,9 @@ def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> cudf.DataF
     -------
         The cudf dataframe
     """
+    import cudf
+    import cudf.core.column
+
     if isinstance(obj, LogicalColumn):
         obj = LogicalTable([obj], column_names=[default_column_name])
     if isinstance(obj, LogicalTable):
@@ -142,6 +151,7 @@ def assert_frame_equal(
     -------
         The extracted Legate store.
     """
+    import cudf.testing
 
     lhs = as_cudf_dataframe(left, default_column_name=default_column_name)
     rhs = as_cudf_dataframe(right, default_column_name=default_column_name)
@@ -194,7 +204,7 @@ def assert_matches_polars(query: Any, allow_exceptions=(), approx=False) -> None
     assert_arrow_table_equal(res_legate, res_polars, approx=approx)
 
 
-def get_empty_series(dtype, nullable: bool) -> cudf.Series:
+def get_empty_series(dtype, nullable: bool) -> Any:
     """Create an empty cudf series
 
     Parameters
@@ -208,40 +218,15 @@ def get_empty_series(dtype, nullable: bool) -> cudf.Series:
     -------
         The new empty series
     """
+    import cudf
+
     ret = cudf.Series([], dtype=dtype)
     if nullable:
         ret._column.set_mask(np.empty(shape=(0,), dtype="uint8"))
     return ret
 
 
-def std_dataframe_set() -> List[cudf.DataFrame]:
-    """Return the standard test set of dataframes
-
-    Used throughout the test suite to check against supported data types
-
-    Returns
-    -------
-        List of dataframes
-    """
-    return [
-        cudf.DataFrame({"a": cupy.arange(10000, dtype="int64")}),
-        cudf.DataFrame(
-            {
-                "a": cupy.arange(10000, dtype="int32"),
-                "b": cupy.arange(-10000, 0, dtype="float64"),
-            }
-        ),
-        cudf.DataFrame({"a": ["a", "bb", "ccc"]}),
-        cudf.DataFrame(
-            {
-                "a": get_empty_series(dtype=int, nullable=True),
-                "b": get_empty_series(dtype=float, nullable=True),
-            }
-        ),
-    ]
-
-
-def std_dataframe_set_cpu() -> List[pa.Table]:
+def std_dataframe_set() -> List[pa.Table]:
     """Return the standard test set of dataframes
 
     Used throughout the test suite to check against supported data types
@@ -275,35 +260,6 @@ def gen_random_series(nelem: int, num_nans: int) -> pa.Array:
     nans = np.zeros(nelem, dtype=bool)
     nans[rng.choice(a.size, num_nans, replace=False)] = True
     return pa.array(a, mask=nans)
-
-
-def get_column_set(dtypes, nulls=True):
-    """Return a set of columns with the given dtypes
-
-    Can be used to test a pytest fixture to generate a set of columns.
-
-    Parameters
-    ----------
-    dtypes : sequence of dtypes
-        The dtypes for the returned columns cudf must support casting
-        integers to it.
-    nulls : boolean, optional
-        If set  to``False`` the returned columns do not contain booleans.
-
-    Yields
-    ------
-    parameter : pytest.param
-        Pytest parameters each containing a columns.
-    """
-    data = np.arange(-1000, 1000)
-    np.random.seed(0)
-
-    for dtype in dtypes:
-        series = cudf.Series(data).astype(dtype)
-        if nulls:
-            series = series.mask(np.random.randint(2, size=len(series), dtype=bool))
-
-        yield pytest.param(series._column, id=f"col({dtype}, nulls={nulls})")
 
 
 # To replace the above eventually as cudf is removed from tests

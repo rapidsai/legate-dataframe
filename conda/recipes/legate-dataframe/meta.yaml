@@ -9,6 +9,27 @@
 {% set cuda_major = cuda_version.split('.')[0] %}
 {% set date_string = environ['RAPIDS_DATE_STRING'] %}
 
+# build 2 variants, with corresponding build strings:
+#
+#  '*_cpu' for CPU-only
+#  '*_gpu' for systems with CUDA
+#
+# this mirrors the approach used by cupynumeric / legate
+{% if gpu_enabled == "true" %}
+  {% set gpu_enabled_bool = true %}
+{% elif gpu_enabled == "false" %}
+  {% set gpu_enabled_bool = false %}
+{% else %}
+  {% set gpu_enabled_bool = true %}
+{% endif %}
+
+{% if gpu_enabled_bool %}
+  {% set processor_tag='_gpu' %}
+{% else %}
+  {% set processor_tag='_cpu' %}
+{% endif %}
+
+
 package:
   name: legate-dataframe-split
 
@@ -34,6 +55,19 @@ build:
     - SCCACHE_S3_KEY_PREFIX=legate-dataframe-linux64 # [linux64]
     - SCCACHE_S3_USE_SSL
     - SCCACHE_S3_NO_CREDENTIALS
+  ignore_run_exports_from:
+    {% if gpu_enabled_bool %}
+    - {{ compiler('cuda') }}
+    - cuda-cudart-dev
+    - libcublas-dev
+    {% endif %}
+  {% if not gpu_enabled_bool %}
+  # The CPU-only packages having more track_features than the GPU builds helps
+  # the solver to prefer the GPU builds when both are viable candidates.
+  # ref: https://docs.conda.io/projects/conda-build/en/latest/resources/define-metadata.html#track-features
+  track_features:
+    - cpu_only
+  {% endif %}
 
 requirements:
   build:
@@ -41,33 +75,39 @@ requirements:
     - ninja
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
+    - {{ stdlib("c") }}
+    {% if gpu_enabled_bool %}
     - {{ compiler('cuda') }}
     - cuda-version ={{ cuda_version }}
-    - {{ stdlib("c") }}
+    {% endif %}
   host:
+    {% if gpu_enabled_bool %}
     - cuda-version ={{ cuda_version }}
     - cuda-cudart-dev
     - legate {{ legate_version }} =*_gpu*
-    # Only to ensure a nightly legate version we pick up
-    # is compatible with an existing cupynumeric version.
-    # (may also stabilize not using debug/sanitizer builds)
-    - cupynumeric {{ cupynumeric_version }}
+    - cupynumeric {{ cupynumeric_version }} =*_gpu*
+    - cudf {{ rapids_version }}
+    - libcudf {{ rapids_version }}
+    - librmm {{ rapids_version }}
+    - nccl {{ nccl_version }}
+    - pylibcudf {{ rapids_version }}
+    {% else %}
+    - legate {{ legate_version }} =*_cpu*
+    - cupynumeric {{ cupynumeric_version }} =*_cpu*
+    {% endif %}
+    - pyarrow {{ arrow_version }}
+    - libarrow-acero {{ arrow_version }}
     - python
     - pip
     - cython >=3.0.3
     - rapids-build-backend >=0.3.0,<0.4.0.dev0
     - scikit-build-core >=0.10.0
-    - cudf {{ rapids_version }}  # pulls in pyarrow?
-    - libcudf {{ rapids_version }}
-    - librmm {{ rapids_version }}
-    - nccl {{ nccl_version }}
-    - pylibcudf {{ rapids_version }}
 
 
 outputs:
   - name: legate-dataframe
     version: {{ version }}
-    string: "cuda{{ cuda_major }}_py{{ py_version }}_{{ PKG_BUILDNUM }}"
+    string: "cuda{{ cuda_major }}_py{{ py_version }}_{{ PKG_BUILDNUM }}{{ processor_tag }}"
     script: install_legate-dataframe.sh
     requirements:
       # Note: build/host exists for run-exports (except cmake, pip, and python)
@@ -79,28 +119,38 @@ outputs:
         - cuda-version ={{ cuda_version }}
         - {{ stdlib("c") }}
       host:
+        {% if gpu_enabled_bool %}
         - cuda-version ={{ cuda_version }}
         - legate {{ legate_version }} =*_gpu*
-        - cupynumeric {{ cupynumeric_version }}
+        - cupynumeric {{ cupynumeric_version }} =*_gpu*
+        {% else %}
+        - legate {{ legate_version }} =*_cpu*
+        - cupynumeric {{ cupynumeric_version }} =*_cpu*
+        {% endif %}
         - python
         - pip
+        - pyarrow {{ arrow_version }}
+        - libarrow-acero {{ arrow_version }}
       run:
         - python
+        {% if gpu_enabled_bool %}
         # cuda-version is used to constrain __cuda
         - {{ pin_compatible('cuda-version', max_pin='x', min_pin='x') }}
         - cuda-cudart
         - __cuda
+        - nccl {{ nccl_version }}
+        - rmm {{ rapids_version }}
+        - cudf {{ rapids_version }}
+        - pynvjitlink<=0.6
+        {% endif %}
         # Relying on run_exports from legate to pin an appropriate range of versions.
         #
         # legate uses {{ pin_subpackage(name, min_pin="x.x.x", max_pin="x.x.x") }}, which means
         # that if legate-dataframe builds against, say, legate=24.09.0 and then a legate=24.09.1 is
         # released, a new legate-dataframe would be required.
         - legate
+        - pyarrow {{ arrow_version }}
         - numpy >=1.23,<3.0.0a0
-        - nccl {{ nccl_version }}
-        - rmm {{ rapids_version }}
-        - cudf {{ rapids_version }}
-        - pynvjitlink<=0.6
     ignore_run_exports_from:
       - cupynumeric  # only a build dependency to help resolver
       - nccl  # taken from raft (maybe due to being only a major version pin?)
@@ -110,20 +160,32 @@ outputs:
       # import tests at build time do not work for the CUDA packages,
       # because builds happen on machines without a GPU.  So no tests.
       commands:
+        {% if not gpu_enabled_bool %}
+        # Force minimal resource use as auto-configure may fail with few cores
+        # otherwise, should use `imports:` section.
+        - LEGATE_CONFIG="--cpus=1 --gpus=0 --omps=0 --utility=1"
+          python -c "import legate_dataframe"
+        {% endif %}
         - pip show legate-dataframe
   - name: legate-df-ctests
     version: {{ version }}
     script: install_ctests.sh
     build:
       number: {{ GIT_DESCRIBE_NUMBER }}
-      string: cuda{{ cuda_major }}_{{ date_string }}_{{ GIT_DESCRIBE_HASH }}_{{ GIT_DESCRIBE_NUMBER }}
+      string: cuda{{ cuda_major }}_{{ date_string }}_{{ GIT_DESCRIBE_HASH }}_{{ GIT_DESCRIBE_NUMBER }}{{ processor_tag }}
     requirements:
       build:
         - cmake {{ cmake_version }}
       host:
         - {{ pin_subpackage('legate-dataframe', exact=True) }}
+        {% if gpu_enabled_bool %}
+        - __cuda
+        {% endif %}
       run:
         - {{ pin_subpackage('legate-dataframe', exact=True) }}
+        {% if gpu_enabled_bool %}
+        - __cuda
+        {% endif %}
 
 about:
   home: {{ project_urls["Homepage"] }}

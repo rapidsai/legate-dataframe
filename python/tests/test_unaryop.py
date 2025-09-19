@@ -12,19 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cudf
-import cupy
 import numpy as np
 import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.unaryop import cast, round, unary_operation
-from legate_dataframe.testing import (
-    assert_frame_equal,
-    assert_matches_polars,
-    gen_random_series,
-)
+from legate_dataframe.testing import assert_matches_polars, gen_random_series
 
 ops = [
     "sin",
@@ -82,13 +76,12 @@ def test_unary_operation_scalar():
 @pytest.mark.parametrize("from_dtype", ["int8", "uint64", "float32", "float64"])
 @pytest.mark.parametrize("to_dtype", ["int8", "uint64", "float32", "float64"])
 def test_cast(from_dtype, to_dtype):
-    arr = cupy.random.randint(0, 1000, size=1000).astype(from_dtype)
-    series = cudf.Series(arr)
-
-    expected = series.astype(to_dtype)
-    col = LogicalColumn.from_cudf(series._column)
+    arr = np.random.randint(0, 1000, size=1000).astype(from_dtype)
+    series = pa.array(arr)
+    expected = series.cast(to_dtype, safe=False)
+    col = LogicalColumn.from_arrow(series)
     res = cast(col, to_dtype)
-    assert_frame_equal(res, expected)
+    assert res.to_arrow().equals(expected)
 
 
 def test_cast_timedelta():

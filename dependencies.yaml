@@ -168,6 +168,7 @@ dependencies:
       - output_types: [conda, pyproject, requirements]
         packages:
           - numpy >=1.23,<3.0.0a0
+          - libarrow-acero
   test:
     common:
       - output_types: [conda, requirements, pyproject]

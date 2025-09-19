@@ -1,7 +1,7 @@
 # Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import cudf
+import pyarrow as pa
 import pytest
 
 from legate_dataframe import LogicalColumn, LogicalTable
@@ -28,7 +28,7 @@ def test_column_interop():
 def test_column_to_array():
     # Unlike (currently) the legate data interface our `to_array()` method
     # allows for masks if they are all valid:
-    col = LogicalColumn.from_cudf(cudf.Series([1, 2]).mask([False, False])._column)
+    col = LogicalColumn.from_arrow(pa.array([1, 2], mask=[False, False]))
     arr = col.to_array()
     assert cn.array_equal(arr, [1, 2])
     assert not arr.flags.writeable
@@ -37,13 +37,13 @@ def test_column_to_array():
     assert cn.array_equal(arr, [1, 2])
     assert arr.flags.writeable
 
-    col = LogicalColumn.from_cudf(cudf.Series([None, 2])._column)
+    col = LogicalColumn.from_arrow(pa.array([None, 2]))
     with pytest.raises(ValueError, match=".*that contains NULLs"):
         col.to_array()
 
 
 def test_column_to_array_bad_dtype():
-    col = LogicalColumn.from_cudf(cudf.Series([1, 2], dtype="timedelta64[ns]")._column)
+    col = LogicalColumn.from_arrow(pa.array([1, 2], type=pa.duration("ns")))
     # Can get the raw array (just to see that it works):
     col.get_logical_array()
 
@@ -51,7 +51,7 @@ def test_column_to_array_bad_dtype():
         col.to_array()
 
     # Also test strings (this fails in cupynumeric only):
-    col = LogicalColumn.from_cudf(cudf.Series(["1", "2"])._column)
+    col = LogicalColumn.from_arrow(pa.array(["1", "2"]))
     with pytest.raises(
         TypeError, match="cupynumeric doesn't support arrays with children"
     ):
@@ -59,8 +59,8 @@ def test_column_to_array_bad_dtype():
 
 
 def test_table_to_array():
-    cudf_df = cudf.DataFrame({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
-    tbl = LogicalTable.from_cudf(cudf_df)
+    df = pa.table({"a": [1, 2, 3], "b": [2.0, 3.0, 4.0], "c": [4, 5, 6]})
+    tbl = LogicalTable.from_arrow(df)
 
     arr = tbl.to_array()
     assert arr.dtype == "float64"

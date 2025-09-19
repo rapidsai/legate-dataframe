@@ -14,15 +14,14 @@
 
 import os
 
-import cudf
-import cupy
 import legate.core.types as lg_type
+import numpy as np
+import pyarrow as pa
 import pytest
 from legate.core import get_legate_runtime
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib.unaryop import unary_operation
-from legate_dataframe.testing import assert_frame_equal
 
 
 @pytest.mark.skipif(
@@ -30,7 +29,7 @@ from legate_dataframe.testing import assert_frame_equal
     reason="Test would need to ensure output is bound",
 )
 def test_python_launched_tasks():
-    col = LogicalColumn.from_cudf(cudf.Series(cupy.random.random(100))._column)
+    col = LogicalColumn.from_arrow(pa.array(np.random.random(100)))
 
     # Launch an unary task using the Cython API
     expect = unary_operation(col, "abs")
@@ -50,4 +49,4 @@ def test_python_launched_tasks():
     result = LogicalColumn.empty_like_logical_column(col)
     result.add_as_next_task_output(task)
     task.execute()
-    assert_frame_equal(result, expect)
+    assert result.to_arrow().equals(expect.to_arrow())

@@ -9,6 +9,9 @@ cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../;
 # Common setup steps shared by Python test jobs (as of writing, just one)
 source ./ci/test_gpu_common.sh
 
+# Check we installed the right version
+conda list | grep "legate-dataframe.*_gpu"
+
 nvidia-smi
 
 rapids-logger "Running C++ tests"

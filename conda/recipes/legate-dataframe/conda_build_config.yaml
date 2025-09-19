@@ -19,6 +19,10 @@ cuda_compiler:
 cuda11_compiler:
   - nvcc
 
+gpu_enabled:
+  - true
+  - false
+
 legate_version:
   - "=25.08.*,>=0.0.0.dev0"
 
@@ -27,6 +31,11 @@ cupynumeric_version:
 
 nccl_version:
   - ">=2.19"
+
+# this should be the same as whatever cudf needs
+# we need to enforce it however for the cpu builds when the cudf pin is absent
+arrow_version:
+  - "19.0.*"
 
 rapids_version:
   - =25.04.*
