@@ -183,6 +183,9 @@ outputs:
         {% endif %}
       run:
         - {{ pin_subpackage('legate-dataframe') }}
+        {% if gpu_enabled_bool %}
+        - __cuda
+        {% endif %}
 
 about:
   home: {{ project_urls["Homepage"] }}
