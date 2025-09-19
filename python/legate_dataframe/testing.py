@@ -14,6 +14,16 @@ from legate.core import TaskTarget, get_legate_runtime
 from legate_dataframe import LogicalColumn, LogicalTable
 
 
+def try_import_cudf():
+    # cudf can exist but not be usable if the GPU driver is not available
+    cudf = None
+    try:
+        cudf = pytest.importorskip("cudf")
+    except Exception:
+        pytest.skip("cudf is not available")
+    return cudf
+
+
 def as_cudf_dataframe(obj: Any, default_column_name: str = "data") -> Any:
     """Convert an object to a cudf dataframe
 

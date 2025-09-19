@@ -20,6 +20,7 @@ import pyarrow as pa
 import pytest
 from legate.core import TaskTarget, get_legate_runtime, get_machine
 from pyarrow import csv
+from testing import try_import_cudf
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.csv import csv_read, csv_write
@@ -210,7 +211,7 @@ def test_usecols_and_names_no_header(tmp_path):
 
 def test_na_filter_false(tmp_path):
     # arrow does not support na_filter=False
-    cudf = pytest.importorskip("cudf")
+    cudf = try_import_cudf()
     df = cudf.DataFrame({"a": [1, 2, 3, 4]})
     df.to_csv(tmp_path / "tmp.csv", index=False)
     read_tbl = csv_read(str(tmp_path) + "/*", dtypes=["int64"], na_filter=False)

@@ -4,6 +4,7 @@
 import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
+from testing import try_import_cudf
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.stream_compaction import apply_boolean_mask
@@ -16,7 +17,7 @@ from legate_dataframe.testing import (
 
 @pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
 def test_offload_to():
-    cudf = pytest.importorskip("cudf")
+    cudf = try_import_cudf()
     # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
     available_mem_gpu, available_mem_cpu = guess_available_mem()
     if not available_mem_gpu or not available_mem_cpu:

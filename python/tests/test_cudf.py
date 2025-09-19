@@ -3,11 +3,12 @@
 
 import numpy as np
 import pytest
+from testing import try_import_cudf
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.testing import assert_frame_equal, get_empty_series
 
-cudf = pytest.importorskip("cudf")
+cudf = try_import_cudf()
 assert_column_equal = pytest.importorskip("cudf.testing.testing").assert_column_equal
 
 

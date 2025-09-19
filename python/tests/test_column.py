@@ -4,6 +4,7 @@
 import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
+from testing import try_import_cudf
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.unaryop import unary_operation
@@ -54,7 +55,7 @@ def test_column_dtype(array):
 @pytest.mark.skip(reason="Test is fairly slow and requires a lot of GPU memory.")
 @pytest.mark.parametrize("size", [2**31, 2**31 + 16])
 def test_huge_string_roundtrip(size):
-    cudf = pytest.importorskip("cudf")
+    cudf = try_import_cudf()
     # Sanity check that round-tripping huge string columns also works:
     col = cudf.Series([12345678, 23456789], dtype="int32").astype(str)
     # The above has a string size of more than 8 * 2 bytes. Repeat it to be
@@ -104,7 +105,7 @@ def test_column_slice(slice_):
 
 @pytest.mark.skip(reason="This causes CI hangs. Investigate rewriting this test.")
 def test_offload_to():
-    cudf = pytest.importorskip("cudf")
+    cudf = try_import_cudf()
     # Note that, if `LEGATE_CONFIG` is set but not used, this may currently fail.
     available_mem_gpu, available_mem_cpu = guess_available_mem()
     if not available_mem_gpu or not available_mem_cpu:
