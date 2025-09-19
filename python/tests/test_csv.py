@@ -20,7 +20,6 @@ import pyarrow as pa
 import pytest
 from legate.core import TaskTarget, get_legate_runtime, get_machine
 from pyarrow import csv
-from testing import try_import_cudf
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.csv import csv_read, csv_write
@@ -29,6 +28,7 @@ from legate_dataframe.testing import (
     assert_frame_equal,
     assert_matches_polars,
     std_dataframe_set,
+    try_import_cudf,
 )
 
 

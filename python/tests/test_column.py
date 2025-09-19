@@ -4,11 +4,14 @@
 import pyarrow as pa
 import pytest
 from legate.core import StoreTarget, get_legate_runtime
-from testing import try_import_cudf
 
 from legate_dataframe import LogicalColumn, LogicalTable
 from legate_dataframe.lib.unaryop import unary_operation
-from legate_dataframe.testing import get_pyarrow_column_set, guess_available_mem
+from legate_dataframe.testing import (
+    get_pyarrow_column_set,
+    guess_available_mem,
+    try_import_cudf,
+)
 
 
 def test_column_name_by_index():
