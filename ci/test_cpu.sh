@@ -11,6 +11,9 @@ source ./ci/test_cpu_common.sh
 
 rapids-logger "Running C++ tests"
 
+# Check we installed the right version
+conda list | grep "legate-dataframe.*_cpu"
+
 nvidia-smi || echo "nvidia-smi not available"
 
 ./ci/run_ctests_cpu.sh
