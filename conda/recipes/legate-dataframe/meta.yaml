@@ -177,12 +177,12 @@ outputs:
       build:
         - cmake {{ cmake_version }}
       host:
-        - {{ pin_subpackage('legate-dataframe') }} =*{{ processor_tag }}*
+        - {{ pin_subpackage('legate-dataframe', exact=True) }}
         {% if gpu_enabled_bool %}
         - __cuda
         {% endif %}
       run:
-        - {{ pin_subpackage('legate-dataframe') }} =*{{ processor_tag }}*
+        - {{ pin_subpackage('legate-dataframe', exact=True) }}
         {% if gpu_enabled_bool %}
         - __cuda
         {% endif %}
