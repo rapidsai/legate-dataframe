@@ -22,7 +22,6 @@
 #include <arrow/compute/api.h>
 
 #include <legate.h>
-#include <legate/cuda/cuda.h>
 
 #include <legate_dataframe/core/library.hpp>
 #include <legate_dataframe/core/repartition_by_hash.hpp>

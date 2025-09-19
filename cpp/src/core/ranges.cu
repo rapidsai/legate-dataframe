@@ -17,8 +17,6 @@
 #include <cuda_runtime_api.h>
 #include <limits>
 
-#include <legate/cuda/cuda.h>
-
 #include <cudf/column/column_factories.hpp>
 
 #include <legate_dataframe/core/ranges.hpp>
@@ -65,25 +63,25 @@ std::unique_ptr<cudf::column> global_ranges_to_cudf_offsets_impl(
                               cudf::mask_state::UNALLOCATED,
                               stream,
                               mr);
-  OffsetsAcc* offsets_acc = cudf_offsets->mutable_view().data<OffsetsAcc>();
-  auto num_blocks =
-    (cudf_offsets->size() + LEGATE_THREADS_PER_BLOCK - 1) / LEGATE_THREADS_PER_BLOCK;
-  auto ranges_acc = ranges.data().read_accessor<RangeDType, 1>();
+  OffsetsAcc* offsets_acc     = cudf_offsets->mutable_view().data<OffsetsAcc>();
+  const int threads_per_block = 256;
+  auto num_blocks             = (cudf_offsets->size() + threads_per_block - 1) / threads_per_block;
+  auto ranges_acc             = ranges.data().read_accessor<RangeDType, 1>();
 
   if (is_device_mem(mem_kind)) {
-    ranges_to_offsets<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
+    ranges_to_offsets<<<num_blocks, threads_per_block, 0, stream>>>(
       cudf_offsets->size(), num_chars, ranges_shape.lo, ranges_acc, offsets_acc);
   } else {
     auto tmp_dev_buf       = rmm::device_buffer(ranges_size * sizeof(RangeDType), stream, mr);
     auto ranges_acc_on_dev = static_cast<RangeDType*>(tmp_dev_buf.data());
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(ranges_acc_on_dev,
-                                      ranges_acc.ptr(0),
-                                      ranges_size * sizeof(RangeDType),
-                                      cudaMemcpyHostToDevice,
-                                      stream));
-    ranges_to_offsets<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
+    LDF_CUDA_TRY(cudaMemcpyAsync(ranges_acc_on_dev,
+                                 ranges_acc.ptr(0),
+                                 ranges_size * sizeof(RangeDType),
+                                 cudaMemcpyHostToDevice,
+                                 stream));
+    ranges_to_offsets<<<num_blocks, threads_per_block, 0, stream>>>(
       cudf_offsets->size(), num_chars, 0, ranges_acc_on_dev, offsets_acc);
-    LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
+    LDF_CUDA_TRY(cudaStreamSynchronize(stream));
   }
   return cudf_offsets;
 }
@@ -126,14 +124,15 @@ void cudf_offsets_to_local_ranges(int64_t ranges_size,
                                   cudf::column_view offsets,
                                   rmm::cuda_stream_view stream)
 {
-  auto num_blocks = (ranges_size + LEGATE_THREADS_PER_BLOCK - 1) / LEGATE_THREADS_PER_BLOCK;
+  const int threads_per_block = 256;
+  auto num_blocks             = (ranges_size + threads_per_block - 1) / threads_per_block;
 
   if (offsets.type().id() == cudf::type_id::INT32) {
-    offsets_to_ranges<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
+    offsets_to_ranges<<<num_blocks, threads_per_block, 0, stream>>>(
       ranges_size, ranges_acc, offsets.data<int32_t>());
   } else {
     assert(offsets.type().id() == cudf::type_id::INT64);
-    offsets_to_ranges<<<num_blocks, LEGATE_THREADS_PER_BLOCK, 0, stream>>>(
+    offsets_to_ranges<<<num_blocks, threads_per_block, 0, stream>>>(
       ranges_size, ranges_acc, offsets.data<int64_t>());
   }
 }

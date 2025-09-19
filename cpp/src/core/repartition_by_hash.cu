@@ -21,8 +21,8 @@
 
 #include "legate/comm/coll.h"
 #include <legate.h>
-#include <legate/cuda/cuda.h>
 #include <legate_dataframe/core/library.hpp>
+#include <legate_dataframe/utils.hpp>
 
 #include <cudf/concatenate.hpp>
 #include <cudf/contiguous_split.hpp>
@@ -63,7 +63,7 @@ class ExchangedSizes {
    */
   ExchangedSizes(TaskContext& ctx, const std::map<int, cudf::packed_columns>& columns) : _ctx(ctx)
   {
-    LEGATE_CHECK_CUDA(cudaStreamCreate(&stream));
+    LDF_CUDA_TRY(cudaStreamCreate(&stream));
     assert(columns.size() == ctx.nranks - 1);
     // Note: Size of this buffer is taken into account in the mapper:
     _all_sizes =
@@ -92,11 +92,11 @@ class ExchangedSizes {
                              ncclUint64,
                              task_nccl(ctx),
                              stream));
-    LEGATE_CHECK_CUDA(cudaStreamSynchronize(stream));
+    LDF_CUDA_TRY(cudaStreamSynchronize(stream));
     task.concurrent_task_barrier();
   }
 
-  ~ExchangedSizes() { LEGATE_CHECK_CUDA(cudaStreamDestroy(stream)); }
+  ~ExchangedSizes() { LDF_CUDA_TRY(cudaStreamDestroy(stream)); }
 
   // TODO: implement a destructor that syncs and calls _all_sizes.destroy(). Currently,
   //       the lifespan of `_all_sizes` is until the legate task finish.
@@ -238,7 +238,7 @@ shuffle(TaskContext& ctx,
   task.concurrent_task_barrier();
 
   // We sync the temporary stream `sizes.stream`, since the unpacking needs the host-side metadata.
-  LEGATE_CHECK_CUDA(cudaStreamSynchronize(sizes.stream));
+  LDF_CUDA_TRY(cudaStreamSynchronize(sizes.stream));
 
   // Let's unpack and return the packed_columns received from our peers
   // (and our own chunk so that `ret` is ordered for stable sorts)

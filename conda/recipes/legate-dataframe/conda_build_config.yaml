@@ -20,10 +20,10 @@ cuda11_compiler:
   - nvcc
 
 legate_version:
-  - "=25.08.*,>=0.0.0.dev0"
+  - "=25.09.*,>=0.0.0.dev0"
 
 cupynumeric_version:
-  - "=25.08.*,>=0.0.0.dev0"
+  - "=25.09.*,>=0.0.0.dev0"
 
 nccl_version:
   - ">=2.19"
