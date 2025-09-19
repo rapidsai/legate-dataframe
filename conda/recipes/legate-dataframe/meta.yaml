@@ -96,6 +96,7 @@ requirements:
     - cupynumeric {{ cupynumeric_version }} =*_cpu*
     {% endif %}
     - pyarrow {{ arrow_version }}
+    - libarrow-acero {{ arrow_version }}
     - python
     - pip
     - cython >=3.0.3
@@ -129,7 +130,7 @@ outputs:
         - python
         - pip
         - pyarrow {{ arrow_version }}
-        - libarrow-acero
+        - libarrow-acero {{ arrow_version }}
       run:
         - python
         {% if gpu_enabled_bool %}
@@ -149,7 +150,6 @@ outputs:
         # released, a new legate-dataframe would be required.
         - legate
         - pyarrow {{ arrow_version }}
-        - libarrow-acero
         - numpy >=1.23,<3.0.0a0
     ignore_run_exports_from:
       - cupynumeric  # only a build dependency to help resolver
@@ -177,12 +177,12 @@ outputs:
       build:
         - cmake {{ cmake_version }}
       host:
-        - {{ pin_subpackage('legate-dataframe') }}
+        - {{ pin_subpackage('legate-dataframe') }} =*{{ processor_tag }}*
         {% if gpu_enabled_bool %}
         - __cuda
         {% endif %}
       run:
-        - {{ pin_subpackage('legate-dataframe') }}
+        - {{ pin_subpackage('legate-dataframe') }} =*{{ processor_tag }}*
         {% if gpu_enabled_bool %}
         - __cuda
         {% endif %}

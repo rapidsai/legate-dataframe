@@ -10,6 +10,9 @@ cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../;
 source ./ci/test_cpu_common.sh
 
 rapids-logger "Running C++ tests"
+
+nvidia-smi || echo "nvidia-smi not available"
+
 ./ci/run_ctests_cpu.sh
 
 # run the tests
