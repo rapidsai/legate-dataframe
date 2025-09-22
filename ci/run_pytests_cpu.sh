@@ -28,12 +28,4 @@ legate \
     . \
     -sv \
     --durations=0 \
-    --ignore=test_benchmarks.py \
-    --ignore=test_column.py \
-    --ignore=test_cudf.py \
-    --ignore=test_cupynumeric.py \
-    --ignore=test_examples.py \
-    --ignore=test_replace.py \
-    --ignore=test_timestamps.py \
-    -k 'not polars'
     "${@}"
