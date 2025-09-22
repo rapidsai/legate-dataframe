@@ -41,7 +41,7 @@ def _create_df(df, cols, predicate, _unsure=None, chunk_if_pred=None):
 
 
 def lazy_from_legate_df(df):
-    schema = [(n, to_polars(df[n].cudf_type())) for n in df.get_column_names()]
+    schema = [(n, to_polars(df[n].dtype())) for n in df.get_column_names()]
 
     # Last False (within polars) changes the predicate to be passed for arrow.
     plf = PyLazyFrame.scan_from_python_function_pl_schema(

@@ -65,8 +65,8 @@ def from_polars(dtype: pl.DataType) -> pa.DataType:
     NotImplementedError
         For unsupported conversions.
     """
-    scalar = pl.Scalar(None, dtype)
-    return scalar.to_arrow().type
+    series = pl.Series(None, None, dtype)
+    return series.to_arrow().type
 
 
 @cache
@@ -88,5 +88,5 @@ def to_polars(dtype) -> pl.DataType:
     NotImplementedError
         For unsupported conversions.
     """
-    scalar = pa.scalar(None, type=dtype)
-    return pl.from_arrow(scalar).dtype
+    array = pa.array([], type=dtype)
+    return pl.from_arrow(array).dtype

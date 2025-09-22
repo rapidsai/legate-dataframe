@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Hashable, Mapping
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, Union
 
+import pyarrow as pa
 from polars.polars import _expr_nodes as pl_expr
 from polars.polars import _ir_nodes as pl_ir
 
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
     from typing import TypeAlias
 
     import polars as pl
-    import pyarrow as pa
 
     from legate_dataframe.ldf_polars.dsl import expr, nodebase
 

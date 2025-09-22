@@ -606,7 +606,9 @@ class Scan(IR):
         if row_index is not None:
             raise NotImplementedError("Row index not implemented, please avoid it.")
 
-        assert all(df.table[n].cudf_type() == schema[n] for n in df.column_names)
+        assert all(
+            df.table[n].dtype() == schema[n] for n in df.column_names
+        ), f"{[df.table[n].dtype() for n in df.column_names]} != {[schema[n] for n in df.column_names]}"
         if predicate is None:
             return df
         else:
@@ -713,7 +715,7 @@ class DataFrameScan(IR):
             df = df.select(projection)
         df = DataFrame.from_polars(df)
         assert all(
-            c.obj.cudf_type() == dtype
+            c.obj.dtype() == dtype
             for c, dtype in zip(df.columns, schema.values(), strict=True)
         )
         return df
