@@ -89,4 +89,5 @@ def to_polars(dtype) -> pl.DataType:
         For unsupported conversions.
     """
     array = pa.array([], type=dtype)
+    print("Converting", dtype, "->", array.type)
     return pl.from_arrow(array).dtype

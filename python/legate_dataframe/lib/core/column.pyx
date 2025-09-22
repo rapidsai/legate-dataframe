@@ -109,6 +109,13 @@ cdef class LogicalColumn:
         """
         cdef shared_ptr[CArray] arrow_array
         cdef shared_ptr[CScalar] arrow_scalar
+
+        # unpack if scalar is a list
+        if isinstance(array_or_scalar, pa.ListScalar) or isinstance(
+            array_or_scalar, pa.LargeListScalar
+        ):
+            array_or_scalar = array_or_scalar.values
+
         if isinstance(array_or_scalar, pa.Scalar):
             arrow_scalar = pyarrow_unwrap_scalar(array_or_scalar)
             if arrow_scalar.get() == NULL:

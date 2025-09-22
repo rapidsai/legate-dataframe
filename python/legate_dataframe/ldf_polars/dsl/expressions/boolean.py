@@ -108,8 +108,9 @@ class BooleanFunction(Expr):
             assert len(self.children) == 2
             # TODO(seberg): This is a a bit of a hack, polars wants the literal to be a list one
             # but we force it to the current dtype on the (reconstructed) literal column instead.
-            if isinstance(self.children[1], expr.LiteralColumn) and pa.types.is_list(
-                self.children[1].dtype
+            if isinstance(self.children[1], expr.LiteralColumn) and (
+                pa.types.is_list(self.children[1].dtype)
+                or pa.types.is_large_list(self.children[1].dtype)
             ):
                 haystack_child = self.children[1].reconstruct([])
                 haystack_child.dtype = self.children[0].dtype
@@ -119,7 +120,9 @@ class BooleanFunction(Expr):
 
             needles = self.children[0].evaluate(df, context=context)
             # We don't support list type yet, but keep check for now anyway
-            if pa.types.is_list(haystack.obj.dtype()):
+            if pa.types.is_list(haystack.obj.dtype()) or pa.types.is_large_list(
+                haystack.obj.dtype()
+            ):
                 raise NotImplementedError(
                     "IsIn with list type not supported (should unwrap)"
                 )
