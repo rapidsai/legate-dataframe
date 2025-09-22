@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import pyarrow as pa
-import pylibcudf as plc
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.ldf_polars.containers import Column
@@ -28,11 +27,7 @@ class Literal(Expr):
     _non_child = ("dtype", "value")
     value: Any  # Python scalar
 
-    def __init__(self, dtype: plc.DataType, value: Any) -> None:
-        if value is None and dtype.id() == plc.TypeId.EMPTY:
-            # TypeId.EMPTY not supported by libcudf
-            # cuDF Python also maps EMPTY to INT8
-            dtype = plc.types.DataType(plc.types.TypeId.INT8)
+    def __init__(self, dtype: pa.DataType, value: Any) -> None:
         self.dtype = dtype
         self.value = value
         self.children = ()
@@ -45,10 +40,7 @@ class Literal(Expr):
         context: ExecutionContext = ExecutionContext.FRAME,
     ) -> Column:
         """Evaluate this expression given a dataframe for context."""
-        # Hack via pyarrow, we may do that in the future.  Otherwise, we will
-        # be able to go via plc.scalar.Scalar.from_py(val, dtype) in newer plc.
-        pa_dtype = plc.interop._to_arrow_datatype(self.dtype)
-        pa_scalar = pa.scalar(self.value, type=pa_dtype)
+        pa_scalar = pa.scalar(self.value, type=self.dtype)
 
         return Column(LogicalColumn.from_arrow(pa_scalar))
 
@@ -64,7 +56,7 @@ class LiteralColumn(Expr):
     _non_child = ("dtype", "value")
     value: pa.Array[Any]
 
-    def __init__(self, dtype: plc.DataType, value: pa.Array) -> None:
+    def __init__(self, dtype: pa.DataType, value: pa.Array) -> None:
         self.dtype = dtype
         self.value = value
         self.children = ()

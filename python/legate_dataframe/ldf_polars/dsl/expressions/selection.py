@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe import LogicalTable
 from legate_dataframe.ldf_polars.containers import Column
@@ -25,7 +25,7 @@ class Gather(Expr):
     __slots__ = ()
     _non_child = ("dtype",)
 
-    def __init__(self, dtype: plc.DataType, values: Expr, indices: Expr) -> None:
+    def __init__(self, dtype: pa.DataType, values: Expr, indices: Expr) -> None:
         self.dtype = dtype
         self.children = (values, indices)
         self.is_pointwise = False
@@ -44,7 +44,7 @@ class Filter(Expr):
     __slots__ = ()
     _non_child = ("dtype",)
 
-    def __init__(self, dtype: plc.DataType, values: Expr, indices: Expr):
+    def __init__(self, dtype: pa.DataType, values: Expr, indices: Expr):
         self.dtype = dtype
         self.children = (values, indices)
         self.is_pointwise = False

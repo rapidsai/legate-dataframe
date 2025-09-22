@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
 
 if TYPE_CHECKING:
-    import pylibcudf as plc
+    import pyarrow as pa
 
     from legate_dataframe.ldf_polars.containers import Column, DataFrame
 
@@ -25,7 +25,7 @@ class Slice(Expr):
 
     def __init__(
         self,
-        dtype: plc.DataType,
+        dtype: pa.DataType,
         offset: int,
         length: int,
         column: Expr,

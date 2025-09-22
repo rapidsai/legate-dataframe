@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 import polars.polars as plrs
 import pyarrow as pa
-import pylibcudf as plc
 from polars.polars import _expr_nodes as pl_expr
 from polars.polars import _ir_nodes as pl_ir
 
@@ -466,7 +465,7 @@ def translate_named_expr(
 
 @singledispatch
 def _translate_expr(
-    node: Any, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: Any, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     raise NotImplementedError(
         f"Translation for {type(node).__name__}"
@@ -475,7 +474,7 @@ def _translate_expr(
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Function, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Function, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     name, *options = node.function_data
     options = tuple(options)
@@ -546,12 +545,12 @@ def _(
             (child,) = children
             return expr.BinOp(
                 dtype,
-                plc.binaryop.BinaryOperator.LOG_BASE,
+                "logb",
                 child,
-                expr.Literal(dtype, pa.scalar(base, type=plc.interop.to_arrow(dtype))),
+                expr.Literal(dtype, pa.scalar(base, type=dtype)),
             )
         elif name == "pow":
-            return expr.BinOp(dtype, plc.binaryop.BinaryOperator.POW, *children)
+            return expr.BinOp(dtype, "pow", *children)
         elif name in "top_k":
             raise NotImplementedError("top_k not supported")
 
@@ -562,18 +561,18 @@ def _(
 
 
 @_translate_expr.register
-def _(node: pl_expr.Window, translator: Translator, dtype: plc.DataType) -> expr.Expr:
+def _(node: pl_expr.Window, translator: Translator, dtype: pa.DataType) -> expr.Expr:
     # Note that this is for groupby operations.
     raise NotImplementedError("Window not supported")
 
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Literal, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Literal, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     if isinstance(node.value, plrs.PySeries):
         return expr.LiteralColumn(dtype, pl.Series._from_pyseries(node.value))
-    if dtype.id() == plc.TypeId.LIST:  # pragma: no cover
+    if pa.types.is_list(dtype):  # pragma: no cover
         # TODO: Remove once pylibcudf.Scalar supports lists
         return expr.LiteralColumn(dtype, pl.Series(node.value))
     return expr.Literal(dtype, node.value)
@@ -581,21 +580,21 @@ def _(
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Sort, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Sort, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     raise NotImplementedError("Sort not supported")
 
 
 @_translate_expr.register
 def _(
-    node: pl_expr.SortBy, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.SortBy, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     raise NotImplementedError("SortBy not supported")
 
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Slice, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Slice, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     offset = translator.translate_expr(n=node.offset, schema=schema)
     length = translator.translate_expr(n=node.length, schema=schema)
@@ -611,14 +610,14 @@ def _(
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Gather, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Gather, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     raise NotImplementedError("Gather not supported")
 
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Filter, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Filter, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     return expr.Filter(
         dtype,
@@ -629,12 +628,12 @@ def _(
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Cast, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Cast, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     inner = translator.translate_expr(n=node.expr, schema=schema)
     # Push casts into literals so we can handle Cast(Literal(Null))
     if isinstance(inner, expr.Literal):
-        return expr.Literal(dtype, inner.value.cast(plc.interop.to_arrow(dtype)))
+        return expr.Literal(dtype, inner.value.cast(dtype))
     elif isinstance(inner, expr.Cast):
         # Translation of Len/Count-agg put in a cast, remove double
         # casts if we have one.
@@ -644,14 +643,14 @@ def _(
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Column, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Column, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     return expr.Col(dtype, node.name)
 
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Agg, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Agg, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     value = expr.Agg(
         dtype,
@@ -659,21 +658,21 @@ def _(
         node.options,
         *(translator.translate_expr(n=n, schema=schema) for n in node.arguments),
     )
-    if value.name in ("count", "n_unique") and value.dtype.id() != plc.TypeId.INT32:
+    if value.name in ("count", "n_unique") and value.dtype != pa.int32():
         return expr.Cast(value.dtype, value)
     return value
 
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Ternary, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Ternary, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     raise NotImplementedError("Ternary operations not supported")
 
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Ternary, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Ternary, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     return expr.Ternary(
         dtype,
@@ -687,7 +686,7 @@ def _(
 def _(
     node: pl_expr.BinaryExpr,
     translator: Translator,
-    dtype: plc.DataType,
+    dtype: pa.DataType,
     schema: Schema,
 ) -> expr.Expr:
     return expr.BinOp(
@@ -700,9 +699,9 @@ def _(
 
 @_translate_expr.register
 def _(
-    node: pl_expr.Len, translator: Translator, dtype: plc.DataType, schema: Schema
+    node: pl_expr.Len, translator: Translator, dtype: pa.DataType, schema: Schema
 ) -> expr.Expr:
     value = expr.Len(dtype)
-    if dtype.id() != plc.TypeId.INT32:
+    if dtype != pa.int32():
         return expr.Cast(dtype, value)
     return value  # pragma: no cover; never reached since polars len has uint32 dtype

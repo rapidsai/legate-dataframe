@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import IntEnum, auto
 from typing import TYPE_CHECKING, Any, ClassVar
 
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
@@ -96,7 +96,7 @@ class StringFunction(Expr):
 
     def __init__(
         self,
-        dtype: plc.DataType,
+        dtype: pa.DataType,
         name: StringFunction.Name,
         options: tuple[Any, ...],
         *children: Expr,
