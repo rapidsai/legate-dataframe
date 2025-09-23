@@ -17,8 +17,6 @@
 #include <sstream>
 #include <utility>
 
-#include <legate/cuda/cuda.h>
-
 #include <rmm/mr/device/per_device_resource.hpp>
 
 #include <legate_dataframe/core/allocator.cuh>
@@ -120,10 +118,10 @@ std::vector<std::unique_ptr<GlobalMemoryResource>> _create_and_set_global_mrs()
   const int num_gpus = rmm::get_num_cuda_devices();
 
   int current_device{-1};
-  LEGATE_CHECK_CUDA(cudaGetDevice(&current_device));
+  LDF_CUDA_TRY(cudaGetDevice(&current_device));
 
   for (int i = 0; i < num_gpus; ++i) {
-    LEGATE_CHECK_CUDA(cudaSetDevice(i));
+    LDF_CUDA_TRY(cudaSetDevice(i));
     if (rmm::mr::detail::initial_resource() != rmm::mr::get_current_device_resource()) {
       throw std::runtime_error(
         "Legate-dataframe failed to set the current RMM memory resource because it has already "
@@ -135,7 +133,7 @@ std::vector<std::unique_ptr<GlobalMemoryResource>> _create_and_set_global_mrs()
     ret.push_back(std::make_unique<GlobalMemoryResource>());
     rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, ret.back().get());
   }
-  LEGATE_CHECK_CUDA(cudaSetDevice(current_device));
+  LDF_CUDA_TRY(cudaSetDevice(current_device));
   return ret;
 }
 }  // namespace

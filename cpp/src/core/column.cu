@@ -25,8 +25,6 @@
 
 #include <cuda_runtime_api.h>
 
-#include <legate/cuda/cuda.h>
-
 #include <cudf/column/column_factories.hpp>
 #include <cudf/copying.hpp>
 #include <cudf/interop.hpp>
@@ -58,7 +56,7 @@ struct move_into_fn {
       if (column.nullable()) {
         null_mask_bits_to_bools(num_rows, null_mask_ptr, column.null_mask(), stream);
       } else {
-        LEGATE_CHECK_CUDA(cudaMemsetAsync(
+        LDF_CUDA_TRY(cudaMemsetAsync(
           null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
       }
     }
@@ -73,7 +71,7 @@ struct move_into_fn {
 
     T* data_ptr         = maybe_bind_buffer<T>(array.data(), num_rows);
     const T* source_ptr = column.data<T>();
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
+    LDF_CUDA_TRY(cudaMemcpyAsync(
       data_ptr, source_ptr, num_rows * sizeof(T), cudaMemcpyDeviceToDevice, stream));
   }
 
@@ -93,7 +91,7 @@ struct move_into_fn {
       if (column.nullable()) {
         null_mask_bits_to_bools(num_rows, null_mask_ptr, column.null_mask(), stream);
       } else {
-        LEGATE_CHECK_CUDA(cudaMemsetAsync(
+        LDF_CUDA_TRY(cudaMemsetAsync(
           null_mask_ptr, std::numeric_limits<bool>::max(), num_rows * sizeof(bool), stream));
       }
     }
@@ -126,7 +124,7 @@ struct move_into_fn {
     }
 
     auto chars_ptr = maybe_bind_buffer<int8_t>(ary.chars().data(), nbytes);
-    LEGATE_CHECK_CUDA(cudaMemcpyAsync(
+    LDF_CUDA_TRY(cudaMemcpyAsync(
       chars_ptr, str_col.chars_begin(stream), nbytes, cudaMemcpyDeviceToDevice, stream));
   }
 
@@ -241,11 +239,11 @@ namespace {
 {
   auto host_ary_nbytes = physical_array.shape<1>().volume() * physical_array.type().size();
   auto ret             = rmm::device_buffer(host_ary_nbytes, stream);
-  LEGATE_CHECK_CUDA(cudaMemcpyAsync(ret.data(),
-                                    read_accessor_as_1d_bytes(physical_array.data()),
-                                    host_ary_nbytes,
-                                    cudaMemcpyHostToDevice,
-                                    stream));
+  LDF_CUDA_TRY(cudaMemcpyAsync(ret.data(),
+                               read_accessor_as_1d_bytes(physical_array.data()),
+                               host_ary_nbytes,
+                               cudaMemcpyHostToDevice,
+                               stream));
   return ret;
 }
 

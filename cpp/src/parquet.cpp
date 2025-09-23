@@ -27,7 +27,6 @@
 #include <parquet/file_reader.h>
 
 #include <legate.h>
-#include <legate/cuda/cuda.h>
 
 #include <legate_dataframe/core/task_context.hpp>
 #include <legate_dataframe/core/transposed_copy.h>
