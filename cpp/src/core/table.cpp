@@ -86,7 +86,7 @@ std::shared_ptr<arrow::Table> LogicalTable::get_arrow() const
   auto names = this->get_column_name_vector();
   for (std::size_t i = 0; i < columns_.size(); i++) {
     cols.push_back(columns_.at(i).get_arrow());
-    fields.push_back(arrow::field(names.at(i), columns_.at(i).arrow_type()));
+    fields.push_back(arrow::field(names.at(i), cols.back()->type()));
   }
   return arrow::Table::Make(arrow::schema(fields), std::move(cols));
 }

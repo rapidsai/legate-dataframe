@@ -46,6 +46,14 @@ namespace legate::dataframe {
   rmm::mr::device_memory_resource* mr);
 #endif
 
+/**
+ * @brief Template function to convert global ranges to Arrow offsets.
+ *
+ * The caller should choose the appropriate offset for of the arrow string type.
+ * @param ranges The global ranges to convert.
+ * @return The Arrow offsets buffer.
+ */
+template <typename OffsetType>
 [[nodiscard]] std::shared_ptr<arrow::Buffer> global_ranges_to_arrow_offsets(
   const legate::PhysicalStore& ranges);
 
