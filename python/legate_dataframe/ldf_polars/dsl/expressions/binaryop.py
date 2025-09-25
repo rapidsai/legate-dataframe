@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-import pylibcudf as plc
+import pyarrow as pa
 from polars.polars import _expr_nodes as pl_expr
 
 from legate_dataframe.ldf_polars.containers import Column
@@ -27,13 +27,13 @@ class BinOp(Expr):
 
     def __init__(
         self,
-        dtype: plc.DataType,
+        dtype: pa.DataType,
         op: str,
         left: Expr,
         right: Expr,
     ) -> None:
         self.dtype = dtype
-        if plc.traits.is_boolean(self.dtype):
+        if pa.types.is_boolean(self.dtype):
             # For boolean output types, bitand and bitor implement
             # boolean logic, so translate. bitxor also does, but the
             # default behaviour is correct.
@@ -51,7 +51,7 @@ class BinOp(Expr):
         #         f"with output type {self.dtype.id().name}"
         #     )
 
-    _BOOL_KLEENE_MAPPING: ClassVar[dict[plc.binaryop.BinaryOperator, str]] = {
+    _BOOL_KLEENE_MAPPING: ClassVar[dict[str, str]] = {
         "bit_wise_and": "and_kleene",
         "bit_wise_or": "or_kleene",
         "and": "and_kleene",
@@ -96,7 +96,7 @@ class BinOp(Expr):
         # Use divide, but cast one of the inputs to the output dtype
         # to ensure the right type is used (with some logic to prefer
         # casting a scalar).
-        if left.obj.cudf_type() != self.dtype and right.obj.cudf_type() != self.dtype:
+        if left.obj.dtype() != self.dtype and right.obj.dtype() != self.dtype:
             if left.is_scalar:
                 left = left.astype(self.dtype)
             else:

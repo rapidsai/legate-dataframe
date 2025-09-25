@@ -19,6 +19,7 @@ import time
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import polars as pl
+import pyarrow as pa
 
 import legate_dataframe.ldf_polars.dsl.expr as expr
 from legate_dataframe import LogicalTable
@@ -606,7 +607,13 @@ class Scan(IR):
         if row_index is not None:
             raise NotImplementedError("Row index not implemented, please avoid it.")
 
-        assert all(df.table[n].cudf_type() == schema[n] for n in df.column_names)
+        # Types should be the same
+        # Exception is large_string -> string
+        assert all(
+            df.table[n].dtype() == schema[n]
+            or (schema[n] == pa.large_string() and df.table[n].dtype() == pa.string())
+            for n in df.column_names
+        )
         if predicate is None:
             return df
         else:
@@ -713,7 +720,7 @@ class DataFrameScan(IR):
             df = df.select(projection)
         df = DataFrame.from_polars(df)
         assert all(
-            c.obj.cudf_type() == dtype
+            c.obj.dtype() == dtype
             for c, dtype in zip(df.columns, schema.values(), strict=True)
         )
         return df

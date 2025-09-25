@@ -7,13 +7,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-import cudf  # eventually, we should not need this
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
-from legate_dataframe.ldf_polars.utils import dtypes
 from legate_dataframe.ldf_polars.utils.versions import POLARS_VERSION_LT_129
 from legate_dataframe.lib import replace, unaryop
 
@@ -30,14 +28,10 @@ class Cast(Expr):
     __slots__ = ()
     _non_child = ("dtype",)
 
-    def __init__(self, dtype: plc.DataType, value: Expr) -> None:
+    def __init__(self, dtype: pa.DataType, value: Expr) -> None:
         self.dtype = dtype
         self.children = (value,)
         self.is_pointwise = True
-        if not dtypes.can_cast(value.dtype, self.dtype):
-            raise NotImplementedError(
-                f"Can't cast {value.dtype.id().name} to {self.dtype.id().name}"
-            )
 
     def do_evaluate(
         self,
@@ -54,7 +48,7 @@ class Cast(Expr):
 class Len(Expr):
     """Class representing the length of an expression."""
 
-    def __init__(self, dtype: plc.DataType) -> None:
+    def __init__(self, dtype: pa.DataType) -> None:
         self.dtype = dtype
         self.children = ()
         self.is_pointwise = False
@@ -66,9 +60,7 @@ class Len(Expr):
         context: ExecutionContext = ExecutionContext.FRAME,
     ) -> Column:
         """Evaluate this expression given a dataframe for context."""
-        return Column(
-            LogicalColumn.from_cudf(cudf.Scalar(df.num_rows, dtype=self.dtype))
-        )
+        return Column(LogicalColumn.from_arrow(pa.scalar(df.num_rows, type=self.dtype)))
 
     @property
     def agg_request(self):
@@ -82,7 +74,7 @@ class UnaryFunction(Expr):
     _non_child = ("dtype", "name", "options")
 
     # Note: log, and pow are handled via translation to binops
-    _OP_MAPPING: ClassVar[dict[str, plc.unary.UnaryOperator]] = {
+    _OP_MAPPING: ClassVar[dict[str, str]] = {
         "sin": "sin",
         "cos": "cos",
         "tan": "tan",
@@ -128,7 +120,7 @@ class UnaryFunction(Expr):
     )
 
     def __init__(
-        self, dtype: plc.DataType, name: str, options: tuple[Any, ...], *children: Expr
+        self, dtype: pa.DataType, name: str, options: tuple[Any, ...], *children: Expr
     ) -> None:
         self.dtype = dtype
         self.name = name
@@ -195,7 +187,7 @@ class UnaryFunction(Expr):
             return Column(replace.replace_nulls(column.obj, arg))
         elif self.name in self._OP_MAPPING:
             column = self.children[0].evaluate(df, context=context)
-            if column.obj.cudf_type().id() != self.dtype.id():
+            if column.obj.dtype() != self.dtype:
                 arg = unaryop.cast(column.obj, self.dtype)
             else:
                 arg = column.obj

@@ -10,7 +10,6 @@ from enum import IntEnum, auto
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pyarrow as pa
-import pylibcudf as plc
 
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
@@ -111,7 +110,7 @@ class TemporalFunction(Expr):
 
     def __init__(
         self,
-        dtype: plc.DataType,
+        dtype: pa.DataType,
         name: TemporalFunction.Name,
         options: tuple[Any, ...],
         *children: Expr,

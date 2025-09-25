@@ -9,10 +9,9 @@ from __future__ import annotations
 from enum import IntEnum, auto
 from typing import TYPE_CHECKING, Any
 
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe.ldf_polars.containers import Column
-from legate_dataframe.ldf_polars.dsl import expr
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
 from legate_dataframe.lib import search, unaryop
 
@@ -64,7 +63,7 @@ class BooleanFunction(Expr):
 
     def __init__(
         self,
-        dtype: plc.DataType,
+        dtype: pa.DataType,
         name: BooleanFunction.Name,
         options: tuple[Any, ...],
         *children: Expr,
@@ -106,21 +105,13 @@ class BooleanFunction(Expr):
                         "nans_equal to `is_in` is not implemented"
                     )
             assert len(self.children) == 2
-            # TODO(seberg): This is a a bit of a hack, polars wants the literal to be a list one
-            # but we force it to the current dtype on the (reconstructed) literal column instead.
-            if (
-                isinstance(self.children[1], expr.LiteralColumn)
-                and self.children[1].dtype.id() == plc.TypeId.LIST
-            ):
-                haystack_child = self.children[1].reconstruct([])
-                haystack_child.dtype = self.children[0].dtype
-                haystack = haystack_child.evaluate(df, context=context)
-            else:
-                haystack = self.children[1].evaluate(df, context=context)
+            haystack = self.children[1].evaluate(df, context=context)
 
             needles = self.children[0].evaluate(df, context=context)
             # We don't support list type yet, but keep check for now anyway
-            if haystack.obj.cudf_type().id() == plc.TypeId.LIST:
+            if pa.types.is_list(haystack.obj.dtype()) or pa.types.is_large_list(
+                haystack.obj.dtype()
+            ):
                 raise NotImplementedError(
                     "IsIn with list type not supported (should unwrap)"
                 )

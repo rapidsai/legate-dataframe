@@ -9,6 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from legate_dataframe.testing import try_import_cudf
+
+# skips tests if cudf is not available
+cudf = try_import_cudf()
+
 benchmarks_path = Path(os.path.realpath(__file__)).parent / ".." / "benchmarks"
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
@@ -26,7 +26,7 @@ class Ternary(Expr):
     _non_child = ("dtype",)
 
     def __init__(
-        self, dtype: plc.DataType, when: Expr, then: Expr, otherwise: Expr
+        self, dtype: pa.DataType, when: Expr, then: Expr, otherwise: Expr
     ) -> None:
         self.dtype = dtype
         self.children = (when, then, otherwise)

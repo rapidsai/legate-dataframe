@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Hashable, Mapping
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, Union
 
-import pylibcudf as plc
+import pyarrow as pa
 from polars.polars import _expr_nodes as pl_expr
 from polars.polars import _ir_nodes as pl_ir
 
@@ -66,7 +66,7 @@ PolarsExpr: TypeAlias = Union[
     pl_expr.PyExprIR,
 ]
 
-Schema: TypeAlias = Mapping[str, plc.DataType]
+Schema: TypeAlias = Mapping[str, pa.DataType]
 
 Slice: TypeAlias = tuple[int, int | None]
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import functools
 from typing import TYPE_CHECKING
 
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.lib import unaryop
@@ -59,7 +59,7 @@ class Column:
         new.name = name
         return new
 
-    def astype(self, dtype: plc.DataType) -> Column:
+    def astype(self, dtype: pa.DataType) -> Column:
         """
         Cast the column to as the requested dtype.
 
@@ -82,7 +82,7 @@ class Column:
         This only produces a copy if the requested dtype doesn't match
         the current one.
         """
-        if self.obj.cudf_type() == dtype:
+        if self.obj.dtype() == dtype:
             return self
 
         # TODO: Not all casts are supported by direct casts here.  E.g. for

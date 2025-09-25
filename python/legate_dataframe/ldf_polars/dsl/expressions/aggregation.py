@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 import pyarrow.compute
-import pylibcudf as plc
 
 from legate_dataframe import LogicalColumn
 from legate_dataframe.ldf_polars.containers import Column
@@ -29,7 +28,7 @@ class Agg(Expr):
     _non_child = ("dtype", "name", "options")
 
     def __init__(
-        self, dtype: plc.DataType, name: str, options: Any, *children: Expr
+        self, dtype: pa.DataType, name: str, options: Any, *children: Expr
     ) -> None:
         self.dtype = dtype
         self.name = name

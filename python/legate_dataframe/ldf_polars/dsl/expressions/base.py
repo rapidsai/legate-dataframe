@@ -10,7 +10,7 @@ import enum
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe.ldf_polars.containers import Column
 from legate_dataframe.ldf_polars.dsl.nodebase import Node
@@ -37,7 +37,7 @@ class Expr(Node["Expr"]):
     """An abstract expression object."""
 
     __slots__ = ("dtype", "is_pointwise")
-    dtype: plc.DataType
+    dtype: pa.DataType
     """Data type of the expression."""
     is_pointwise: bool
     """Whether this expression acts pointwise on its inputs."""
@@ -142,7 +142,7 @@ class ErrorExpr(Expr):
     _non_child = ("dtype", "error")
     error: str
 
-    def __init__(self, dtype: plc.DataType, error: str) -> None:
+    def __init__(self, dtype: pa.DataType, error: str) -> None:
         self.dtype = dtype
         self.error = error
         self.children = ()
@@ -232,7 +232,7 @@ class Col(Expr):
     _non_child = ("dtype", "name")
     name: str
 
-    def __init__(self, dtype: plc.DataType, name: str) -> None:
+    def __init__(self, dtype: pa.DataType, name: str) -> None:
         self.dtype = dtype
         self.name = name
         self.is_pointwise = True
@@ -254,13 +254,13 @@ class ColRef(Expr):
     __slots__ = ("index", "table_ref")
     _non_child = ("dtype", "index", "table_ref")
     index: int
-    table_ref: plc.expressions.TableReference
+    table_ref: Any
 
     def __init__(
         self,
-        dtype: plc.DataType,
+        dtype: pa.DataType,
         index: int,
-        table_ref: plc.expressions.TableReference,
+        table_ref: Any,
         column: Expr,
     ) -> None:
         if not isinstance(column, Col):

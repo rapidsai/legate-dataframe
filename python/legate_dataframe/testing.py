@@ -22,7 +22,7 @@ def try_import_cudf():
     try:
         cudf = pytest.importorskip("cudf")
     except Exception:
-        pytest.skip("cudf is not available")
+        pytest.skip("cudf is not available", allow_module_level=True)
     return cudf
 
 

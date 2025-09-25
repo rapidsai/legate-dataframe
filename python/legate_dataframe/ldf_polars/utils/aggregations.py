@@ -9,7 +9,7 @@ import itertools
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-import pylibcudf as plc
+import pyarrow as pa
 
 from legate_dataframe.ldf_polars.dsl import expr, ir
 
@@ -111,9 +111,7 @@ def decompose_single_agg(
             child = agg.children[0]
         else:
             (child,) = agg.children
-        needs_masking = agg.name in {"min", "max"} and plc.traits.is_floating_point(
-            child.dtype
-        )
+        needs_masking = agg.name in {"min", "max"} and pa.types.is_floating(child.dtype)
         if needs_masking and agg.options:
             # pl.col("a").nan_max or nan_min
             raise NotImplementedError("Nan propagation in groupby for min/max")
@@ -133,11 +131,8 @@ def decompose_single_agg(
             )
         elif agg.name == "sum":
             col = (
-                expr.Cast(agg.dtype, expr.Col(plc.DataType(plc.TypeId.INT64), name))
-                if (
-                    plc.traits.is_integral(agg.dtype)
-                    and agg.dtype.id() != plc.TypeId.INT64
-                )
+                expr.Cast(agg.dtype, expr.Col(pa.int64(), name))
+                if (pa.types.is_integer(agg.dtype) and agg.dtype != pa.int64())
                 else expr.Col(agg.dtype, name)
             )
             return [(named_expr, True)], expr.NamedExpr(
