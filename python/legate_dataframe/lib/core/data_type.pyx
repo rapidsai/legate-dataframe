@@ -9,6 +9,7 @@ from libcpp.memory cimport shared_ptr
 
 from pyarrow.lib cimport CDataType, pyarrow_unwrap_data_type
 
+import legate.core
 import pyarrow as pa
 
 
@@ -47,24 +48,25 @@ cdef shared_ptr[CDataType] as_arrow_data_type(data_type_like):
         ) from e
 
 
+cdef dict map_to_legate = {
+    pa.int8(): legate.core.int8,
+    pa.int16(): legate.core.int16,
+    pa.int32(): legate.core.int32,
+    pa.int64(): legate.core.int64,
+    pa.uint8(): legate.core.uint8,
+    pa.uint16(): legate.core.uint16,
+    pa.uint32(): legate.core.uint32,
+    pa.uint64(): legate.core.uint64,
+    pa.float32(): legate.core.float32,
+    pa.float64(): legate.core.float64,
+    pa.bool_(): legate.core.bool_,
+    pa.string(): legate.core.string_type,
+    pa.large_string(): legate.core.string_type,
+}
+
+
 cdef bint is_legate_compatible(arrow_type: pa.DataType):
     """Check if a datatype is a native legate datatype. For now, we do
     this by simply hardcoding the numeric ones plus bool and string.
     """
-    if arrow_type in (
-        pa.int8(),
-        pa.int16(),
-        pa.int32(),
-        pa.int64(),
-        pa.uint8(),
-        pa.uint16(),
-        pa.uint32(),
-        pa.uint64(),
-        pa.float32(),
-        pa.float64(),
-        pa.bool_(),
-        pa.string(),
-    ):
-        return True
-    else:
-        return False
+    return arrow_type in map_to_legate
