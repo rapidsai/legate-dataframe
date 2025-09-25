@@ -39,7 +39,9 @@ cdef LogicalColumn cpp_scalar_col_from_python(scalar: ScalarLike):
     if isinstance(scalar, pa.Scalar):
         return LogicalColumn.from_arrow(scalar)
 
-    if type(scalar).__module__ == "cudf.core.scalar":
-        return LogicalColumn.from_cudf(scalar.device_value)
+    # NOTE(seberg): Skip as the pyarrow path may go via legate scalar
+    # and staying to device is not preferable if that works.
+    # if type(scalar).__module__ == "cudf.core.scalar":
+    #     return LogicalColumn.from_cudf(scalar.device_value)
 
     return LogicalColumn.from_arrow(pa.scalar(scalar))

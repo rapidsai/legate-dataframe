@@ -11,4 +11,5 @@ from pyarrow.lib cimport CDataType
 
 cdef shared_ptr[CDataType] as_arrow_data_type(data_type_like)
 
+cdef dict map_to_legate
 cdef bint is_legate_compatible(arrow_type: pa.DataType)
