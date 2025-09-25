@@ -23,8 +23,10 @@ from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
 from typing import Any
 
 from legate.core import AutoTask, Field, LogicalArray
+from legate.core import Scalar as LegateScalar
+from legate.core import get_legate_runtime, string_type
 
-from legate_dataframe.lib.core.data_type cimport is_legate_compatible
+from legate_dataframe.lib.core.data_type cimport is_legate_compatible, map_to_legate
 
 from legate_dataframe.utils import get_logical_array
 
@@ -39,7 +41,7 @@ cdef class LogicalColumn:
     ``column.scalar()`` is ``True`` and it has always one row.
     """
 
-    def __init__(self, obj: Any):
+    def __init__(self, obj: Any, *, scalar=False):
         """Create a new logical column using the legate data interface
 
         The object must expose a single logical array.
@@ -48,11 +50,24 @@ cdef class LogicalColumn:
         ----------
         obj
             Objects that exposes `__legate_data_interface__` interface.
+        scalar
+            If ``True`` the array is assumed to be shape (1,) and the result
+            column will be marked as a scalar.
         """
         array = get_logical_array(obj)
         assert type(array) is LogicalArray
         cdef uintptr_t raw_handle = array.raw_handle
-        self._handle = cpp_LogicalColumn(dereference(<cpp_LogicalArray*> raw_handle))
+        if scalar and array.shape != (1,):
+            # C-side doesn't check to not block but blocking is probably OK for scalars
+            # so check shape here.
+            raise ValueError(
+                "only shape (1,) array can currently be converted to scalar column.")
+
+        self._handle = cpp_LogicalColumn(
+            dereference(<cpp_LogicalArray*> raw_handle),
+            <shared_ptr[CDataType]>NULL,
+            scalar,
+        )
 
     @staticmethod
     cdef LogicalColumn from_handle(cpp_LogicalColumn handle):
@@ -117,6 +132,20 @@ cdef class LogicalColumn:
             array_or_scalar = array_or_scalar.values
 
         if isinstance(array_or_scalar, pa.Scalar):
+            legate_type = map_to_legate.get(array_or_scalar.type)
+            if (
+                array_or_scalar.is_valid  # supported in very near future
+                and legate_type is not None
+                and legate_type is not string_type  # unsupported by legate
+            ):
+                # If we can, create via legate scalar, otherwise we (currently?)
+                # interrupt streaming. To support all types this needs C++.
+                # NOTE(seberg): If this is _removed_ the typical cudf scalar coercion
+                # in scalar.pyx should be reverted to not go via pyarrow again.
+                legate_scalar = LegateScalar(array_or_scalar.as_py(), legate_type)
+                store = get_legate_runtime().create_store_from_scalar(legate_scalar)
+                return LogicalColumn(LogicalArray.from_store(store), scalar=True)
+
             arrow_scalar = pyarrow_unwrap_scalar(array_or_scalar)
             if arrow_scalar.get() == NULL:
                 raise TypeError("not a scalar")

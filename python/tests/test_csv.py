@@ -24,6 +24,7 @@ from pyarrow import csv
 from legate_dataframe import LogicalTable
 from legate_dataframe.lib.csv import csv_read, csv_write
 from legate_dataframe.testing import (
+    RUNNING_WITH_GPU,
     assert_arrow_table_equal,
     assert_frame_equal,
     assert_matches_polars,
@@ -209,8 +210,8 @@ def test_usecols_and_names_no_header(tmp_path):
     assert_arrow_table_equal(read_tbl.to_arrow(), expected)
 
 
+@pytest.mark.skipif(not RUNNING_WITH_GPU, reason="na_filter has no effect for CPU path")
 def test_na_filter_false(tmp_path):
-    # arrow does not support na_filter=False
     cudf = try_import_cudf()
     df = cudf.DataFrame({"a": [1, 2, 3, 4]})
     df.to_csv(tmp_path / "tmp.csv", index=False)

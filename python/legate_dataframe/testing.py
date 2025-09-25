@@ -13,6 +13,8 @@ from legate.core import TaskTarget, get_legate_runtime
 
 from legate_dataframe import LogicalColumn, LogicalTable
 
+_runtime = get_legate_runtime()
+
 
 def try_import_cudf():
     # cudf can exist but not be usable if the GPU driver is not available
@@ -323,15 +325,17 @@ def get_test_scoping():
     otherwise it will use CPUs.
     """
     # avoid TaskTarget.OMP - sort does not implement this
-    runtime = get_legate_runtime()
-    n_cpus = runtime.get_machine().count(TaskTarget.CPU)
-    n_gpus = runtime.get_machine().count(TaskTarget.GPU)
+    n_cpus = _runtime.get_machine().count(TaskTarget.CPU)
+    n_gpus = _runtime.get_machine().count(TaskTarget.GPU)
     target = TaskTarget.GPU if n_gpus > 0 else TaskTarget.CPU
     n_processors = n_gpus if target == TaskTarget.GPU else n_cpus
     i = 1
     scopes_to_test = []
     while i < n_processors:
-        scopes_to_test.append(runtime.get_machine().only(target)[:i])
+        scopes_to_test.append(_runtime.get_machine().only(target)[:i])
         i *= 2
-    scopes_to_test.append(runtime.get_machine().only(target)[:n_processors])
+    scopes_to_test.append(_runtime.get_machine().only(target)[:n_processors])
     return scopes_to_test
+
+
+RUNNING_WITH_GPU = _runtime.get_machine().count(TaskTarget.GPU) > 0

@@ -221,4 +221,21 @@ T* maybe_bind_buffer(legate::PhysicalStore store, std::size_t size)
   return out;
 }
 
+#ifdef LEGATE_DATAFRAME_USE_CUDA
+/**
+ * @brief Error checking macro for CUDA runtime API functions.
+ *
+ * Invokes a CUDA runtime API function call, if the call does not return
+ * cudaSuccess, invokes cudaGetLastError() to clear the error and throws an
+ * exception detailing the CUDA error that occurred
+ *
+ * (Taken from cudf, which has a CHECK_CUDA macro as well that synchronizes in debug.)
+ */
+#define LDF_CUDA_TRY(call)                                                                     \
+  do {                                                                                         \
+    cudaError_t const status = (call);                                                         \
+    if (cudaSuccess != status) { cudf::detail::throw_cuda_error(status, __FILE__, __LINE__); } \
+  } while (0);
+#endif
+
 }  // namespace legate::dataframe

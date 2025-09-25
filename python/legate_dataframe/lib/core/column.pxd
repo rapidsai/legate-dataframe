@@ -18,7 +18,11 @@ from legate_dataframe.lib.core.logical_array cimport cpp_LogicalArray
 cdef extern from "<legate_dataframe/core/column.hpp>" nogil:
     cdef cppclass cpp_LogicalColumn "legate::dataframe::LogicalColumn":
         cpp_LogicalColumn() except +
-        cpp_LogicalColumn(cpp_LogicalArray logical_array) except +
+        cpp_LogicalColumn(
+            cpp_LogicalArray logical_array,
+            shared_ptr[CDataType] type,
+            bool scalar,
+        ) except +
         cpp_LogicalColumn(shared_ptr[CArray] arrow_array) except +
         cpp_LogicalColumn(shared_ptr[CScalar] arrow_array) except +
 
