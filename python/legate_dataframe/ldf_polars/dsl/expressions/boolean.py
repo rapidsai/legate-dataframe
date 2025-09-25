@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from legate_dataframe.ldf_polars.containers import Column
-from legate_dataframe.ldf_polars.dsl import expr
 from legate_dataframe.ldf_polars.dsl.expressions.base import ExecutionContext, Expr
 from legate_dataframe.lib import search, unaryop
 
@@ -106,17 +105,7 @@ class BooleanFunction(Expr):
                         "nans_equal to `is_in` is not implemented"
                     )
             assert len(self.children) == 2
-            # TODO(seberg): This is a a bit of a hack, polars wants the literal to be a list one
-            # but we force it to the current dtype on the (reconstructed) literal column instead.
-            if isinstance(self.children[1], expr.LiteralColumn) and (
-                pa.types.is_list(self.children[1].dtype)
-                or pa.types.is_large_list(self.children[1].dtype)
-            ):
-                haystack_child = self.children[1].reconstruct([])
-                haystack_child.dtype = self.children[0].dtype
-                haystack = haystack_child.evaluate(df, context=context)
-            else:
-                haystack = self.children[1].evaluate(df, context=context)
+            haystack = self.children[1].evaluate(df, context=context)
 
             needles = self.children[0].evaluate(df, context=context)
             # We don't support list type yet, but keep check for now anyway
