@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import pyarrow as pa
 
 from legate_dataframe import LogicalColumn
-from legate_dataframe.lib import unaryop
+from legate_dataframe.lib import copying, unaryop
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -103,8 +103,18 @@ class Column:
         )
 
     def mask_nans(self) -> Self:
-        """Return a shallow copy of self with nans masked out."""
-        raise NotImplementedError("mask_nans not implemented")
+        if not pa.types.is_floating(self.obj.dtype()):
+            # If it is not floating can't contain NaN so just shallow copy.
+            return self.copy()
+
+        # TODO(seberg): This could in principle be a view with newer
+        # additions to legate (about to be added in 25.10) where only
+        # the mask is a copy, until then we create a full new column.
+        is_nan = unaryop.unary_operation(self.obj, "is_nan")
+        col = copying.copy_if_else(
+            is_nan, pa.scalar(None, type=self.obj.dtype()), self.obj
+        )
+        return type(self)(col, name=self.name)
 
     @functools.cached_property
     def nan_count(self) -> int:

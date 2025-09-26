@@ -160,7 +160,10 @@ class UnaryFunction(Expr):
         # - cum_max
         # - cum_prod
         # - cum_sum
-        if self.name == "round":
+        if self.name == "mask_nans":
+            column = self.children[0].evaluate(df, context=context)
+            return column.mask_nans()
+        elif self.name == "round":
             round_mode = "half_away_from_zero"
             if POLARS_VERSION_LT_129:
                 (decimal_places,) = self.options  # pragma: no cover
