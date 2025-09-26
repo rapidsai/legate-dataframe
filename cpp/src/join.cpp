@@ -484,10 +484,13 @@ LogicalTable join(const LogicalTable& lhs,
                   bool nulls_equal,
                   BroadcastInput broadcast)
 {
-  // By default, the output includes all the columns from `lhs` and `rhs`.
+  // By default, the output includes all the columns from `lhs`.
   std::vector<size_t> lhs_out_columns(lhs.num_columns());
   std::iota(lhs_out_columns.begin(), lhs_out_columns.end(), 0);
-  std::vector<size_t> rhs_out_columns(rhs.num_columns());
+  // Include all `rhs` columns, but SEMI or ANTI never does (or can).
+  auto rhs_cols =
+    (join_type == JoinType::SEMI || join_type == JoinType::ANTI) ? 0 : rhs.num_columns();
+  std::vector<size_t> rhs_out_columns(rhs_cols);
   std::iota(rhs_out_columns.begin(), rhs_out_columns.end(), 0);
   return join(lhs,
               rhs,
