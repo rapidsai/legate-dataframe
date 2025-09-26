@@ -243,7 +243,7 @@ TEST(JoinTest, LeftJoinNoNulls)
   test_join(table_0, table_1, {0, 1}, {0, 1}, legate::dataframe::JoinType::LEFT);
 }
 
-TEST(JoinTest, LeftJoinWithNulls)
+TEST(JoinTest, LeftAntiSemiJoinWithNulls)
 {
   LogicalColumn a(std::vector<int32_t>{3, 1, 2, 0, 2});
   LogicalColumn b(make_string_array_with_nulls({"s1", "s1", "", "s4", "s0"}, {1, 1, 0, 1, 1}));
@@ -256,6 +256,8 @@ TEST(JoinTest, LeftJoinWithNulls)
   LogicalTable table_1({d, e, f}, {"d", "e", "f"});
 
   test_join(table_0, table_1, {0, 1}, {0, 1}, legate::dataframe::JoinType::LEFT);
+  test_join(table_0, table_1, {0, 1}, {0, 1}, legate::dataframe::JoinType::ANTI);
+  test_join(table_0, table_1, {0, 1}, {0, 1}, legate::dataframe::JoinType::SEMI);
 }
 
 TEST(JoinTest, LeftJoinOnNulls)

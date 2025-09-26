@@ -1075,6 +1075,10 @@ class Join(IR):
             join_type = join.JoinType.LEFT
         elif how == "Full":
             join_type = join.JoinType.FULL
+        elif how == "Semi":
+            join_type = join.JoinType.SEMI
+        elif how == "Anti":
+            join_type = join.JoinType.ANTI
         else:
             raise NotImplementedError(f"{how=}")
 
@@ -1092,9 +1096,12 @@ class Join(IR):
 
         # Now, drop the join column if coalesce is given
         assert coalesce is not None
-        if coalesce:
-            for name in right_on:
-                rhs_out_columns.remove(name)
+        if join_type in {join.JoinType.SEMI, join.JoinType.ANTI}:
+            rhs_out_columns = []
+        else:
+            if coalesce:
+                for name in right_on:
+                    rhs_out_columns.remove(name)
 
         df = join.join(
             left_tbl,

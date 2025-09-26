@@ -20,11 +20,14 @@ from legate_dataframe.utils import _track_provenance
 
 cdef extern from "<legate_dataframe/join.hpp>" namespace "legate::dataframe":
     cpdef enum class JoinType(int32_t):
-        """Options for the join type (``INNER``, ``LEFT``, ``FULL``).
+        """Options for the join type (``INNER``, ``LEFT``, ``FULL``, ``SEMI``,
+        ``ANTI``).
         """
         INNER,
         LEFT,
-        FULL
+        FULL,
+        SEMI,
+        ANTI
 
     cpdef enum class BroadcastInput(int32_t):
         """Options for input broadcasting (``AUTO``, ``LEFT``, and ``RIGHT``).
@@ -109,7 +112,10 @@ def join(
     if lhs_out_columns is None:
         lhs_out_columns = lhs.get_column_names()
     if rhs_out_columns is None:
-        rhs_out_columns = rhs.get_column_names()
+        if join_type == JoinType.ANTI or join_type == JoinType.SEMI:
+            rhs_out_columns = []  # cannot select any columns with these joins
+        else:
+            rhs_out_columns = rhs.get_column_names()
 
     cdef vector[string] lhs_key_vector
     cdef vector[string] rhs_key_vector

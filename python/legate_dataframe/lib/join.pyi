@@ -10,6 +10,8 @@ class JoinType(Enum):
     INNER: int
     LEFT: int
     FULL: int
+    SEMI: int
+    ANTI: int
 
 class BroadcastInput(Enum):
     AUTO: int

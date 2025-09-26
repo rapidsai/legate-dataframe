@@ -22,7 +22,7 @@
 #include <legate_dataframe/core/table.hpp>
 
 namespace legate::dataframe {
-enum class JoinType : int32_t { INNER = 0, LEFT, FULL };
+enum class JoinType : int32_t { INNER = 0, LEFT, FULL, SEMI, ANTI };
 enum class BroadcastInput : int32_t { AUTO = 0, LEFT, RIGHT };
 
 namespace task {
