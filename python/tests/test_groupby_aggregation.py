@@ -17,6 +17,7 @@ from typing import Iterable, List, Tuple
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute
 import pytest
 
 from legate_dataframe import LogicalTable
@@ -165,9 +166,8 @@ def test_numeric_aggregations(value_type, key_type, aggregation):
     [
         "sum",
         # "product",
-        # TODO: min/max require mask_nan's.
-        # "min",
-        # "max",
+        "min",
+        "max",
         "mean",
         "count",
         "len",  # -> "count_all"
