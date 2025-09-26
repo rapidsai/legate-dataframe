@@ -97,6 +97,8 @@ class Mapper : public legate::mapping::Mapper {
           // Also similar to GroupBy, but does multiple shuffles and uses two
           // additional helper columns
           return std::nullopt;
+        case legate::dataframe::task::OpCode::Distinct:
+          // Identical to GroupByAggregation.
         case legate::dataframe::task::OpCode::GroupByAggregation: {
           // Aggregation use repartitioning which uses ZCMEM for NCCL.
           // This depends on the number of columns (first scalar when storing

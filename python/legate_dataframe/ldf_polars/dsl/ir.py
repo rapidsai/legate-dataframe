@@ -26,7 +26,15 @@ from legate_dataframe import LogicalTable
 from legate_dataframe.ldf_polars.containers import Column, DataFrame
 from legate_dataframe.ldf_polars.dsl.nodebase import Node
 from legate_dataframe.ldf_polars.utils.versions import POLARS_VERSION_LT_128
-from legate_dataframe.lib import copying, csv, groupby_aggregation, join, parquet, sort
+from legate_dataframe.lib import (
+    copying,
+    csv,
+    groupby_aggregation,
+    join,
+    parquet,
+    sort,
+    stream_compaction,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, MutableMapping, Sequence
@@ -43,7 +51,7 @@ __all__ = [
     "Cache",
     # "ConditionalJoin",
     "DataFrameScan",
-    # "Distinct",
+    "Distinct",
     "ErrorNode",
     "Filter",
     # "GroupBy",
@@ -868,6 +876,49 @@ class HStack(IR):
             # by the Select, which is why this is safe.
             assert all(e.name.startswith("__POLARS_CSER_0x") for e in exprs)
         return df.with_columns(columns)
+
+
+class Distinct(IR):
+    """Produce a new dataframe with distinct rows."""
+
+    __slots__ = ("keep", "stable", "subset", "zlice")
+    _non_child = ("schema", "keep", "subset", "zlice", "stable")
+    subset: frozenset[str] | None
+    """Which columns should be used to define distinctness. If None,
+    then all columns are used."""
+    zlice: Zlice | None
+    """Optional slice to apply to the result."""
+
+    def __init__(
+        self,
+        schema: Schema,
+        keep: str,
+        subset: frozenset[str] | None,
+        zlice: Zlice | None,
+        stable: bool,  # noqa: FBT001
+        df: IR,
+    ):
+        if keep != "any":
+            raise ValueError("Only keep='any' is supported for distributed datasets")
+        if stable:
+            raise ValueError("Stable unique is not supported for distributed datasets")
+
+        self.schema = schema
+        self.subset = subset
+        self.zlice = zlice
+        self._non_child_args = (subset, zlice)
+        self.children = (df,)
+
+    @classmethod
+    def do_evaluate(
+        cls,
+        subset: frozenset[str] | None,
+        zlice: Zlice | None,
+        df: DataFrame,
+    ) -> DataFrame:
+        """Evaluate and return a dataframe."""
+        res_tbl = stream_compaction.distinct(df.table, subset)
+        return DataFrame.from_table(res_tbl).slice(zlice)
 
 
 class GroupBy(IR):
