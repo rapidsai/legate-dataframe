@@ -73,6 +73,8 @@ def make_param():
         JoinType.INNER,
         JoinType.LEFT,
         JoinType.FULL,
+        JoinType.SEMI,
+        JoinType.ANTI,
     ),
 )
 @pytest.mark.parametrize(
@@ -97,7 +99,10 @@ def test_join(
     lg_rhs = LogicalTable.from_arrow(arrow_rhs)
 
     if (how == JoinType.FULL and broadcast != BroadcastInput.AUTO) or (
-        how == JoinType.LEFT and broadcast == BroadcastInput.LEFT
+        (
+            how in {JoinType.LEFT, JoinType.SEMI, JoinType.ANTI}
+            and broadcast == BroadcastInput.LEFT
+        )
     ):
         # In these cases we don't support broadcasting (at least for now)
         with pytest.raises(RuntimeError):
@@ -116,6 +121,8 @@ def test_join(
         JoinType.INNER: "inner",
         JoinType.LEFT: "left",
         JoinType.FULL: "full",
+        JoinType.SEMI: "semi",
+        JoinType.ANTI: "anti",
     }
 
     expect = (
@@ -213,6 +220,8 @@ def test_empty_chunks(threshold):
         "inner",
         "left",
         "full",
+        "semi",
+        "anti",
     ),
 )
 @pytest.mark.parametrize("arrow_lhs,arrow_rhs,left_on,right_on", make_param())

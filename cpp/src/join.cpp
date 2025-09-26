@@ -39,7 +39,9 @@ bool is_repartition_not_needed(const TaskContext& ctx,
     return true;
   } else if (join_type == JoinType::INNER && (lhs_broadcasted || rhs_broadcasted)) {
     return true;
-  } else if (join_type == JoinType::LEFT && rhs_broadcasted) {
+  } else if ((join_type == JoinType::LEFT || join_type == JoinType::SEMI ||
+              join_type == JoinType::ANTI) &&
+             rhs_broadcasted) {
     return true;
   } else {
     if (ctx.get_legate_context().communicators().size() == 0) {
@@ -60,7 +62,9 @@ arrow::acero::JoinType legate_to_arrow_join_type(JoinType join_type)
   static const std::map<JoinType, arrow::acero::JoinType> join_type_map = {
     {JoinType::INNER, arrow::acero::JoinType::INNER},
     {JoinType::LEFT, arrow::acero::JoinType::LEFT_OUTER},
-    {JoinType::FULL, arrow::acero::JoinType::FULL_OUTER}};
+    {JoinType::FULL, arrow::acero::JoinType::FULL_OUTER},
+    {JoinType::SEMI, arrow::acero::JoinType::LEFT_SEMI},
+    {JoinType::ANTI, arrow::acero::JoinType::LEFT_ANTI}};
 
   auto it = join_type_map.find(join_type);
   if (it == join_type_map.end()) {
@@ -365,6 +369,14 @@ LogicalTable join(const LogicalTable& lhs,
       append_empty_like_columns_force_nullable(ret_cols, rhs_out);
       break;
     }
+    case JoinType::SEMI:
+    case JoinType::ANTI: {
+      append_empty_like_columns(ret_cols, lhs_out);
+      if (rhs_out.num_columns() > 0) {
+        throw std::invalid_argument("rhs must have no output columns for SEMI and ANTI join");
+      }
+      break;
+    }
     default: {
       throw std::invalid_argument("Unknown JoinType");
     }
@@ -379,7 +391,7 @@ LogicalTable join(const LogicalTable& lhs,
              (broadcast == BroadcastInput::LEFT && join_type != JoinType::INNER)) {
     throw std::runtime_error(
       "Force broadcast was indicated, but repartitioning is required. "
-      "FULL joins do not support broadcasting and LEFT joins only for the "
+      "FULL joins do not support broadcasting and LEFT/SEMI/ANTI joins only for the "
       "right hand side argument.");
   }
 
@@ -472,10 +484,13 @@ LogicalTable join(const LogicalTable& lhs,
                   bool nulls_equal,
                   BroadcastInput broadcast)
 {
-  // By default, the output includes all the columns from `lhs` and `rhs`.
+  // By default, the output includes all the columns from `lhs`.
   std::vector<size_t> lhs_out_columns(lhs.num_columns());
   std::iota(lhs_out_columns.begin(), lhs_out_columns.end(), 0);
-  std::vector<size_t> rhs_out_columns(rhs.num_columns());
+  // Include all `rhs` columns, but SEMI or ANTI never does (or can).
+  auto rhs_cols =
+    (join_type == JoinType::SEMI || join_type == JoinType::ANTI) ? 0 : rhs.num_columns();
+  std::vector<size_t> rhs_out_columns(rhs_cols);
   std::iota(rhs_out_columns.begin(), rhs_out_columns.end(), 0);
   return join(lhs,
               rhs,

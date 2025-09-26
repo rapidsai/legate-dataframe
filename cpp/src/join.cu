@@ -38,20 +38,33 @@ cudf_join(TaskContext& ctx,
           cudf::null_equality null_equality,
           JoinType join_type)
 {
-  cudf::hash_join joiner(rhs.select(rhs_keys), null_equality, ctx.stream());
-
   switch (join_type) {
     case JoinType::INNER: {
+      cudf::hash_join joiner(rhs.select(rhs_keys), null_equality, ctx.stream());
       return joiner.inner_join(
         lhs.select(lhs_keys), std::optional<std::size_t>{}, ctx.stream(), ctx.mr());
     }
     case JoinType::LEFT: {
+      cudf::hash_join joiner(rhs.select(rhs_keys), null_equality, ctx.stream());
       return joiner.left_join(
         lhs.select(lhs_keys), std::optional<std::size_t>{}, ctx.stream(), ctx.mr());
     }
     case JoinType::FULL: {
+      cudf::hash_join joiner(rhs.select(rhs_keys), null_equality, ctx.stream());
       return joiner.full_join(
         lhs.select(lhs_keys), std::optional<std::size_t>{}, ctx.stream(), ctx.mr());
+    }
+    case JoinType::SEMI: {
+      auto lhs_row_idx = cudf::left_semi_join(
+        lhs.select(lhs_keys), rhs.select(rhs_keys), null_equality, ctx.stream(), ctx.mr());
+      return std::make_pair(std::move(lhs_row_idx),
+                            std::unique_ptr<rmm::device_uvector<cudf::size_type>>{});
+    }
+    case JoinType::ANTI: {
+      auto lhs_row_idx = cudf::left_anti_join(
+        lhs.select(lhs_keys), rhs.select(rhs_keys), null_equality, ctx.stream(), ctx.mr());
+      return std::make_pair(std::move(lhs_row_idx),
+                            std::unique_ptr<rmm::device_uvector<cudf::size_type>>{});
     }
     default: {
       throw std::invalid_argument("Unknown JoinType");
@@ -70,6 +83,8 @@ std::pair<cudf::out_of_bounds_policy, cudf::out_of_bounds_policy> out_of_bounds_
       return std::make_pair(cudf::out_of_bounds_policy::DONT_CHECK,
                             cudf::out_of_bounds_policy::DONT_CHECK);
     }
+    case JoinType::SEMI:  // similar to left (we don't use second entry)
+    case JoinType::ANTI:
     case JoinType::LEFT: {
       return std::make_pair(cudf::out_of_bounds_policy::DONT_CHECK,
                             cudf::out_of_bounds_policy::NULLIFY);
@@ -106,10 +121,8 @@ void cudf_join_and_gather(TaskContext& ctx,
   // Perform the join and convert (zero-copy) the resulting indices to columns
   auto [lhs_row_idx, rhs_row_idx] =
     cudf_join(ctx, lhs, rhs, lhs_keys, rhs_keys, null_equality, join_type);
-  auto left_indices_span  = cudf::device_span<cudf::size_type const>{*lhs_row_idx};
-  auto right_indices_span = cudf::device_span<cudf::size_type const>{*rhs_row_idx};
-  auto left_indices_col   = cudf::column_view{left_indices_span};
-  auto right_indices_col  = cudf::column_view{right_indices_span};
+  auto left_indices_span = cudf::device_span<cudf::size_type const>{*lhs_row_idx};
+  auto left_indices_col  = cudf::column_view{left_indices_span};
 
   // Use the index columns to gather the result from the original left and right input columns
   auto [left_policy, right_policy] = out_of_bounds_policy_by_join_type(join_type);
@@ -121,15 +134,22 @@ void cudf_join_and_gather(TaskContext& ctx,
   lhs_row_idx.reset();
   lhs_table.reset();
 
-  auto right_result =
-    cudf::gather(rhs.select(rhs_out_cols), right_indices_col, right_policy, ctx.stream(), ctx.mr());
+  auto result_cols = left_result->release();
+  if (rhs_row_idx) {
+    auto right_indices_span = cudf::device_span<cudf::size_type const>{*rhs_row_idx};
+    auto right_indices_col  = cudf::column_view{right_indices_span};
+    auto right_result       = cudf::gather(
+      rhs.select(rhs_out_cols), right_indices_col, right_policy, ctx.stream(), ctx.mr());
+    // Add right columns to the result:
+    result_cols = concat(std::move(result_cols), right_result->release());
+  }
 
   // Finally, create a vector of both the left and right results and move it into the output table
   if (get_prefer_eager_allocations() &&
       !output.unbound()) {  // hard to guess if bound so just inspect
-    output.copy_into(std::move(concat(left_result->release(), right_result->release())));
+    output.copy_into(std::move(result_cols));
   } else {
-    output.move_into(std::move(concat(left_result->release(), right_result->release())));
+    output.move_into(std::move(result_cols));
   }
 }
 
