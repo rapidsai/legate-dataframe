@@ -44,6 +44,13 @@ namespace legate::dataframe {
 #endif
 [[nodiscard]] legate::Type to_legate_type(const arrow::DataType& arrow_type);
 
+/*
+ * Mixing string and large_string is confusing and legate is 64bit internally,
+ * so normalize utf8 to large_utf8 and always use that.
+ */
+[[nodiscard]] std::shared_ptr<arrow::DataType> normalize_arrow_type(
+  const std::shared_ptr<arrow::DataType>& arrow_type);
+
 const void* read_accessor_as_1d_bytes(const legate::PhysicalStore& store);
 
 std::vector<legate::PhysicalStore> get_stores(const legate::PhysicalArray& ary);

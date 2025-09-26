@@ -130,12 +130,19 @@ std::shared_ptr<arrow::DataType> to_arrow_type(legate::Type::Code code)
       return arrow::float64();
     }
     case legate::Type::Code::STRING: {
-      return arrow::utf8();
+      return arrow::large_utf8();
     }
     default:
       throw std::invalid_argument("Unsupported Legate datatype: " +
                                   legate::primitive_type(code).to_string());
   }
+}
+
+std::shared_ptr<arrow::DataType> normalize_arrow_type(
+  const std::shared_ptr<arrow::DataType>& arrow_type)
+{
+  if (*arrow_type == *arrow::utf8()) { return arrow::large_utf8(); }
+  return arrow_type;
 }
 
 namespace {

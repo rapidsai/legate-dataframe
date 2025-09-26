@@ -161,7 +161,7 @@ legate::LogicalArray from_arrow(std::shared_ptr<arrow::Scalar> scalar)
 
 LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
   : LogicalColumn{detail::from_arrow(arrow_array),
-                  arrow_array->type(),
+                  normalize_arrow_type(arrow_array->type()),
                   /* scalar */ false}
 {
 }
@@ -169,7 +169,7 @@ LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Array> arrow_array)
 LogicalColumn::LogicalColumn(std::shared_ptr<arrow::Scalar> arrow_scalar)
   : LogicalColumn{// This type conversion monstrosity can be improved
                   detail::from_arrow(arrow_scalar),
-                  arrow_scalar->type,
+                  normalize_arrow_type(arrow_scalar->type),
                   /* scalar */ true}
 {
 }
@@ -194,10 +194,16 @@ std::shared_ptr<arrow::Array> LogicalColumn::get_arrow() const
       std::shared_ptr<arrow::Buffer> null_bitmask;
       if (a.nullable()) { null_bitmask = null_mask_bools_to_bits(a.null_mask()); }
 
-      auto offsets = global_ranges_to_arrow_offsets(a.ranges().data());
-
-      return std::make_shared<arrow::StringArray>(num_rows(), offsets, data, null_bitmask);
-
+      if (num_chars < std::numeric_limits<arrow::StringArray::TypeClass::offset_type>::max()) {
+        auto offsets = global_ranges_to_arrow_offsets<arrow::StringArray::TypeClass::offset_type>(
+          a.ranges().data());
+        return std::make_shared<arrow::StringArray>(num_rows(), offsets, data, null_bitmask);
+      } else {
+        auto offsets =
+          global_ranges_to_arrow_offsets<arrow::LargeStringArray::TypeClass::offset_type>(
+            a.ranges().data());
+        return std::make_shared<arrow::LargeStringArray>(num_rows(), offsets, data, null_bitmask);
+      }
     } else {
       throw std::invalid_argument("nested dtype " + array_->type().to_string() +
                                   " isn't supported");
@@ -251,10 +257,16 @@ std::shared_ptr<arrow::Array> PhysicalColumn::arrow_array_view() const
       std::shared_ptr<arrow::Buffer> null_bitmask;
       if (a.nullable()) { null_bitmask = null_mask_bools_to_bits(array_.null_mask()); }
 
-      auto offsets = global_ranges_to_arrow_offsets(a.ranges().data());
-
-      return std::make_shared<arrow::StringArray>(num_rows(), offsets, data, null_bitmask);
-
+      if (num_chars < std::numeric_limits<arrow::StringArray::TypeClass::offset_type>::max()) {
+        auto offsets = global_ranges_to_arrow_offsets<arrow::StringArray::TypeClass::offset_type>(
+          a.ranges().data());
+        return std::make_shared<arrow::StringArray>(num_rows(), offsets, data, null_bitmask);
+      } else {
+        auto offsets =
+          global_ranges_to_arrow_offsets<arrow::LargeStringArray::TypeClass::offset_type>(
+            a.ranges().data());
+        return std::make_shared<arrow::LargeStringArray>(num_rows(), offsets, data, null_bitmask);
+      }
     } else {
       throw std::invalid_argument("nested dtype " + array_.type().to_string() + " isn't supported");
     }

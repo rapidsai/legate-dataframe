@@ -106,7 +106,7 @@ class LogicalColumn {
     if (!data_type) {
       arrow_type_ = to_arrow_type(array_->type().code());
     } else {
-      arrow_type_ = data_type;
+      arrow_type_ = normalize_arrow_type(data_type);
     }
   }
 
@@ -181,7 +181,7 @@ class LogicalColumn {
                                             legate::LogicalArray(data_store));
     }
     scalar_     = scalar;
-    arrow_type_ = arrow::utf8();
+    arrow_type_ = arrow::large_utf8();
   }
 
 #ifdef LEGATE_DATAFRAME_USE_CUDA
