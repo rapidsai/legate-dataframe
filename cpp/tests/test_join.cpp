@@ -81,6 +81,12 @@ std::shared_ptr<arrow::Table> arrow_join(const legate::dataframe::LogicalTable& 
     case legate::dataframe::JoinType::FULL:
       arrow_join_type = arrow::acero::JoinType::FULL_OUTER;
       break;
+    case legate::dataframe::JoinType::SEMI:
+      arrow_join_type = arrow::acero::JoinType::LEFT_SEMI;
+      break;
+    case legate::dataframe::JoinType::ANTI:
+      arrow_join_type = arrow::acero::JoinType::LEFT_ANTI;
+      break;
     default: throw std::invalid_argument("Unsupported join type");
   }
 
