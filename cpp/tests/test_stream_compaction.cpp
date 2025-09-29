@@ -16,6 +16,7 @@
 
 #include <arrow/compute/api.h>
 #include <gtest/gtest.h>
+#include <legate_dataframe/sort.hpp>
 #include <legate_dataframe/stream_compaction.hpp>
 
 using namespace legate::dataframe;
@@ -57,6 +58,8 @@ TEST(StreamCompactionTest, Distinct)
   LogicalTable tbl{{col_0, col_1, col_2}, {"a", "b", "c"}};
 
   auto result = distinct(tbl, {"a", "b"});
+  // Sort (sort/null order to match up the trivial results below)
+  auto sorted_result = sort(result, {"a", "b", "c"}, {true, false, true}, false);
 
   // Hardcoded expected result (we have no simple arrow unique call).
   LogicalColumn col_0_exp(std::vector<int32_t>{0, 0, 1, 1}, {false, false, true, true});
@@ -65,5 +68,7 @@ TEST(StreamCompactionTest, Distinct)
   LogicalTable expected{{col_0_exp, col_1_exp, col_2_exp}, {"a", "b", "c"}};
   auto expected_arrow = expected.get_arrow();
 
-  EXPECT_TRUE(result.get_arrow()->Equals(*expected_arrow));
+  EXPECT_TRUE(sorted_result.get_arrow()->Equals(*expected_arrow))
+    << "Failed with result: " << sorted_result.get_arrow()->ToString()
+    << " Expected: " << expected_arrow->ToString();
 }
