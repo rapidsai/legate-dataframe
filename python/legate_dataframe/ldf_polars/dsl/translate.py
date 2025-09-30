@@ -363,7 +363,16 @@ def _(
 
 @_translate_ir.register
 def _(node: pl_ir.Distinct, translator: Translator, schema: Schema) -> ir.IR:
-    raise NotImplementedError("Distinct not supported")
+    (keep, subset, maintain_order, zlice) = node.options
+    subset = frozenset(subset) if subset is not None else None
+    return ir.Distinct(
+        schema,
+        keep,
+        subset,
+        zlice,
+        maintain_order,
+        translator.translate_ir(n=node.input),
+    )
 
 
 @_translate_ir.register
