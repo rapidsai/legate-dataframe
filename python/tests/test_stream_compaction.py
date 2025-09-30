@@ -39,6 +39,26 @@ def test_apply_boolean_mask_basic(df: pa.Table):
     assert_arrow_table_equal(res.to_arrow(), expect)
 
 
+def test_apply_boolean_mask_alignment():
+    df = pa.table({"a": np.arange(1000)})
+    lg_df = LogicalTable.from_arrow(df)
+
+    # We mask the mask, this should ensure the output is not aligned with
+    # the df table anymore testing the alignment constraint.
+    mask_mask = np.zeros(2000, dtype=bool)
+    mask_mask[:1000] = True
+    mask = pa.array(np.random.randint(0, 2, size=2000).astype(bool))
+    lg_mask_mask = LogicalColumn.from_arrow(pa.array(mask_mask))
+    df_mask = pa.table({"mask": mask})
+    lg_mask_tbl = LogicalTable.from_arrow(df_mask)
+    lg_mask_tbl = apply_boolean_mask(lg_mask_tbl, lg_mask_mask)
+
+    res = apply_boolean_mask(lg_df, lg_mask_tbl["mask"])
+    expected = df.filter(mask.filter(mask_mask))
+
+    assert_arrow_table_equal(res.to_arrow(), expected)
+
+
 @pytest.mark.parametrize("df", std_dataframe_set())
 def test_apply_boolean_mask_nulls(df: pa.Table):
     # Similar to `test_apply_boolean_mask`, but cover a nullable column

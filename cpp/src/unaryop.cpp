@@ -141,8 +141,10 @@ LogicalColumn unary_operation(const LogicalColumn& col, std::string op)
   auto ret = LogicalColumn::empty_like(result_type, col.nullable(), col.is_scalar(), size);
 
   argument::add_next_scalar(task, op);
-  argument::add_next_input(task, col);
+  auto in_var  = argument::add_next_input(task, col);
+  auto out_var = argument::add_next_output(task, ret);
   argument::add_next_output(task, ret);
+  if (size.has_value()) { task.add_constraint(legate::align(out_var, in_var)); }
   runtime->submit(std::move(task));
   return ret;
 }
