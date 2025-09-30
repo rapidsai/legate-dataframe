@@ -109,9 +109,10 @@ LogicalTable apply_boolean_mask(const LogicalTable& tbl, const LogicalColumn& bo
   legate::AutoTask task =
     runtime->create_task(get_library(), task::ApplyBooleanMaskTask::TASK_CONFIG.task_id());
 
-  argument::add_next_input(task, tbl);
-  argument::add_next_input(task, boolean_mask);
+  auto tbl_vars = argument::add_next_input(task, tbl);
+  auto mask_var = argument::add_next_input(task, boolean_mask);
   argument::add_next_output(task, ret);
+  task.add_constraint(legate::align(tbl_vars.at(0), mask_var));
 
   runtime->submit(std::move(task));
   return ret;
