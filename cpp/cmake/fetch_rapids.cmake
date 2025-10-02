@@ -12,7 +12,7 @@
 # the License.
 # =============================================================================
 if(NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/LEGATE_DATAFRAME_RAPIDS.cmake)
-  file(DOWNLOAD https://raw.githubusercontent.com/rapidsai/rapids-cmake/branch-25.04/RAPIDS.cmake
+  file(DOWNLOAD https://raw.githubusercontent.com/rapidsai/rapids-cmake/branch-25.08/RAPIDS.cmake
        ${CMAKE_CURRENT_BINARY_DIR}/LEGATE_DATAFRAME_RAPIDS.cmake
   )
 endif()

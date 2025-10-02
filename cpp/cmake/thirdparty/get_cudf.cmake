@@ -51,5 +51,5 @@ function(find_and_configure_cudf)
 endfunction()
 
 find_and_configure_cudf(
-  VERSION 25.04 GIT_REPO https://github.com/rapidsai/cudf.git GIT_TAG branch-25.04
+  VERSION 25.08 GIT_REPO https://github.com/rapidsai/cudf.git GIT_TAG branch-25.08
 )

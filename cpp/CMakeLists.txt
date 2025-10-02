@@ -14,6 +14,8 @@
 
 cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
 
+set(rapids-cmake-version 25.08)
+
 include(cmake/fetch_rapids.cmake)
 include(rapids-cmake)
 include(rapids-cpm)
@@ -144,7 +146,7 @@ set_target_properties(
   PROPERTIES BUILD_RPATH "\$ORIGIN"
              INSTALL_RPATH "\$ORIGIN"
              # set target compile options
-             CXX_STANDARD 17
+             CXX_STANDARD 20
              CXX_STANDARD_REQUIRED ON
              # For std:: support of __int128_t. Can be removed once using cuda::std
              CXX_EXTENSIONS ON
@@ -153,12 +155,13 @@ set_target_properties(
 )
 
 if(Legion_USE_CUDA)
-  set_target_properties(LegateDataframe PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+  set_target_properties(LegateDataframe PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON)
   # Need to add this define, as is done in legate CMakeLists.txt as well for __half support.  If
   # __half support fails elsewhere it may be needed there. This may be a CCCL 2.7.0 issue and become
   # unnecessary in the future.
   target_compile_definitions("LegateDataframe" PUBLIC _LIBCUDACXX_HAS_NVFP16=1)
 endif()
+target_compile_definitions("LegateDataframe" PUBLIC LIBCUDACXX_ENABLE_HOST_NVFP16=1)
 
 list(APPEND LDF_CUDA_FLAGS --expt-extended-lambda)
 list(APPEND LDF_CUDA_FLAGS --expt-relaxed-constexpr)
