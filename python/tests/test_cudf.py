@@ -28,14 +28,17 @@ def test_column_round_trip(cudf_col):
 
 
 def test_scalar_column_round_trip():
-    cudf_scalar = cudf.Scalar(3)
-    # We support both cudf and pylibcudf scalars (but return cudf ones)
-    for scalar in [cudf_scalar, cudf_scalar.device_value]:
-        col = LogicalColumn.from_cudf(scalar)
-        assert col.is_scalar()
+    import pylibcudf as plc
 
-        cudf_res = col.to_cudf_scalar()
-        assert cudf_res.value == cudf_scalar.value
+    scalar = plc.scalar.Scalar.from_py(3)
+    # We support both pylibcudf scalars
+    col = LogicalColumn.from_cudf(scalar)
+    assert col.is_scalar()
+
+    # Used to be a cudf Scalar, but those do not
+    # exist since 25.10, so a pylibcudf now...
+    cudf_res = col.to_cudf_scalar()
+    assert cudf_res.to_py() == scalar.to_py()
 
 
 def test_non_scalar_column_error():

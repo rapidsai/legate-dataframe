@@ -471,8 +471,8 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
       // but it doesn't work either way (As of legate 25.07).  For table reading
       // 1-D rects can be used (and are for eager mode).
       row_group_ranges.emplace_back(
-        legate::Rect<1>({static_cast<int64_t>(nrows_total)},
-                        {static_cast<int64_t>(nrows_total + nrows_in_group - 1)}));
+        legate::Rect<1>({static_cast<legate::coord_t>(nrows_total)},
+                        {static_cast<legate::coord_t>(nrows_total + nrows_in_group - 1)}));
       nrows_total += nrows_in_group;
     }
   }

@@ -27,8 +27,6 @@ def from_cudf(col_or_scalar):
         col_or_scalar = col_or_scalar._column.to_pylibcudf("read")
     elif isinstance(col_or_scalar, cudf.core.column.column.ColumnBase):
         col_or_scalar = col_or_scalar.to_pylibcudf("read")
-    elif isinstance(col_or_scalar, cudf.Scalar):
-        col_or_scalar = col_or_scalar.device_value
 
     if isinstance(col_or_scalar, PylibcudfColumn):
         col = <PylibcudfColumn>col_or_scalar
@@ -53,7 +51,7 @@ def to_cudf(LogicalColumn col):
 def to_cudf_scalar(LogicalColumn col):
     cdef unique_ptr[scalar] scal = get_cudf_scalar(col._handle)
     pylibcudf_scalar = PylibcudfScalar.from_libcudf(move(scal))
-    return cudf.Scalar.from_pylibcudf(pylibcudf_scalar)
+    return pylibcudf_scalar
 
 
 def cudf_dtype(LogicalColumn col):

@@ -3,7 +3,7 @@ files:
   all:
     output: conda
     matrix:
-      cuda: ["12.4"]
+      cuda: ["12.9"]
       arch: [x86_64]
     includes:
       - build
@@ -119,9 +119,9 @@ dependencies:
       - output_types: conda
         matrices:
           - matrix:
-              cuda: "12.4"
+              cuda: "12.9"
             packages:
-              - cuda-version=12.4
+              - cuda-version=12.9
 
   cuda:
     specific:
@@ -176,8 +176,8 @@ dependencies:
           - cupynumeric==25.10.*,>=0.0.0.dev0
           - pytest>=7.0
           - polars>=1.25,<1.32
-          - dask-cuda==25.04.*
-          - dask-cudf==25.04.*
+          - dask-cuda==25.08.*
+          - dask-cudf==25.08.*
       - output_types: conda
         packages:
           - cuda-sanitizer-api
@@ -188,9 +188,9 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &cudf_unsuffixed cudf==25.04.*,>=0.0.0a0
+          - &cudf_unsuffixed cudf==25.08.*,>=0.0.0a0
           - pynvjitlink<=0.6
-          - &pylibcudf_unsuffixed pylibcudf==25.04.*,>=0.0.0a0
+          - &pylibcudf_unsuffixed pylibcudf==25.08.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -198,8 +198,8 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cudf-cu12==25.04.*,>=0.0.0a0
-              - pylibcudf-cu12==25.04.*,>=0.0.0a0
+              - cudf-cu12==25.08.*,>=0.0.0a0
+              - pylibcudf-cu12==25.08.*,>=0.0.0a0
           - {matrix: null, packages: [*cudf_unsuffixed, *pylibcudf_unsuffixed]}
 
   depends_on_cupy:
@@ -225,7 +225,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &libcudf_unsuffixed libcudf==25.04.*,>=0.0.0a0
+          - &libcudf_unsuffixed libcudf==25.08.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -233,14 +233,14 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - libcudf-cu12==25.04.*,>=0.0.0a0
+              - libcudf-cu12==25.08.*,>=0.0.0a0
           - {matrix: null, packages: [*libcudf_unsuffixed]}
 
   depends_on_librmm:
     common:
       - output_types: conda
         packages:
-          - &librmm_unsuffixed librmm==25.04.*,>=0.0.0a0
+          - &librmm_unsuffixed librmm==25.08.*,>=0.0.0a0
     specific:
       - output_types: [requirements, pyproject]
         matrices:
@@ -248,7 +248,7 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - librmm-cu12==25.04.*,>=0.0.0a0
+              - librmm-cu12==25.08.*,>=0.0.0a0
           - matrix:
             packages:
               - *librmm_unsuffixed

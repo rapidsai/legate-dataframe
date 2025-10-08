@@ -46,7 +46,7 @@ namespace legate::dataframe::task {
   TaskContext ctx{context};
 
   const auto input      = argument::get_next_input<PhysicalColumn>(ctx);
-  auto digits           = argument::get_next_scalar<int32_t>(ctx);
+  auto decimal_places   = argument::get_next_scalar<int32_t>(ctx);
   auto mode             = argument::get_next_scalar<std::string>(ctx);
   auto output           = argument::get_next_output<PhysicalColumn>(ctx);
   cudf::column_view col = input.column_view();
@@ -58,8 +58,10 @@ namespace legate::dataframe::task {
   } else {
     throw std::invalid_argument("Unsupported rounding method: " + mode);
   }
+  // TODO(seberg): Need to switch to round_decimal, but it failed tests due to
+  // some input types in our tests and I have not yet checked why or what to use.
   std::unique_ptr<cudf::column> ret =
-    cudf::round(col, digits, rounding_method, ctx.stream(), ctx.mr());
+    cudf::round(col, decimal_places, rounding_method, ctx.stream(), ctx.mr());
   if (get_prefer_eager_allocations()) {
     output.copy_into(std::move(ret));
   } else {

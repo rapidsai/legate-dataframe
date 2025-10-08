@@ -13,21 +13,21 @@
 # limitations under the License.
 #
 
-ARG CUDA_VERSION="12.5.1"
+ARG CUDA_VERSION="12.9.1"
 ARG PYTHON_VERSION="3.11"
 
-ARG BASE_IMAGE="rapidsai/miniforge-cuda:cuda${CUDA_VERSION}-base-ubuntu22.04-py${PYTHON_VERSION}"
+ARG BASE_IMAGE="rapidsai/miniforge-cuda:cuda${CUDA_VERSION}-base-ubuntu24.04-py${PYTHON_VERSION}"
 FROM ${BASE_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
 # Legate-dataframe: create conda environment, build, and install
 #
-# Update conda the environment (we use `cut` to convert the format of CUDA_VERSION from "12.5.1" to "125")
+# Update conda the environment (we use `cut` to convert the format of CUDA_VERSION from "12.9.1" to "129")
 RUN mkdir -p /opt/legate-dataframe/conda-env-file
 COPY ./conda/environments/*.yaml /opt/legate-dataframe/conda-env-file/
 
 # To ensure we find the GPU version of legate in the docker build.
-ARG CONDA_OVERRIDE_CUDA=12.4
+ARG CONDA_OVERRIDE_CUDA=12.9
 RUN /bin/bash -c '/opt/conda/bin/mamba env create --name legate-dev --file \
   /opt/legate-dataframe/conda-env-file/all_cuda-$(cut --output-delimiter="" -d "." -f 1,2 <<< ${CONDA_OVERRIDE_CUDA})_arch-x86_64.yaml'
 

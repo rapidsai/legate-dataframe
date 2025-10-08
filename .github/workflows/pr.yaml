@@ -23,7 +23,7 @@ jobs:
       - conda-python-build
       - conda-python-cpu-tests
       - conda-python-gpu-tests
-    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@branch-25.04
+    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@branch-25.08
 
   pre-commit:
     runs-on: ubuntu-latest
@@ -49,15 +49,14 @@ jobs:
       matrix:
         include:
           - ARCH: "amd64"
-            CUDA_VER: "12.5.1"
+            CUDA_VER: "12.9.1"
             PY_VER: "3.11"
           - ARCH: "amd64"
-            CUDA_VER: "12.5.1"
+            CUDA_VER: "12.9.1"
             PY_VER: "3.12"
-    # NOTE: Try going back to "latest" runners once we bump RAPIDS 25.04
     runs-on: linux-${{ matrix.ARCH }}-cpu16
     container:
-      image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu22.04-py${{ matrix.PY_VER }}"
+      image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu24.04-py${{ matrix.PY_VER }}"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,15 +89,14 @@ jobs:
       matrix:
         include:
           - ARCH: "amd64"
-            CUDA_VER: "12.5.1"
+            CUDA_VER: "12.9.1"
             PY_VER: "3.11"
           - ARCH: "amd64"
-            CUDA_VER: "12.5.1"
+            CUDA_VER: "12.9.1"
             PY_VER: "3.12"
-    # NOTE: Try going back to "latest" runners once we bump RAPIDS 25.04
-    runs-on: linux-${{ matrix.ARCH }}-gpu-v100-earliest-1
+    runs-on: linux-${{ matrix.ARCH }}-gpu-l4-latest-1
     container:
-      image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu22.04-py${{ matrix.PY_VER }}"
+      image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu24.04-py${{ matrix.PY_VER }}"
       env:
         NVIDIA_VISIBLE_DEVICES: ${{ env.NVIDIA_VISIBLE_DEVICES }}
     steps:

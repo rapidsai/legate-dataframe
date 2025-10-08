@@ -14,6 +14,8 @@
 
 cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
 
+set(rapids-cmake-version 25.08)
+
 include(cmake/fetch_rapids.cmake)
 include(rapids-cmake)
 include(rapids-cpm)
@@ -144,21 +146,13 @@ set_target_properties(
   PROPERTIES BUILD_RPATH "\$ORIGIN"
              INSTALL_RPATH "\$ORIGIN"
              # set target compile options
-             CXX_STANDARD 17
+             CXX_STANDARD 20
              CXX_STANDARD_REQUIRED ON
              # For std:: support of __int128_t. Can be removed once using cuda::std
              CXX_EXTENSIONS ON
              POSITION_INDEPENDENT_CODE ON
              INTERFACE_POSITION_INDEPENDENT_CODE ON
 )
-
-if(Legion_USE_CUDA)
-  set_target_properties(LegateDataframe PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
-  # Need to add this define, as is done in legate CMakeLists.txt as well for __half support.  If
-  # __half support fails elsewhere it may be needed there. This may be a CCCL 2.7.0 issue and become
-  # unnecessary in the future.
-  target_compile_definitions("LegateDataframe" PUBLIC _LIBCUDACXX_HAS_NVFP16=1)
-endif()
 
 list(APPEND LDF_CUDA_FLAGS --expt-extended-lambda)
 list(APPEND LDF_CUDA_FLAGS --expt-relaxed-constexpr)
@@ -172,6 +166,14 @@ target_include_directories(
   LegateDataframe
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   INTERFACE "$<INSTALL_INTERFACE:include>"
+)
+# Ridiculous hack, remove as soon as possible (i.e. after legate 25.10 for sure)! Legion headers
+# barf on a cudart issue with cuda::std::complex<__half> when using C++20.  So we inject our own
+# `legion_defines.h` before legate does it. This should fix it:
+# https://github.com/nv-legate/legate.internal/pull/2965
+target_include_directories(
+  LegateDataframe SYSTEM
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/legate_dataframe/legion_hack>"
 )
 
 target_link_libraries(

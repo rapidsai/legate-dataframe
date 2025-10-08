@@ -21,6 +21,7 @@ def try_import_cudf():
     cudf = None
     try:
         cudf = pytest.importorskip("cudf")
+        cudf.Series([3])  # check if cudf is functional (e.g. cuda exists)
     except Exception:
         pytest.skip("cudf is not available", allow_module_level=True)
     return cudf
