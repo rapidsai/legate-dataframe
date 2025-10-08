@@ -48,11 +48,6 @@ option(BUILD_SHARED_LIBS "Build legate-dataframe shared library" ON)
 option(BUILD_EXAMPLES "Configure CMake to build examples" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 
-# An unfortunate issue with cuda::std::complex<__half> means that we have problems with legate
-# headers (when cuda is available) This should be fixed after legate 25.10 until then we need this
-# see: https://github.com/nv-legate/legate.internal/pull/2965
-set(Legion_REDOP_HALF OFF)
-
 rapids_find_package(
   legate REQUIRED Legion LegionRuntime
   BUILD_EXPORT_SET LegateDataframe-exports
@@ -171,6 +166,14 @@ target_include_directories(
   LegateDataframe
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   INTERFACE "$<INSTALL_INTERFACE:include>"
+)
+# Ridiculous hack, remove as soon as possible (i.e. after legate 25.10 for sure)! Legion headers
+# barf on a cudart issue with cuda::std::complex<__half> when using C++20.  So we inject our own
+# `legion_defines.h` before legate does it. This should fix it:
+# https://github.com/nv-legate/legate.internal/pull/2965
+target_include_directories(
+  LegateDataframe SYSTEM
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/legate_dataframe/legion_hack>"
 )
 
 target_link_libraries(
