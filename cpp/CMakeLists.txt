@@ -48,6 +48,11 @@ option(BUILD_SHARED_LIBS "Build legate-dataframe shared library" ON)
 option(BUILD_EXAMPLES "Configure CMake to build examples" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 
+# An unfortunate issue with cuda::std::complex<__half> means that we have problems with legate
+# headers (when cuda is available) This should be fixed after legate 25.10 until then we need this
+# see: https://github.com/nv-legate/legate.internal/pull/2965
+set(Legion_REDOP_HALF OFF)
+
 rapids_find_package(
   legate REQUIRED Legion LegionRuntime
   BUILD_EXPORT_SET LegateDataframe-exports
@@ -153,15 +158,6 @@ set_target_properties(
              POSITION_INDEPENDENT_CODE ON
              INTERFACE_POSITION_INDEPENDENT_CODE ON
 )
-
-if(Legion_USE_CUDA)
-  set_target_properties(LegateDataframe PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON)
-  # Need to add this define, as is done in legate CMakeLists.txt as well for __half support.  If
-  # __half support fails elsewhere it may be needed there. This may be a CCCL 2.7.0 issue and become
-  # unnecessary in the future.
-  target_compile_definitions("LegateDataframe" PUBLIC _LIBCUDACXX_HAS_NVFP16=1)
-endif()
-target_compile_definitions("LegateDataframe" PUBLIC LIBCUDACXX_ENABLE_HOST_NVFP16=1)
 
 list(APPEND LDF_CUDA_FLAGS --expt-extended-lambda)
 list(APPEND LDF_CUDA_FLAGS --expt-relaxed-constexpr)

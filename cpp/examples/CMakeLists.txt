@@ -16,7 +16,7 @@ set(TEST_INSTALL_PATH bin/tests/hello_world)
 set(TEST_NAME hello_world)
 
 add_executable(hello_world hello.cpp)
-set_target_properties(hello_world PROPERTIES INSTALL_RPATH "\$ORIGIN/..")
+set_target_properties(hello_world PROPERTIES INSTALL_RPATH "\$ORIGIN/.." CXX_STANDARD 20)
 target_link_libraries(hello_world PRIVATE LegateDataframe::LegateDataframe)
 
 if(CMAKE_COMPILER_IS_GNUCXX)

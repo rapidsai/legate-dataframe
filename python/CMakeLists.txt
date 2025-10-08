@@ -14,6 +14,8 @@
 
 cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
 
+set(rapids-cmake-version 25.08)
+
 # read project version from VERSION file
 file(READ "${CMAKE_CURRENT_LIST_DIR}/legate_dataframe/VERSION" _version_content)
 if(_version_content MATCHES [[^([0-9]+)\.([0-9]+)\.([0-9]+)]])
@@ -38,6 +40,9 @@ project(
             # that is fixed we need to keep C.
             C CXX
 )
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(
   FIND_LegateDataframe

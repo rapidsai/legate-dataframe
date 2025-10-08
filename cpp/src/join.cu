@@ -16,7 +16,8 @@
 
 #include <cudf/column/column_factories.hpp>
 #include <cudf/copying.hpp>
-#include <cudf/join.hpp>
+#include <cudf/join/hash_join.hpp>
+#include <cudf/join/join.hpp>
 #include <cudf/table/table.hpp>
 
 #include <legate_dataframe/core/repartition_by_hash.hpp>
