@@ -3,7 +3,7 @@ files:
   all:
     output: conda
     matrix:
-      cuda: ["12.4"]
+      cuda: ["12.9"]
       arch: [x86_64]
     includes:
       - build
@@ -119,9 +119,9 @@ dependencies:
       - output_types: conda
         matrices:
           - matrix:
-              cuda: "12.4"
+              cuda: "12.9"
             packages:
-              - cuda-version=12.4
+              - cuda-version=12.9
 
   cuda:
     specific:

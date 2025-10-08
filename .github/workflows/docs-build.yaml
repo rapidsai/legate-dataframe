@@ -29,11 +29,11 @@ jobs:
       matrix:
         include:
           - ARCH: amd64
-            CUDA_VER: "12.5.1"
+            CUDA_VER: "12.9.1"
             PY_VER: "3.12"
     runs-on: linux-${{ matrix.ARCH }}-gpu-v100-latest-1
     container:
-      image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu22.04-py${{ matrix.PY_VER }}"
+      image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu24.04-py${{ matrix.PY_VER }}"
       env:
         NVIDIA_VISIBLE_DEVICES: ${{ env.NVIDIA_VISIBLE_DEVICES }}
     steps:
