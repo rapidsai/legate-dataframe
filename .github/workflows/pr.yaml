@@ -23,7 +23,7 @@ jobs:
       - conda-python-build
       - conda-python-cpu-tests
       - conda-python-gpu-tests
-    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@branch-25.04
+    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@branch-25.08
 
   pre-commit:
     runs-on: ubuntu-latest
