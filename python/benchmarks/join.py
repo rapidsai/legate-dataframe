@@ -21,7 +21,7 @@ from typing import Tuple
 
 import cudf
 import numpy
-from cudf.utils.string import format_bytes
+from cudf.core.buffer.string import format_bytes
 
 
 def create_key_and_data(args, module):
