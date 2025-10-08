@@ -94,7 +94,7 @@ jobs:
           - ARCH: "amd64"
             CUDA_VER: "12.9.1"
             PY_VER: "3.12"
-    runs-on: linux-${{ matrix.ARCH }}-gpu-v100-latest-1
+    runs-on: linux-${{ matrix.ARCH }}-gpu-l4-latest-1
     container:
       image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu24.04-py${{ matrix.PY_VER }}"
       env:
