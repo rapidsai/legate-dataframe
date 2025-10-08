@@ -58,8 +58,10 @@ namespace legate::dataframe::task {
   } else {
     throw std::invalid_argument("Unsupported rounding method: " + mode);
   }
+  // TODO(seberg): Need to switch to round_decimal, but it failed tests due to
+  // some input types in our tests and I have not yet checked why or what to use.
   std::unique_ptr<cudf::column> ret =
-    cudf::round_decimal(col, decimal_places, rounding_method, ctx.stream(), ctx.mr());
+    cudf::round(col, decimal_places, rounding_method, ctx.stream(), ctx.mr());
   if (get_prefer_eager_allocations()) {
     output.copy_into(std::move(ret));
   } else {
