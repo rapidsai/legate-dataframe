@@ -311,7 +311,7 @@ std::unique_ptr<cudf::scalar> LogicalColumn::get_cudf_scalar(
   if (col->size() != 1) {
     throw std::invalid_argument("only length 1/scalar columns can be converted to scalar.");
   }
-  return std::move(cudf::get_element(col->view(), 0));
+  return std::move(cudf::get_element(col->view(), 0, stream, mr));
 }
 
 namespace task {
@@ -367,7 +367,7 @@ std::unique_ptr<cudf::scalar> PhysicalColumn::cudf_scalar() const
   if (num_rows() != 1) {
     throw std::invalid_argument("can only convert length one columns to scalar.");
   }
-  return cudf::get_element(column_view(), 0);
+  return cudf::get_element(column_view(), 0, ctx_->stream(), ctx_->mr());
 }
 
 void PhysicalColumn::copy_into(std::unique_ptr<cudf::column> column)

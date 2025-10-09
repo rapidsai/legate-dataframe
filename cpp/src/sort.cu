@@ -68,8 +68,10 @@ std::unique_ptr<cudf::column> create_column(cudf::size_type num_rows,
 {
   if (num_rows == 0) { return cudf::make_empty_column(cudf::data_type{cudf::type_to_id<T>()}); }
   return cudf::sequence(num_rows,
-                        *cudf::make_fixed_width_scalar(fill_value),
-                        *cudf::make_fixed_width_scalar(int32_t{0}));
+                        *cudf::make_fixed_width_scalar(fill_value, ctx.stream(), ctx.mr()),
+                        *cudf::make_fixed_width_scalar(int32_t{0}, ctx.stream(), ctx.mr()),
+                        ctx.stream(),
+                        ctx.mr());
 }
 
 template <typename T>
@@ -270,15 +272,18 @@ std::vector<cudf::size_type> find_splits_for_distribution(
     ctx, sorted_table, global_split_values->view(), keys_idx, column_order, null_precedence);
 }
 
-static std::unique_ptr<cudf::table> apply_limit(std::unique_ptr<cudf::table> tbl, int64_t limit)
+static std::unique_ptr<cudf::table> apply_limit(TaskContext& ctx,
+                                                std::unique_ptr<cudf::table> tbl,
+                                                int64_t limit)
 {
   if (limit != INT64_MIN && std::abs(limit) < tbl->num_rows()) {
     cudf::size_type cudf_limit = static_cast<cudf::size_type>(limit);
     cudf::table_view slice;
     if (limit < 0) {
-      slice = cudf::slice(tbl->view(), {tbl->num_rows() + cudf_limit, tbl->num_rows()})[0];
+      slice =
+        cudf::slice(tbl->view(), {tbl->num_rows() + cudf_limit, tbl->num_rows()}, ctx.stream())[0];
     } else {
-      slice = cudf::slice(tbl->view(), {0, cudf_limit})[0];
+      slice = cudf::slice(tbl->view(), {0, cudf_limit}, ctx.stream())[0];
     }
     tbl = std::make_unique<cudf::table>(slice);
   }
@@ -324,7 +329,7 @@ static std::unique_ptr<cudf::table> apply_limit(std::unique_ptr<cudf::table> tbl
   auto sorted_table =
     sort_func(cudf_tbl, key, column_order, null_precedence, ctx.stream(), ctx.mr());
 
-  sorted_table = apply_limit(std::move(sorted_table), limit);
+  sorted_table = apply_limit(ctx, std::move(sorted_table), limit);
 
   if (ctx.nranks == 1) {
     output.move_into(sorted_table->release());
