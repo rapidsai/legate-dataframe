@@ -41,7 +41,7 @@ namespace legate::dataframe::task {
   }
 
   std::unique_ptr<cudf::column> ret;
-  auto cudf_pattern = cudf::string_scalar(pattern);
+  auto cudf_pattern = cudf::string_scalar(pattern, true, ctx.stream(), ctx.mr());
 
   if (match_func == "starts_with") {
     ret = cudf::strings::starts_with(input.column_view(), cudf_pattern, ctx.stream(), ctx.mr());
