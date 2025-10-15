@@ -492,9 +492,7 @@ ParquetReadInfo get_parquet_info(const std::vector<std::string>& file_paths,
 void parquet_write(LogicalTable& tbl, const std::string& dirpath)
 {
   std::filesystem::create_directories(dirpath);
-  if (!std::filesystem::is_empty(dirpath)) {
-    throw std::invalid_argument("if path exist, it must be an empty directory");
-  }
+
   auto runtime = legate::Runtime::get_runtime();
   legate::AutoTask task =
     runtime->create_task(get_library(), task::ParquetWrite::TASK_CONFIG.task_id());
