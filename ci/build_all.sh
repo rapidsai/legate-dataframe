@@ -19,7 +19,7 @@ LEGATEDATAFRAME_PACKAGE_VERSION="$(head -1 ./VERSION)" \
 rapids-conda-retry build \
     --channel legate \
     --channel legate/label/rc \
-    --channel legate/label/experimental \
+    --channel legate-nightly \
     --channel rapidsai \
     --channel conda-forge \
     --channel nvidia \
