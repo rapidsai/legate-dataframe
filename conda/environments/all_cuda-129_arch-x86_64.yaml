@@ -4,7 +4,7 @@ channels:
 - rapidsai
 - legate
 - legate/label/rc
-- legate/label/experimental
+- legate-nightly
 - conda-forge
 - nvidia
 dependencies:

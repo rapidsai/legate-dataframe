@@ -43,7 +43,7 @@ rapids-mamba-retry install \
   --channel "${RAPIDS_LOCAL_CONDA_CHANNEL}" \
   --channel legate \
   --channel legate/label/rc \
-  --channel legate/label/experimental \
+  --channel legate-nightly \
   --channel rapidsai \
   --channel conda-forge \
   --channel nvidia \
