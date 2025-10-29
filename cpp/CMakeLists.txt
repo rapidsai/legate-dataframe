@@ -167,14 +167,6 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   INTERFACE "$<INSTALL_INTERFACE:include>"
 )
-# Ridiculous hack, remove as soon as possible (i.e. after legate 25.10 for sure)! Legion headers
-# barf on a cudart issue with cuda::std::complex<__half> when using C++20.  So we inject our own
-# `legion_defines.h` before legate does it. This should fix it:
-# https://github.com/nv-legate/legate.internal/pull/2965
-target_include_directories(
-  LegateDataframe SYSTEM
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/legate_dataframe/legion_hack>"
-)
 
 target_link_libraries(
   LegateDataframe
