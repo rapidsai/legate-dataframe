@@ -22,7 +22,7 @@
 #include <cudf/utilities/bit.hpp>
 #include <rmm/cuda_stream.hpp>
 #include <rmm/device_buffer.hpp>
-#include <rmm/mr/device/device_memory_resource.hpp>
+#include <rmm/mr/device_memory_resource.hpp>
 #endif
 
 #include <legate.h>

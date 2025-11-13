@@ -20,7 +20,7 @@
 #ifdef LEGATE_DATAFRAME_USE_CUDA
 #include <cudf/column/column.hpp>
 #include <rmm/cuda_stream.hpp>
-#include <rmm/mr/device/device_memory_resource.hpp>
+#include <rmm/mr/device_memory_resource.hpp>
 #endif
 
 #include <legate.h>

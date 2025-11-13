@@ -22,7 +22,7 @@
 
 #include <cudf/column/column_view.hpp>
 #include <cudf/strings/strings_column_view.hpp>
-#include <rmm/mr/device/device_memory_resource.hpp>
+#include <rmm/mr/device_memory_resource.hpp>
 
 namespace legate {
 namespace dataframe {
