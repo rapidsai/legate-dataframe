@@ -119,7 +119,6 @@ class LogicalColumn {
                 bool scalar                                         = false,
                 typename std::enable_if_t<std::is_arithmetic_v<T>>* = nullptr)
   {
-    const size_t nbytes   = data.size() * sizeof(T);
     auto runtime          = legate::Runtime::get_runtime();
     auto legate_type_code = legate::type_code_of_v<T>;
     auto data_store =

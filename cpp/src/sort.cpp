@@ -17,6 +17,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <vector>
+#include <unordered_set>
 
 #include <arrow/api.h>
 #include <arrow/compute/api.h>

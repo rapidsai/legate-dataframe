@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <unordered_set>
 #include <legate.h>
 
 #include <arrow/compute/api.h>

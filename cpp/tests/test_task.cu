@@ -124,10 +124,9 @@ void check_global_row_offset(LogicalTable& input)
   // Check result
   legate::PhysicalArray ary = res.get_physical_array();
   auto acc                  = ary.data().read_accessor<int64_t, 1>();
-  auto shape                = ary.data().shape<1>();
   int64_t expected_offset   = acc[0] + acc[1];
   EXPECT_EQ(acc[0], 0);
-  for (int64_t i = 2; i < res.num_rows() - 1; i += 2) {
+  for (long unsigned int i = 2; i < res.num_rows() - 1; i += 2) {
     EXPECT_EQ(acc[i], expected_offset);
     expected_offset = acc[i] + acc[i + 1];
   }
