@@ -25,7 +25,7 @@ dependencies:
 - dask-cuda==25.08.*
 - dask-cudf==25.08.*
 - gcc_linux-64=11.*
-- legate==25.11.*,>=0.0.0.dev0
+- legate==25.11.00.rc1,>=0.0.0.dev0
 - libarrow-acero
 - libcudf==25.08.*,>=0.0.0a0
 - librmm==25.08.*,>=0.0.0a0
