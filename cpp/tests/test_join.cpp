@@ -119,7 +119,7 @@ auto sort_table(std::shared_ptr<arrow::Table> table)
   // back at the end
   auto column_names = table->ColumnNames();
   std::vector<std::string> temp_names(column_names.size());
-  for (int i = 0; i < column_names.size(); i++) {
+  for (long unsigned int i = 0; i < column_names.size(); i++) {
     temp_names[i] = std::to_string(i);
   }
   table = ARROW_RESULT(table->RenameColumns(temp_names));

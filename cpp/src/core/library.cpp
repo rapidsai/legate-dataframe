@@ -65,8 +65,8 @@ class Mapper : public legate::mapping::Mapper {
       for (const legate::mapping::Store& store : ary.stores()) {
         mappings.push_back(
           StoreMapping::default_mapping(store, options.front(), /*exact = */ true));
-        mappings.back().policy().ordering.set_c_order();
-        mappings.back().policy().exact = true;
+        mappings.back().policy().ordering = legate::mapping::DimOrdering::c_order();
+        mappings.back().policy().exact    = true;
       }
     }
     for (const legate::mapping::Array& ary : task.outputs()) {
@@ -74,8 +74,8 @@ class Mapper : public legate::mapping::Mapper {
       for (const legate::mapping::Store& store : ary.stores()) {
         mappings.push_back(
           StoreMapping::default_mapping(store, options.front(), /*exact = */ true));
-        mappings.back().policy().ordering.set_c_order();
-        mappings.back().policy().exact = true;
+        mappings.back().policy().ordering = legate::mapping::DimOrdering::c_order();
+        mappings.back().policy().exact    = true;
       }
     }
     return mappings;

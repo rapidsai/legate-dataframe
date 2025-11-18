@@ -15,6 +15,7 @@
  */
 
 #include <legate.h>
+#include <unordered_set>
 
 #include <arrow/compute/api.h>
 
