@@ -34,7 +34,7 @@ Documentation = "https://rapidsai.github.io/legate-dataframe"
 
 [project.optional-dependencies]
 test = [
-    "cupynumeric=26.01.*,>=0.0.0.dev0",
+    "cupynumeric==26.01.*,>=0.0.0.dev0",
     "dask-cuda==25.08.*",
     "dask-cudf==25.08.*",
     "polars>=1.25,<1.32",
