@@ -27,7 +27,7 @@ legate_version:
   - "=26.01.*,>=0.0.0.dev0"
 
 cupynumeric_version:
-  - "=26.01.*,>=0.0.0.dev0"=*cuda12*
+  - "=26.01.*,>=0.0.0.dev0=*cuda12*"
 
 nccl_version:
   - ">=2.19"
