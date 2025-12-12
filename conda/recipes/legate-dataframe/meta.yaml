@@ -85,7 +85,7 @@ requirements:
     - cuda-version ={{ cuda_version }}
     - cuda-cudart-dev
     - legate {{ legate_version }} =*_gpu*
-    - cupynumeric {{ cupynumeric_version }} =*_gpu*
+    - cupynumeric {{ cupynumeric_version }} =*cuda12*_gpu*
     - cudf {{ rapids_version }}
     - libcudf {{ rapids_version }}
     - librmm {{ rapids_version }}
@@ -93,7 +93,7 @@ requirements:
     - pylibcudf {{ rapids_version }}
     {% else %}
     - legate {{ legate_version }} =*_cpu*
-    - cupynumeric {{ cupynumeric_version }} =*_cpu*
+    - cupynumeric {{ cupynumeric_version }} =*cuda12*_cpu*
     {% endif %}
     - pyarrow {{ arrow_version }}
     - libarrow-acero {{ arrow_version }}
@@ -122,10 +122,10 @@ outputs:
         {% if gpu_enabled_bool %}
         - cuda-version ={{ cuda_version }}
         - legate {{ legate_version }} =*_gpu*
-        - cupynumeric {{ cupynumeric_version }} =*_gpu*
+        - cupynumeric {{ cupynumeric_version }} =*cuda12*_gpu*
         {% else %}
         - legate {{ legate_version }} =*_cpu*
-        - cupynumeric {{ cupynumeric_version }} =*_cpu*
+        - cupynumeric {{ cupynumeric_version }} =*cuda12*_cpu*
         {% endif %}
         - python
         - pip
