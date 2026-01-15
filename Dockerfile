@@ -16,7 +16,7 @@
 ARG CUDA_VERSION="12.9.1"
 ARG PYTHON_VERSION="3.11"
 
-ARG BASE_IMAGE="rapidsai/miniforge-cuda:cuda${CUDA_VERSION}-base-ubuntu24.04-py${PYTHON_VERSION}"
+ARG BASE_IMAGE="rapidsai/ci-conda:cuda${CUDA_VERSION}-ubuntu24.04-py${PYTHON_VERSION}"
 FROM ${BASE_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
