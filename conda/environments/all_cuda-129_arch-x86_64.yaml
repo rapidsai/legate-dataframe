@@ -19,13 +19,13 @@ dependencies:
 - cuda-version=12.9
 - cudf==25.08.*,>=0.0.0a0
 - cupy>=12.0.0
-- cupynumeric==26.01.dev*,>=0.0.0.dev0
+- cupynumeric>=26.01.0.dev0,<26.01.0a0c
 - cxx-compiler
 - cython>=3.0.3
 - dask-cuda==25.08.*
 - dask-cudf==25.08.*
 - gcc_linux-64=11.*
-- legate==26.01.dev*,>=0.0.0.dev0
+- legate>=26.01.0.dev0,<26.01.0a0
 - libarrow-acero
 - libcudf==25.08.*,>=0.0.0a0
 - librmm==25.08.*,>=0.0.0a0
