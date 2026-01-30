@@ -85,7 +85,7 @@ namespace legate::dataframe::task {
 
   auto src = cudf::io::source_info(files);
   auto opt = cudf::io::parquet_reader_options::builder(src);
-  opt.columns(columns);
+  opt.column_names(columns);
   opt.row_groups(row_groups);
   // If pandas metadata is read, libcudf may read index columns without this.
   opt.use_pandas_metadata(false);
@@ -158,7 +158,7 @@ namespace legate::dataframe::task {
   // (We could also use a chunked reader on 25.08+.)
   auto src = cudf::io::source_info(files);
   auto opt = cudf::io::parquet_reader_options::builder(src);
-  opt.columns(columns);
+  opt.column_names(columns);
   opt.skip_rows(my_row_offset);
   opt.num_rows(my_nrows);
   // If pandas metadata is read, libcudf may read index columns without this.
@@ -232,7 +232,7 @@ namespace legate::dataframe::task {
 
   auto src = cudf::io::source_info(files);
   auto opt = cudf::io::parquet_reader_options::builder(src);
-  opt.columns(columns);
+  opt.column_names(columns);
   opt.row_groups(row_groups);
 
   auto reader = cudf::io::chunked_parquet_reader(chunksize, chunksize, opt, ctx.stream(), ctx.mr());
