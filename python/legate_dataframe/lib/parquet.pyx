@@ -68,6 +68,11 @@ def parquet_write(LogicalTable tbl, path: pathlib.Path | str) -> None:
             ├── part.2.parquet
             └── ...
 
+    .. note::
+        This function will create the directory but does not ensure it is empty.
+        If a previous write had more partitions the old files will remain
+        leaving the directory in an inconsistent state.
+
     See Also
     --------
     parquet_read: Read parquet data
