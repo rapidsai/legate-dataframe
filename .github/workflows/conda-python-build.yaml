@@ -1,9 +1,7 @@
 name: conda-python-build
-
 concurrency:
   group: conda-python-build-on-${{ github.event_name }}-from-${{ github.ref_name }}
   cancel-in-progress: true
-
 on:
   # run only when called by other workflows
   workflow_call:
@@ -12,12 +10,10 @@ on:
         required: true
         type: string
         description: "relative path to a script that builds conda packages"
-
 # override default permissions
 permissions:
   # needed to auth with AWS for sccache
   id-token: write
-
 env:
   # CUDA architectures to build for
   CUDAARCHS: "all-major"
@@ -26,9 +22,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   # where conda-python-build puts files it creates
   RAPIDS_CONDA_BLD_OUTPUT_DIR: /tmp/conda-bld-output
-
 jobs:
-
   build:
     strategy:
       fail-fast: false

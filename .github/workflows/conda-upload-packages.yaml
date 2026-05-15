@@ -8,11 +8,10 @@
 on:
   # run only when called by other workflows
   workflow_call:
-
 env:
   # where jobs that download conda packages store the local channel
   RAPIDS_LOCAL_CONDA_CHANNEL: /tmp/local-conda-packages
-
+permissions: {}
 jobs:
   upload:
     runs-on: linux-amd64-cpu4

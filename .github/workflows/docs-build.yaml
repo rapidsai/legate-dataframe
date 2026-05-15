@@ -1,9 +1,7 @@
 name: docs-build
-
 concurrency:
   group: docs-build-on-${{ github.event_name }}-from-${{ github.ref_name }}
   cancel-in-progress: true
-
 on:
   # run only when called by other workflows
   workflow_call:
@@ -17,13 +15,11 @@ on:
         required: true
         type: string
         description: "relative path to a script that builds conda packages"
-
 env:
   # where jobs that download conda packages store the local channel
   RAPIDS_LOCAL_CONDA_CHANNEL: /tmp/local-conda-packages
-
+permissions: {}
 jobs:
-
   build:
     strategy:
       matrix:
@@ -53,22 +49,18 @@ jobs:
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: docs/build/html
-
   deploy:
     needs:
       - build
     if: inputs.deploy
-
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
-
+      pages: write # to deploy to Pages
+      id-token: write # to verify the deployment originates from an appropriate source
     # Deploy to the github-pages environment
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to GitHub Pages

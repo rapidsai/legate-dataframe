@@ -1,9 +1,7 @@
 name: build
-
 concurrency:
   group: ci-on-${{ github.event_name }}-from-${{ github.ref_name }}
   cancel-in-progress: true
-
 on:
   # run on pushes to certain branches
   push:
@@ -20,7 +18,7 @@ on:
         description: 'Update the docs site?'
         required: true
         type: boolean
-
+permissions: {}
 jobs:
   conda-python-build:
     uses: ./.github/workflows/conda-python-build.yaml
