@@ -8,6 +8,9 @@
 on:
   # run only when called by other workflows
   workflow_call:
+    secrets:
+      CONDA_LEGATE_TOKEN:
+        required: false
 env:
   # where jobs that download conda packages store the local channel
   RAPIDS_LOCAL_CONDA_CHANNEL: /tmp/local-conda-packages
