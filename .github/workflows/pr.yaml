@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
   conda-python-build:
     needs:
@@ -37,7 +39,6 @@ jobs:
     uses: ./.github/workflows/conda-python-build.yaml
     with:
       script: "ci/build_all.sh"
-    secrets: inherit
   conda-python-cpu-tests:
     needs:
       - pre-commit
@@ -59,6 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: download conda packages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -101,6 +103,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: download conda packages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -119,4 +122,3 @@ jobs:
     with:
       script: "ci/build_docs.sh"
       deploy: false
-    secrets: inherit
