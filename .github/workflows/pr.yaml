@@ -1,20 +1,16 @@
 name: pr
-
 concurrency:
   group: ci-on-${{ github.event_name }}-from-${{ github.ref_name }}
   cancel-in-progress: true
-
 on:
   push:
     branches:
       - "pull-request/[0-9]+"
-
 env:
   # where jobs that download conda packages store the local channel
   RAPIDS_LOCAL_CONDA_CHANNEL: /tmp/local-conda-packages
-
+permissions: {}
 jobs:
-
   # group together all jobs that must pass for a PR to be merged
   # (for use by branch protections)
   pr-builder:
@@ -24,21 +20,25 @@ jobs:
       - conda-python-cpu-tests
       - conda-python-gpu-tests
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@branch-25.08
-
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: pre-commit/action@v3.0.1
-
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
   conda-python-build:
     needs:
       - pre-commit
     uses: ./.github/workflows/conda-python-build.yaml
     with:
       script: "ci/build_all.sh"
-    secrets: inherit
-
   conda-python-cpu-tests:
     needs:
       - pre-commit
@@ -58,11 +58,12 @@ jobs:
     container:
       image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu24.04-py${{ matrix.PY_VER }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: download conda packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: legate-dataframe-conda-cuda${{ matrix.CUDA_VER }}-${{ matrix.ARCH }}-py${{ matrix.PY_VER }}
           path: ${{ env.RAPIDS_LOCAL_CONDA_CHANNEL }}
@@ -72,7 +73,6 @@ jobs:
       - name: test python and C++ interface
         run: |
           ci/test_cpu.sh
-
   conda-python-gpu-tests:
     needs:
       - pre-commit
@@ -100,11 +100,12 @@ jobs:
       env:
         NVIDIA_VISIBLE_DEVICES: ${{ env.NVIDIA_VISIBLE_DEVICES }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: download conda packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: legate-dataframe-conda-cuda${{ matrix.CUDA_VER }}-${{ matrix.ARCH }}-py${{ matrix.PY_VER }}
           path: ${{ env.RAPIDS_LOCAL_CONDA_CHANNEL }}
@@ -121,4 +122,3 @@ jobs:
     with:
       script: "ci/build_docs.sh"
       deploy: false
-    secrets: inherit

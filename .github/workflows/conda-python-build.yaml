@@ -1,9 +1,7 @@
 name: conda-python-build
-
 concurrency:
   group: conda-python-build-on-${{ github.event_name }}-from-${{ github.ref_name }}
   cancel-in-progress: true
-
 on:
   # run only when called by other workflows
   workflow_call:
@@ -12,12 +10,10 @@ on:
         required: true
         type: string
         description: "relative path to a script that builds conda packages"
-
 # override default permissions
 permissions:
   # needed to auth with AWS for sccache
   id-token: write
-
 env:
   # CUDA architectures to build for
   CUDAARCHS: "all-major"
@@ -26,9 +22,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   # where conda-python-build puts files it creates
   RAPIDS_CONDA_BLD_OUTPUT_DIR: /tmp/conda-bld-output
-
 jobs:
-
   build:
     strategy:
       fail-fast: false
@@ -52,18 +46,32 @@ jobs:
     container:
       image: "rapidsai/ci-conda:cuda${{ matrix.CUDA_VER }}-ubuntu24.04-py${{ matrix.PY_VER }}"
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 14400 # 4h
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: build
-        run: "${{ inputs.script }}"
+        env:
+          SCRIPT: ${{ inputs.script }}
+        run: |
+          script_path="$(realpath "$SCRIPT")"
+          ci_dir="$(realpath ci)"
+
+          # Use `realpath` to expand out both the script path and the ci path and compare to make sure
+          # that user isn't giving a relative path to a file outside of `ci/`
+          if [[ "$script_path" != "$ci_dir"/*.sh ]]; then
+            echo "::error::Invalid script path '$SCRIPT'. Expected an existing ci/*.sh script inside the checkout"
+            exit 1
+          fi
+
+          bash "$script_path"
       - name: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: legate-dataframe-conda-cuda${{ matrix.CUDA_VER }}-${{ matrix.ARCH }}-py${{ matrix.PY_VER }}
           path: ${{ env.RAPIDS_CONDA_BLD_OUTPUT_DIR }}
