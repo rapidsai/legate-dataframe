@@ -98,6 +98,10 @@ class ParquetReadArray : public Task<ParquetReadArray, OpCode::ParquetReadArray>
  *          ├── part-2.parquet
  *          └── ...
  *
+ * This function may create the directory but does not ensure it is empty.
+ * If a previous write wrote more partitions the old files will remain
+ * leaving the directory in an inconsistent state.
+ *
  * @param tbl The table to write.
  * @param path Destination directory for data.
  */
